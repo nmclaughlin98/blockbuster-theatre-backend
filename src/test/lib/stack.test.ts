@@ -18,7 +18,7 @@ describe('BackendStack', () => {
     it('should create DynamoDB table', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'BlockbusterTheatre',
+            TableName: 'blockbuster-theatre-movies',
             BillingMode: 'PAY_PER_REQUEST',
         });
     });
@@ -26,7 +26,7 @@ describe('BackendStack', () => {
     it('should create Lambda function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'BlockbusterTheatre-ManageItems',
+            FunctionName: 'blockbuster-theatre-add-movies-lambda',
         });
     });
 
@@ -65,11 +65,11 @@ describe('BackendStack', () => {
         const template = Template.fromStack(stack);
         // Database should be created first (no dependencies)
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'BlockbusterTheatre',
+            TableName: 'blockbuster-theatre-movies',
         });
         // Lambda should be created with correct name
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'BlockbusterTheatre-ManageItems',
+            FunctionName: 'blockbuster-theatre-add-movies-lambda',
         });
         // API should integrate with Lambda
         template.hasResourceProperties('AWS::ApiGatewayV2::Integration', {

@@ -11,13 +11,13 @@ interface LambdaConstructProps {
 }
 
 export class LambdaConstruct extends Construct {
-    public readonly manageItemsFunction: lambdaNodejs.NodejsFunction;
+    public readonly addMoivesFunction: lambdaNodejs.NodejsFunction;
 
     constructor(scope: Construct, id: string, props: LambdaConstructProps) {
         super(scope, id);
 
-        this.manageItemsFunction = new lambdaNodejs.NodejsFunction(this, 'ManageItemsHandler', {
-            functionName: 'BlockbusterTheatre-ManageItems',
+        this.addMoivesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
+            functionName: 'blockbuster-theatre-add-movies-lambda',
             runtime: lambda.Runtime.NODEJS_24_X,
             entry: path.join(__dirname, './handlers/add-movies.ts'),
             handler: 'handler',
@@ -34,6 +34,6 @@ export class LambdaConstruct extends Construct {
             },
         });
 
-        props.table.grantReadWriteData(this.manageItemsFunction);
+        props.table.grantReadWriteData(this.addMoivesFunction);
     }
 }

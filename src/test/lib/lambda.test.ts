@@ -20,7 +20,7 @@ describe('LambdaConstruct', () => {
     it('should create a Lambda function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'BlockbusterTheatre-ManageItems',
+            FunctionName: 'blockbuster-theatre-add-movies-lambda',
         });
     });
 
@@ -48,12 +48,12 @@ describe('LambdaConstruct', () => {
     it('should set TABLE_NAME environment variable', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'BlockbusterTheatre-ManageItems',
+            FunctionName: 'blockbuster-theatre-add-movies-lambda',
         });
     });
 
-    it('should export manageItemsFunction', () => {
-        expect(construct.manageItemsFunction).toBeDefined();
+    it('should export addMoivesFunction', () => {
+        expect(construct.addMoivesFunction).toBeDefined();
     });
 
     it('should grant read/write permissions to DynamoDB', () => {
@@ -62,7 +62,7 @@ describe('LambdaConstruct', () => {
     });
 
     it('should have handler set to "handler"', () => {
-        expect(construct.manageItemsFunction).toBeDefined();
-        expect(construct.manageItemsFunction.node).toBeDefined();
+        expect(construct.addMoivesFunction).toBeDefined();
+        expect(construct.addMoivesFunction.node).toBeDefined();
     });
 });

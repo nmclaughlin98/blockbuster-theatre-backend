@@ -1,4 +1,4 @@
-import { handler } from '../../main/lambda/handlers/manage-items';
+import { handler } from '../../main/lambda/handlers/add-movies';
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 

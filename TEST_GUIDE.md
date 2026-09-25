@@ -21,7 +21,7 @@ src/
     ├── gateway.test.ts
     ├── dynamo-db.test.ts
     └── handlers/
-        └── manage-items.test.ts
+        └── add-movies.test.ts
 ```
 
 ## Overview
@@ -65,7 +65,7 @@ This is configured in:
 ## Test Suites
 
 ### 1. Lambda Handler Tests (16 tests)
-**File**: `src/test/handlers/manage-items.test.ts`
+**File**: `src/test/handlers/add-movies.test.ts`
 
 Tests the Lambda function that handles API requests:
 - **GET /items/{id}**: Retrieve an item from DynamoDB

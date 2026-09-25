@@ -16,7 +16,7 @@ export class BackendStack extends cdk.Stack {
 
         // 3. Instantiate API Gateway & pass Lambda handler
         const apiGateway = new ApiGatewayConstruct(this, 'ApiGateway', {
-            manageItemsFunction: lambdaServices.manageItemsFunction,
+            addMoivesFunction: lambdaServices.addMoivesFunction,
         });
 
         // Output backend endpoint for client apps
