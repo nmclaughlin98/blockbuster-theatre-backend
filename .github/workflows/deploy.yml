@@ -55,7 +55,7 @@ jobs:
           echo "**Artifact:** \`build-artifact-${TARGET_BUILD}\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: eu-west-2
           role-to-assume: arn:aws:iam::334624057595:role/blockbuster-theatre-backend-github-deploy-role
