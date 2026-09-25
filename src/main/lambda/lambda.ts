@@ -4,6 +4,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import { movieImportLambdaConfig as cfg } from '../../../lib/stack/lambda';
 
 interface LambdaConstructProps {
     table: dynamodb.Table;
@@ -15,20 +16,24 @@ export class LambdaConstruct extends Construct {
     constructor(scope: Construct, id: string, props: LambdaConstructProps) {
         super(scope, id);
 
-        // Descriptive name for the Lambda handler resource
         this.manageItemsFunction = new lambdaNodejs.NodejsFunction(this, 'ManageItemsHandler', {
             functionName: 'BlockbusterTheatre-ManageItems',
             runtime: lambda.Runtime.NODEJS_24_X,
             entry: path.join(__dirname, './handlers/add-movies.ts'),
             handler: 'handler',
-            memorySize: 128,
-            timeout: cdk.Duration.seconds(5),
+            memorySize: cfg.memorySize,
+            timeout: cdk.Duration.seconds(cfg.timeoutSeconds),
+            reservedConcurrentExecutions: cfg.reservedConcurrentExecutions,
             environment: {
                 TABLE_NAME: props.table.tableName,
+                TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',
+                MAX_BATCH: String(cfg.maxBatch),
+                TMDB_CONCURRENCY: String(cfg.tmdbConcurrency),
+                TMDB_TIMEOUT_MS: String(cfg.tmdbTimeoutMs),
+                TMDB_RETRIES: String(cfg.tmdbRetries),
             },
         });
 
-        // Grant DynamoDB access to Lambda
         props.table.grantReadWriteData(this.manageItemsFunction);
     }
 }

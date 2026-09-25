@@ -34,14 +34,14 @@ describe('LambdaConstruct', () => {
     it('should set correct memory size', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            MemorySize: 128,
+            MemorySize: 512,
         });
     });
 
     it('should set correct timeout', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            Timeout: 5,
+            Timeout: 25,
         });
     });
 

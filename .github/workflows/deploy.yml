@@ -1,5 +1,5 @@
-name: 2. Deploy to Production
-run-name: 'Deploy to Production (Build #${{ inputs.build_number }})'
+name: 2. Deploy Stack
+run-name: 'Deploy Stack (Build #${{ inputs.build_number }})'
 
 on:
   workflow_dispatch:
@@ -62,4 +62,6 @@ jobs:
           role-session-name: github-actions-deploy
 
       - name: Deploy CDK Stack
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: npx cdk deploy --app cdk-out --require-approval never
