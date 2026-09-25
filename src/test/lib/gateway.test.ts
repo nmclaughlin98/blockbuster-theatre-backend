@@ -16,7 +16,7 @@ describe('ApiGatewayConstruct', () => {
             code: lambda.Code.fromInline('exports.handler = async () => {};'),
         });
         construct = new ApiGatewayConstruct(stack, 'TestApiGateway', {
-            addMoivesFunction: mockFunction,
+            addMoviesFunction: mockFunction,
         });
     });
 

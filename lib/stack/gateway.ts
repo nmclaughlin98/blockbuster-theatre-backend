@@ -4,7 +4,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
 interface ApiGatewayConstructProps {
-    addMoivesFunction: lambda.IFunction;
+    addMoviesFunction: lambda.IFunction;
 }
 
 export class ApiGatewayConstruct extends Construct {
@@ -28,17 +28,17 @@ export class ApiGatewayConstruct extends Construct {
 
         const integration = new integrations.HttpLambdaIntegration(
             'AddMoviesIntegration',
-            props.addMoivesFunction
+            props.addMoviesFunction
         );
 
         this.httpApi.addRoutes({
-            path: '/items/{id}',
+            path: '/movies/{id}',
             methods: [apigw2.HttpMethod.GET],
             integration,
         });
 
         this.httpApi.addRoutes({
-            path: '/items',
+            path: '/movies',
             methods: [apigw2.HttpMethod.POST],
             integration,
         });

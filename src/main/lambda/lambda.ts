@@ -11,19 +11,18 @@ interface LambdaConstructProps {
 }
 
 export class LambdaConstruct extends Construct {
-    public readonly addMoivesFunction: lambdaNodejs.NodejsFunction;
+    public readonly addMoviesFunction: lambdaNodejs.NodejsFunction;
 
     constructor(scope: Construct, id: string, props: LambdaConstructProps) {
         super(scope, id);
 
-        this.addMoivesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
+        this.addMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
             functionName: 'blockbuster-theatre-add-movies-lambda',
             runtime: lambda.Runtime.NODEJS_24_X,
-            entry: path.join(__dirname, './handlers/add-movies.ts'),
+            entry: path.join(__dirname, './handlers/add-movies-handler.ts'),
             handler: 'handler',
             memorySize: cfg.memorySize,
             timeout: cdk.Duration.seconds(cfg.timeoutSeconds),
-            reservedConcurrentExecutions: cfg.reservedConcurrentExecutions,
             environment: {
                 TABLE_NAME: props.table.tableName,
                 TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',
@@ -34,6 +33,6 @@ export class LambdaConstruct extends Construct {
             },
         });
 
-        props.table.grantReadWriteData(this.addMoivesFunction);
+        props.table.grantReadWriteData(this.addMoviesFunction);
     }
 }

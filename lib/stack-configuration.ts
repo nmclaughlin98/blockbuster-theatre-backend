@@ -2,21 +2,21 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { ApiGatewayConstruct, DatabaseConstruct, LambdaConstruct } from './stack';
 
-export class BackendStack extends cdk.Stack {
+export class BlockbusterTheatreBackendStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
         // 1. Instantiate DynamoDB
-        const database = new DatabaseConstruct(this, 'Database');
+        const database = new DatabaseConstruct(this, 'MoviesDatabase');
 
         // 2. Instantiate Lambda & pass DB table
-        const lambdaServices = new LambdaConstruct(this, 'LambdaServices', {
+        const lambdaServices = new LambdaConstruct(this, 'AddMoviesLambda', {
             table: database.table,
         });
 
         // 3. Instantiate API Gateway & pass Lambda handler
         const apiGateway = new ApiGatewayConstruct(this, 'ApiGateway', {
-            addMoivesFunction: lambdaServices.addMoivesFunction,
+            addMoviesFunction: lambdaServices.addMoviesFunction,
         });
 
         // Output backend endpoint for client apps

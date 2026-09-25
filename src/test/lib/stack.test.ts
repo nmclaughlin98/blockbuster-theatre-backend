@@ -1,13 +1,13 @@
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
-import { BackendStack } from '../../../lib/stack-configuration';
+import { BlockbusterTheatreBackendStack } from '../../../lib/stack-configuration';
 
 describe('BackendStack', () => {
-    let stack: BackendStack;
+    let stack: BlockbusterTheatreBackendStack;
 
     beforeEach(() => {
         const app = new cdk.App();
-        stack = new BackendStack(app, 'TestBackendStack');
+        stack = new BlockbusterTheatreBackendStack(app, 'TestBackendStack');
     });
 
     it('should create a complete stack with all resources', () => {

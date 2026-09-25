@@ -52,8 +52,8 @@ describe('LambdaConstruct', () => {
         });
     });
 
-    it('should export addMoivesFunction', () => {
-        expect(construct.addMoivesFunction).toBeDefined();
+    it('should export addMoviesFunction', () => {
+        expect(construct.addMoviesFunction).toBeDefined();
     });
 
     it('should grant read/write permissions to DynamoDB', () => {
@@ -62,7 +62,7 @@ describe('LambdaConstruct', () => {
     });
 
     it('should have handler set to "handler"', () => {
-        expect(construct.addMoivesFunction).toBeDefined();
-        expect(construct.addMoivesFunction.node).toBeDefined();
+        expect(construct.addMoviesFunction).toBeDefined();
+        expect(construct.addMoviesFunction.node).toBeDefined();
     });
 });
