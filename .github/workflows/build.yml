@@ -1,0 +1,55 @@
+name: 1. Build and Package
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      build_number: ${{ github.run_number }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci --include=dev
+
+      - name: Check TypeScript Compilation
+        run: npm run build
+
+      - name: Synthesize CDK App
+        env:
+          CDK_DEFAULT_ACCOUNT: '334624057595'
+          CDK_DEFAULT_REGION: 'eu-west-2'
+        run: npx cdk synth --output cdk-out
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact-${{ github.run_number }}
+          path: cdk-out
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: Display Build Number
+        run: |
+          echo "Build Number: ${{ github.run_number }}"
+          echo "### 🚀 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Number:**" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          echo "${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "**Artifact Name:** \`build-artifact-${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
