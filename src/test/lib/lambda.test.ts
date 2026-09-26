@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { LambdaConstruct } from '../../../lib/stack';
+import { movieImportLambdaConfig as cfg } from '../../../lib/stack/lambda';
 
 describe('LambdaConstruct', () => {
     let stack: cdk.Stack;
@@ -61,10 +62,31 @@ describe('LambdaConstruct', () => {
         });
     });
 
-    it('should set reserved concurrency', () => {
+    it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
+        const functions = template.findResources('AWS::Lambda::Function');
+        expect(Object.values(functions)).toHaveLength(1);
+        expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
+    });
+
+    it('should set reserved concurrency when explicitly configured', () => {
+        const configuredStack = new cdk.Stack();
+        const configuredTable = new dynamodb.Table(configuredStack, 'ConfiguredTable', {
+            partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+
+        new LambdaConstruct(configuredStack, 'ConfiguredLambda', {
+            table: configuredTable,
+            lambdaConfig: {
+                ...cfg,
+                reservedConcurrentExecutions: 3,
+            },
+        });
+
+        const template = Template.fromStack(configuredStack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            ReservedConcurrentExecutions: 5,
+            ReservedConcurrentExecutions: 3,
         });
     });
 
