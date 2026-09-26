@@ -70,26 +70,24 @@ describe('LambdaConstruct', () => {
     });
 
     it('should set reserved concurrency when explicitly configured', () => {
-        const originalReservedConcurrency = cfg.reservedConcurrentExecutions;
+        const configuredStack = new cdk.Stack();
+        const configuredTable = new dynamodb.Table(configuredStack, 'ConfiguredTable', {
+            partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
 
-        try {
-            cfg.reservedConcurrentExecutions = 3;
+        new LambdaConstruct(configuredStack, 'ConfiguredLambda', {
+            table: configuredTable,
+            lambdaConfig: {
+                ...cfg,
+                reservedConcurrentExecutions: 3,
+            },
+        });
 
-            const configuredStack = new cdk.Stack();
-            const configuredTable = new dynamodb.Table(configuredStack, 'ConfiguredTable', {
-                partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            });
-
-            new LambdaConstruct(configuredStack, 'ConfiguredLambda', { table: configuredTable });
-
-            const template = Template.fromStack(configuredStack);
-            template.hasResourceProperties('AWS::Lambda::Function', {
-                ReservedConcurrentExecutions: 3,
-            });
-        } finally {
-            cfg.reservedConcurrentExecutions = originalReservedConcurrency;
-        }
+        const template = Template.fromStack(configuredStack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            ReservedConcurrentExecutions: 3,
+        });
     });
 
     it('should export addMoviesFunction', () => {

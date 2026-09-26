@@ -4,10 +4,11 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import { movieImportLambdaConfig as cfg } from '../../../lib/stack/lambda';
+import { movieImportLambdaConfig as cfg, type MovieImportLambdaConfig } from '../../../lib/stack/lambda';
 
 interface LambdaConstructProps {
     table: dynamodb.Table;
+    lambdaConfig?: MovieImportLambdaConfig;
 }
 
 export class LambdaConstruct extends Construct {
@@ -15,24 +16,25 @@ export class LambdaConstruct extends Construct {
 
     constructor(scope: Construct, id: string, props: LambdaConstructProps) {
         super(scope, id);
+        const lambdaConfig = props.lambdaConfig ?? cfg;
 
         this.addMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
             functionName: 'blockbuster-theatre-add-movies-lambda',
             runtime: lambda.Runtime.NODEJS_24_X,
             entry: path.join(__dirname, './handlers/add-movies-handler.ts'),
             handler: 'handler',
-            memorySize: cfg.memorySize,
-            timeout: cdk.Duration.seconds(cfg.timeoutSeconds),
-            ...(cfg.reservedConcurrentExecutions !== undefined && {
-                reservedConcurrentExecutions: cfg.reservedConcurrentExecutions,
+            memorySize: lambdaConfig.memorySize,
+            timeout: cdk.Duration.seconds(lambdaConfig.timeoutSeconds),
+            ...(lambdaConfig.reservedConcurrentExecutions !== undefined && {
+                reservedConcurrentExecutions: lambdaConfig.reservedConcurrentExecutions,
             }),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',
-                MAX_BATCH: String(cfg.maxBatch),
-                TMDB_CONCURRENCY: String(cfg.tmdbConcurrency),
-                TMDB_TIMEOUT_MS: String(cfg.tmdbTimeoutMs),
-                TMDB_RETRIES: String(cfg.tmdbRetries),
+                MAX_BATCH: String(lambdaConfig.maxBatch),
+                TMDB_CONCURRENCY: String(lambdaConfig.tmdbConcurrency),
+                TMDB_TIMEOUT_MS: String(lambdaConfig.tmdbTimeoutMs),
+                TMDB_RETRIES: String(lambdaConfig.tmdbRetries),
             },
         });
 
