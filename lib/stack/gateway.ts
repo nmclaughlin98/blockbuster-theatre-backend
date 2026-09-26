@@ -1,5 +1,6 @@
 import * as apigw2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
@@ -7,6 +8,7 @@ interface ApiGatewayConstructProps {
     addMoviesFunction: lambda.IFunction;
     listMoviesFunction: lambda.IFunction;
     getMovieFunction: lambda.IFunction;
+    jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
 export class ApiGatewayConstruct extends Construct {
@@ -57,6 +59,7 @@ export class ApiGatewayConstruct extends Construct {
             path: '/movies',
             methods: [apigw2.HttpMethod.POST],
             integration,
+            authorizer: props.jwtAuthorizer,
         });
     }
 }

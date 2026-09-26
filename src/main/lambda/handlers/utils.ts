@@ -300,6 +300,7 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
         genres: movie.genres,
         releaseDate: movie.releaseDate.slice(0, 10),
         score: movie.score,
+        showtimes: movie.showtimes,
     };
 }
 
@@ -391,6 +392,6 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
         poster: raw.poster_path
             ? `https://image.tmdb.org/t/p/w1280${raw.poster_path}`
             : '',
-        showtimes,
+        showtimes
     };
 }

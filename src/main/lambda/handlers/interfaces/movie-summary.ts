@@ -10,4 +10,5 @@ export interface MovieSummary {
     genres: string[];
     releaseDate: string;
     score: number;
+    showtimes: Record<string, string[]>;
 }

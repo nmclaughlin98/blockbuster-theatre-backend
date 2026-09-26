@@ -57,6 +57,9 @@ describe('BackendStack', () => {
         template.hasOutput('ApiEndpoint', {
             Description: 'Base HTTP endpoint for WinForms, WinUI 3, SwiftUI, and Web SPA',
         });
+        template.hasOutput('UserPoolId', {});
+        template.hasOutput('UserPoolClientId', {});
+        template.hasOutput('UserPoolIssuer', {});
     });
 
     it('should grant Lambda permissions to DynamoDB', () => {

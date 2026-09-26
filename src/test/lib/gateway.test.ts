@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import { Template } from 'aws-cdk-lib/assertions';
+import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { ApiGatewayConstruct } from '../../../lib/stack';
 
 describe('ApiGatewayConstruct', () => {
@@ -15,10 +16,16 @@ describe('ApiGatewayConstruct', () => {
             handler: 'index.handler',
             code: lambda.Code.fromInline('exports.handler = async () => {};'),
         });
+        const jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
+            'TestJwtAuthorizer',
+            'https://issuer.example.com',
+            { jwtAudience: ['test-client'] }
+        );
         construct = new ApiGatewayConstruct(stack, 'TestApiGateway', {
             addMoviesFunction: mockFunction,
             listMoviesFunction: mockFunction,
             getMovieFunction: mockFunction,
+            jwtAuthorizer,
         });
     });
 
@@ -41,6 +48,16 @@ describe('ApiGatewayConstruct', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /movies',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/{id}',
+            AuthorizationType: 'NONE',
         });
     });
 
