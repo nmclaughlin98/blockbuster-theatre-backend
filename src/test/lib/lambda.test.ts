@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { LambdaConstruct } from '../../../lib/stack';
 
 describe('LambdaConstruct', () => {
@@ -45,10 +45,26 @@ describe('LambdaConstruct', () => {
         });
     });
 
-    it('should set TABLE_NAME environment variable', () => {
+    it('should set environment variables for movie imports', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-add-movies-lambda',
+            Environment: {
+                Variables: Match.objectLike({
+                    TABLE_NAME: Match.anyValue(),
+                    MAX_BATCH: '25',
+                    TMDB_CONCURRENCY: '5',
+                    TMDB_TIMEOUT_MS: '4000',
+                    TMDB_RETRIES: '3',
+                }),
+            },
+        });
+    });
+
+    it('should set reserved concurrency', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            ReservedConcurrentExecutions: 5,
         });
     });
 
@@ -58,11 +74,24 @@ describe('LambdaConstruct', () => {
 
     it('should grant read/write permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.hasResourceProperties('AWS::IAM::Role', {});
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: Match.arrayWith([
+                            'dynamodb:BatchGetItem',
+                            'dynamodb:BatchWriteItem',
+                        ]),
+                    }),
+                ]),
+            }),
+        });
     });
 
     it('should have handler set to "handler"', () => {
-        expect(construct.addMoviesFunction).toBeDefined();
-        expect(construct.addMoviesFunction.node).toBeDefined();
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            Handler: 'index.handler',
+        });
     });
 });

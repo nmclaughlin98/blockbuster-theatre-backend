@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
+import { Match } from 'aws-cdk-lib/assertions';
 import { DatabaseConstruct } from '../../../lib/stack';
 
 describe('DatabaseConstruct', () => {
@@ -14,7 +15,8 @@ describe('DatabaseConstruct', () => {
     it('should create a DynamoDB table', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'BlockbusterTheatre',
+            TableName: 'blockbuster-theatre-movies',
+            BillingMode: 'PAY_PER_REQUEST',
         });
     });
 
@@ -30,8 +32,12 @@ describe('DatabaseConstruct', () => {
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             KeySchema: [
                 {
-                    AttributeName: 'id',
+                    AttributeName: 'PK',
                     KeyType: 'HASH',
+                },
+                {
+                    AttributeName: 'SK',
+                    KeyType: 'RANGE',
                 },
             ],
         });
@@ -40,12 +46,10 @@ describe('DatabaseConstruct', () => {
     it('should have string type for id attribute', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            AttributeDefinitions: [
-                {
-                    AttributeName: 'id',
-                    AttributeType: 'S',
-                },
-            ],
+            AttributeDefinitions: Match.arrayWith([
+                { AttributeName: 'PK', AttributeType: 'S' },
+                { AttributeName: 'SK', AttributeType: 'S' },
+            ]),
         });
     });
 
@@ -56,8 +60,9 @@ describe('DatabaseConstruct', () => {
 
     it('should have DESTROY removal policy', () => {
         const template = Template.fromStack(stack);
-        template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'BlockbusterTheatre',
-        });
+        template.hasResource('AWS::DynamoDB::Table', Match.objectLike({
+            DeletionPolicy: 'Delete',
+            UpdateReplacePolicy: 'Delete',
+        }));
     });
 });

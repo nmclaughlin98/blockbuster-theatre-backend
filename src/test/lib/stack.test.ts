@@ -33,7 +33,7 @@ describe('BackendStack', () => {
     it('should create HTTP API', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'BlockbusterTheatreApi',
+            Name: 'blockbuster-theatre-api-gateway',
         });
     });
 
@@ -58,7 +58,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 2);
+        template.resourceCountIs('AWS::IAM::Policy', 1);
     });
 
     it('should have correct resource order (DB -> Lambda -> API)', () => {

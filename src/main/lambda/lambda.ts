@@ -23,6 +23,7 @@ export class LambdaConstruct extends Construct {
             handler: 'handler',
             memorySize: cfg.memorySize,
             timeout: cdk.Duration.seconds(cfg.timeoutSeconds),
+            reservedConcurrentExecutions: cfg.reservedConcurrentExecutions,
             environment: {
                 TABLE_NAME: props.table.tableName,
                 TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',

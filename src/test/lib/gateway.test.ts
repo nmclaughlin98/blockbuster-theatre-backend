@@ -23,7 +23,7 @@ describe('ApiGatewayConstruct', () => {
     it('should create an HTTP API', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'BlockbusterTheatreApi',
+            Name: 'blockbuster-theatre-api-gateway',
             ProtocolType: 'HTTP',
         });
     });
@@ -31,6 +31,12 @@ describe('ApiGatewayConstruct', () => {
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::ApiGatewayV2::Route', 2);
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/{id}',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /movies',
+        });
     });
 
     it('should integrate Lambda function with routes', () => {
