@@ -10,8 +10,7 @@ export class DatabaseConstruct extends Construct {
 
         this.table = new dynamodb.Table(this, 'BlockbusterTheatreMovies', {
             tableName: 'blockbuster-theatre-movies',
-            partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
-            sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+            partitionKey: { name: 'tmdbId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
 
             // Instructs CloudFormation to delete the physical table when destroyed or replaced

@@ -103,14 +103,12 @@ async function upsertMovie(id: string, movieData: ReturnType<typeof projectTmdb>
         new UpdateCommand({
             TableName: TABLE_NAME,
             Key: {
-                tmdbKey: `${id}`,
+                tmdbId: `${id}`,
             },
             UpdateExpression: `
             SET slug = :slug,
-                movieId = :movieId,
                 title = :title,
                 genres = :genres,
-                genre = :genre,
                 rating = :rating,
                 score = :score,
                 runtime = :runtime,
@@ -131,10 +129,8 @@ async function upsertMovie(id: string, movieData: ReturnType<typeof projectTmdb>
             `,
             ExpressionAttributeValues: {
                 ':slug': movieData.slug,
-                ':movieId': movieData.movieId,
                 ':title': movieData.title,
                 ':genres': movieData.genres,
-                ':genre': movieData.genre,
                 ':rating': movieData.rating,
                 ':score': movieData.score,
                 ':runtime': movieData.runtime,

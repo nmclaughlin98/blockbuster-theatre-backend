@@ -32,12 +32,8 @@ describe('DatabaseConstruct', () => {
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             KeySchema: [
                 {
-                    AttributeName: 'PK',
+                    AttributeName: 'tmdbId',
                     KeyType: 'HASH',
-                },
-                {
-                    AttributeName: 'SK',
-                    KeyType: 'RANGE',
                 },
             ],
         });
@@ -47,8 +43,7 @@ describe('DatabaseConstruct', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             AttributeDefinitions: Match.arrayWith([
-                { AttributeName: 'PK', AttributeType: 'S' },
-                { AttributeName: 'SK', AttributeType: 'S' },
+                { AttributeName: 'tmdbId', AttributeType: 'S' },
             ]),
         });
     });
