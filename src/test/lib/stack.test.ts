@@ -46,7 +46,10 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 2);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 3);
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies',
+        });
     });
 
     it('should output API endpoint', () => {
@@ -58,7 +61,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 1);
+        template.resourceCountIs('AWS::IAM::Policy', 3);
     });
 
     it('should have correct resource order (DB -> Lambda -> API)', () => {

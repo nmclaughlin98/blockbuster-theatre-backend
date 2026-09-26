@@ -17,6 +17,8 @@ describe('ApiGatewayConstruct', () => {
         });
         construct = new ApiGatewayConstruct(stack, 'TestApiGateway', {
             addMoviesFunction: mockFunction,
+            listMoviesFunction: mockFunction,
+            getMovieFunction: mockFunction,
         });
     });
 
@@ -30,9 +32,12 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 2);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 3);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/{id}',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /movies',

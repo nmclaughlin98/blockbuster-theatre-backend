@@ -1,4 +1,7 @@
+export type { MovieDetail } from './movie-detail';
 export type { MovieData } from './movie-data';
+export type { MovieRecord } from './movie-record';
+export type { MovieSummary } from './movie-summary';
 export type { ProcessResult } from './process-result';
 export type { TmdbCastMember } from './tmdb-cast-member';
 export type { TmdbCountryRelease } from './tmdb-country-release';

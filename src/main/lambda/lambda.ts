@@ -13,6 +13,8 @@ interface LambdaConstructProps {
 
 export class LambdaConstruct extends Construct {
     public readonly addMoviesFunction: lambdaNodejs.NodejsFunction;
+    public readonly listMoviesFunction: lambdaNodejs.NodejsFunction;
+    public readonly getMovieFunction: lambdaNodejs.NodejsFunction;
 
     constructor(scope: Construct, id: string, props: LambdaConstructProps) {
         super(scope, id);
@@ -39,5 +41,33 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadWriteData(this.addMoviesFunction);
+
+        this.listMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ListMoviesHandler', {
+            functionName: 'blockbuster-theatre-list-movies-lambda',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            entry: path.join(__dirname, './handlers/list-movies-handler.ts'),
+            handler: 'handler',
+            memorySize: 256,
+            timeout: cdk.Duration.seconds(10),
+            environment: {
+                TABLE_NAME: props.table.tableName,
+            },
+        });
+
+        props.table.grantReadData(this.listMoviesFunction);
+
+        this.getMovieFunction = new lambdaNodejs.NodejsFunction(this, 'GetMovieHandler', {
+            functionName: 'blockbuster-theatre-get-movie-lambda',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            entry: path.join(__dirname, './handlers/get-movie-handler.ts'),
+            handler: 'handler',
+            memorySize: 256,
+            timeout: cdk.Duration.seconds(10),
+            environment: {
+                TABLE_NAME: props.table.tableName,
+            },
+        });
+
+        props.table.grantReadData(this.getMovieFunction);
     }
 }

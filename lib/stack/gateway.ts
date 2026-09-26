@@ -5,6 +5,8 @@ import { Construct } from 'constructs';
 
 interface ApiGatewayConstructProps {
     addMoviesFunction: lambda.IFunction;
+    listMoviesFunction: lambda.IFunction;
+    getMovieFunction: lambda.IFunction;
 }
 
 export class ApiGatewayConstruct extends Construct {
@@ -30,11 +32,25 @@ export class ApiGatewayConstruct extends Construct {
             'AddMoviesIntegration',
             props.addMoviesFunction
         );
+        const listMoviesIntegration = new integrations.HttpLambdaIntegration(
+            'ListMoviesIntegration',
+            props.listMoviesFunction
+        );
+        const getMovieIntegration = new integrations.HttpLambdaIntegration(
+            'GetMovieIntegration',
+            props.getMovieFunction
+        );
+
+        this.httpApi.addRoutes({
+            path: '/movies',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listMoviesIntegration,
+        });
 
         this.httpApi.addRoutes({
             path: '/movies/{id}',
             methods: [apigw2.HttpMethod.GET],
-            integration,
+            integration: getMovieIntegration,
         });
 
         this.httpApi.addRoutes({

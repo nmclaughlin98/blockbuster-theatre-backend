@@ -191,6 +191,40 @@ describe('Add movies Lambda handler', () => {
             new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')
         ).toBe('Bearer test-token');
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(2);
+        expect(
+            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.ExpressionAttributeValues
+        ).toMatchObject({ ':isComingSoon': false });
+        expect(
+            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression
+        ).toContain('isComingSoon = if_not_exists(isComingSoon, :isComingSoon)');
+    });
+
+    it('marks imported movies as coming soon when requested', async () => {
+        ddbMock.on(UpdateCommand).resolves({});
+
+        const result = await invoke(
+            JSON.stringify({ movieIds: [123], isComingSoon: true })
+        );
+
+        expect(result.statusCode).toBe(200);
+        expect(
+            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.ExpressionAttributeValues
+        ).toMatchObject({ ':isComingSoon': true });
+        expect(
+            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression
+        ).toContain('isComingSoon = :isComingSoon');
+    });
+
+    it('rejects a non-boolean coming-soon flag', async () => {
+        const result = await invoke(
+            JSON.stringify({ movieIds: [123], isComingSoon: 'yes' })
+        );
+
+        expect(result.statusCode).toBe(400);
+        expect(responseBody(result)).toEqual({
+            message: 'isComingSoon must be a boolean.',
+        });
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('reports a failed movie when TMDB does not find the ID', async () => {

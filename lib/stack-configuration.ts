@@ -17,6 +17,8 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         // 3. Instantiate API Gateway & pass Lambda handler
         const apiGateway = new ApiGatewayConstruct(this, 'ApiGateway', {
             addMoviesFunction: lambdaServices.addMoviesFunction,
+            listMoviesFunction: lambdaServices.listMoviesFunction,
+            getMovieFunction: lambdaServices.getMovieFunction,
         });
 
         // Output backend endpoint for client apps

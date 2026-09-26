@@ -24,6 +24,10 @@ const CONCURRENCY = intEnv('TMDB_CONCURRENCY', 5);
 const TMDB_TIMEOUT_MS = intEnv('TMDB_TIMEOUT_MS', 4000);
 const TMDB_RETRIES = intEnv('TMDB_RETRIES', 3);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
     const params = new URLSearchParams({
         append_to_response: 'credits,videos,release_dates',
@@ -101,8 +105,16 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
     throw lastError ?? new Error('TMDB request failed');
 }
 
-async function upsertMovie(id: string, movieData: ReturnType<typeof projectTmdb>) {
+async function upsertMovie(
+    id: string,
+    movieData: ReturnType<typeof projectTmdb>,
+    setComingSoon: boolean
+) {
     log('INFO', 'Upserting movie into DynamoDB', { id, title: movieData.title });
+
+    const comingSoonUpdate = setComingSoon
+        ? 'isComingSoon = :isComingSoon,'
+        : 'isComingSoon = if_not_exists(isComingSoon, :isComingSoon),';
 
     await docClient.send(
         new UpdateCommand({
@@ -114,6 +126,7 @@ async function upsertMovie(id: string, movieData: ReturnType<typeof projectTmdb>
             SET slug = :slug,
                 title = :title,
                 genres = :genres,
+                ${comingSoonUpdate}
                 rating = :rating,
                 score = :score,
                 runtime = :runtime,
@@ -136,6 +149,7 @@ async function upsertMovie(id: string, movieData: ReturnType<typeof projectTmdb>
                 ':slug': movieData.slug,
                 ':title': movieData.title,
                 ':genres': movieData.genres,
+                ':isComingSoon': movieData.isComingSoon,
                 ':rating': movieData.rating,
                 ':score': movieData.score,
                 ':runtime': movieData.runtime,
@@ -189,10 +203,15 @@ export const handler = async (
             return json(400, { message: 'Request body is not valid JSON.' });
         }
 
-        const movieIds =
-            parsed !== null && typeof parsed === 'object'
-                ? (parsed as { movieIds?: unknown }).movieIds
-                : undefined;
+        const request = isRecord(parsed) ? parsed : undefined;
+        const movieIds = request?.movieIds;
+        const isComingSoon = request?.isComingSoon;
+
+        if (isComingSoon !== undefined && typeof isComingSoon !== 'boolean') {
+            log('WARN', 'Request rejected: isComingSoon must be a boolean', { requestId });
+            return json(400, { message: 'isComingSoon must be a boolean.' });
+        }
+
         if (!Array.isArray(movieIds) || movieIds.length === 0) {
             log('WARN', 'Request rejected: movieIds must be a non-empty array', { requestId });
             return json(400, { message: 'movieIds must be a non-empty array.' });
@@ -231,8 +250,8 @@ export const handler = async (
             async (id) => {
                 try {
                     const raw = await fetchTmdbMovie(id);
-                    const movieData = projectTmdb(raw);
-                    await upsertMovie(id, movieData);
+                    const movieData = projectTmdb(raw, isComingSoon ?? false);
+                    await upsertMovie(id, movieData, isComingSoon !== undefined);
                     log('INFO', 'Movie processed successfully', {
                         requestId,
                         id,

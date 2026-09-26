@@ -53,7 +53,7 @@ describe('LambdaConstruct', () => {
             Environment: {
                 Variables: Match.objectLike({
                     TABLE_NAME: Match.anyValue(),
-                    MAX_BATCH: '25',
+                    MAX_BATCH: '50',
                     TMDB_CONCURRENCY: '5',
                     TMDB_TIMEOUT_MS: '4000',
                     TMDB_RETRIES: '3',
@@ -65,7 +65,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(1);
+        expect(Object.values(functions)).toHaveLength(3);
         expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
@@ -92,6 +92,14 @@ describe('LambdaConstruct', () => {
 
     it('should export addMoviesFunction', () => {
         expect(construct.addMoviesFunction).toBeDefined();
+    });
+
+    it('should export listMoviesFunction', () => {
+        expect(construct.listMoviesFunction).toBeDefined();
+    });
+
+    it('should export getMovieFunction', () => {
+        expect(construct.getMovieFunction).toBeDefined();
     });
 
     it('should grant read/write permissions to DynamoDB', () => {

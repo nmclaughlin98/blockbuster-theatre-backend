@@ -1,19 +1,19 @@
-export interface MovieData {
+export interface MovieRecord {
+    tmdbId: string;
     slug: string;
-    movieId: number;
     title: string;
+    visible: boolean;
+    isComingSoon?: boolean;
     genres: string[];
     rating: string;
     score: number;
     runtime: number;
     releaseDate: string;
-    visible: boolean;
-    isComingSoon: boolean;
+    poster: string;
+    still: string;
     starring: string[];
     director: string;
     synopsis: string;
-    still: string;
     trailer: string;
-    poster: string;
     showtimes: Record<string, string[]>;
 }

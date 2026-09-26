@@ -1,6 +1,9 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
 import type {
+    MovieDetail,
     MovieData,
+    MovieRecord,
+    MovieSummary,
     TmdbCastMember,
     TmdbCountryRelease,
     TmdbCredits,
@@ -84,6 +87,10 @@ export function normalizeMovieIds(movieIds: unknown[]): { ids: string[]; invalid
         ids,
         invalid: ids.filter((id) => !/^\d+$/.test(id)),
     };
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+    return value === undefined || typeof value === 'boolean';
 }
 
 function slugify(text: string): string {
@@ -178,7 +185,78 @@ export function isTmdbMovieResponse(value: unknown): value is TmdbMovieResponse 
         (value.release_dates === undefined || isTmdbReleaseDates(value.release_dates));
 }
 
-export function projectTmdb(raw: TmdbMovieResponse): MovieData {
+function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isShowtimes(value: unknown): value is Record<string, string[]> {
+    return isRecord(value) && Object.values(value).every(isStringArray);
+}
+
+export function isMovieRecord(value: unknown): value is MovieRecord {
+    return (
+        isRecord(value) &&
+        typeof value.tmdbId === 'string' &&
+        /^\d+$/.test(value.tmdbId) &&
+        typeof value.slug === 'string' &&
+        typeof value.title === 'string' &&
+        typeof value.visible === 'boolean' &&
+        isOptionalBoolean(value.isComingSoon) &&
+        isStringArray(value.genres) &&
+        typeof value.rating === 'string' &&
+        typeof value.score === 'number' &&
+        typeof value.runtime === 'number' &&
+        typeof value.releaseDate === 'string' &&
+        typeof value.poster === 'string' &&
+        typeof value.still === 'string' &&
+        isStringArray(value.starring) &&
+        typeof value.director === 'string' &&
+        typeof value.synopsis === 'string' &&
+        typeof value.trailer === 'string' &&
+        isShowtimes(value.showtimes)
+    );
+}
+
+export function projectMovieSummary(movie: MovieRecord): MovieSummary {
+    return {
+        slug: movie.slug,
+        movieId: Number(movie.tmdbId),
+        title: movie.title,
+        visible: movie.visible,
+        isComingSoon: movie.isComingSoon ?? false,
+        poster: movie.poster,
+        rating: movie.rating,
+        runtime: movie.runtime,
+        genres: movie.genres,
+        releaseDate: movie.releaseDate.slice(0, 10),
+        score: movie.score,
+    };
+}
+
+export function projectMovieDetail(movie: MovieRecord): MovieDetail {
+    return {
+        slug: movie.slug,
+        movieId: Number(movie.tmdbId),
+        title: movie.title,
+        visible: movie.visible,
+        isComingSoon: movie.isComingSoon ?? false,
+        genres: movie.genres,
+        genre: movie.genres[0] ?? 'Uncategorized',
+        rating: movie.rating,
+        score: movie.score,
+        runtime: movie.runtime,
+        releaseDate: movie.releaseDate,
+        poster: movie.poster,
+        still: movie.still,
+        starring: movie.starring,
+        director: movie.director,
+        synopsis: movie.synopsis,
+        trailer: movie.trailer,
+        showtimes: movie.showtimes,
+    };
+}
+
+export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): MovieData {
     const genres = raw.genres?.map((genre) => genre.name) ?? [];
     const cast = raw.credits?.cast ?? [];
     const crew = raw.credits?.crew ?? [];
@@ -219,6 +297,7 @@ export function projectTmdb(raw: TmdbMovieResponse): MovieData {
         runtime: raw.runtime || 0,
         releaseDate: raw.release_date ? `${raw.release_date}T00:00:00.000Z` : '',
         visible: true,
+        isComingSoon,
         starring,
         director,
         synopsis: raw.overview || '',
