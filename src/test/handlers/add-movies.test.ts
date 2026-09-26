@@ -207,6 +207,21 @@ describe('Add movies Lambda handler', () => {
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
+    it('rejects TMDB responses that do not match the movie response shape', async () => {
+        fetchMock.mockResolvedValue(tmdbResponse({ id: 'not-a-number' }));
+
+        const result = await invoke(JSON.stringify({ movieIds: [987] }));
+
+        expect(responseBody(result).failed).toEqual([
+            {
+                id: '987',
+                status: 'FAILED',
+                error: 'TMDB returned an invalid movie response',
+            },
+        ]);
+        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+    });
+
     it('reports a failed movie when DynamoDB cannot upsert it', async () => {
         ddbMock.on(UpdateCommand).rejects(new Error('Write failed'));
 

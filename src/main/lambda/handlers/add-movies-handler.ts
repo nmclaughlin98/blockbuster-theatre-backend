@@ -1,16 +1,17 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import type { ProcessResult, TmdbMovieResponse } from './interfaces';
 import {
     intEnv,
+    isTmdbMovieResponse,
     json,
     log,
     mapWithConcurrency,
     normalizeMovieIds,
-    ProcessResult,
     projectTmdb,
     sleep,
-} from './add-movies-utils';
+} from './utils';
 
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
     marshallOptions: { removeUndefinedValues: true },
@@ -23,7 +24,7 @@ const CONCURRENCY = intEnv('TMDB_CONCURRENCY', 5);
 const TMDB_TIMEOUT_MS = intEnv('TMDB_TIMEOUT_MS', 4000);
 const TMDB_RETRIES = intEnv('TMDB_RETRIES', 3);
 
-async function fetchTmdbMovie(id: string): Promise<any> {
+async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
     const params = new URLSearchParams({
         append_to_response: 'credits,videos,release_dates',
     });
@@ -76,7 +77,11 @@ async function fetchTmdbMovie(id: string): Promise<any> {
                 throw new Error(`TMDB responded with status ${res.status}`);
             }
 
-            return await res.json();
+            const body: unknown = await res.json();
+            if (!isTmdbMovieResponse(body)) {
+                throw new Error('TMDB returned an invalid movie response');
+            }
+            return body;
         } catch (err: unknown) {
             if (err instanceof Error && err.name === 'AbortError') {
                 log('WARN', 'TMDB request timed out', {

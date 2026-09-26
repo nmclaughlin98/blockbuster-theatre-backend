@@ -5,7 +5,7 @@ import {
     mapWithConcurrency,
     normalizeMovieIds,
     projectTmdb,
-} from '../../main/lambda/handlers/add-movies-utils';
+} from '../../main/lambda/handlers/utils';
 
 describe('add movies utilities', () => {
     describe('intEnv', () => {
@@ -110,6 +110,22 @@ describe('add movies utilities', () => {
                 still: 'https://image.tmdb.org/t/p/w1920/backdrop.jpg',
             });
             expect(Object.keys(movie.showtimes)).toHaveLength(7);
+        });
+
+        it('includes up to three directors', () => {
+            const movie = projectTmdb({
+                id: 8,
+                credits: {
+                    crew: [
+                        { name: 'Director One', job: 'Director' },
+                        { name: 'Director Two', job: 'Director' },
+                        { name: 'Director Three', job: 'Director' },
+                        { name: 'Director Four', job: 'Director' },
+                    ],
+                },
+            });
+
+            expect(movie.director).toBe('Director One, Director Two, Director Three');
         });
 
         it('supplies defaults when optional TMDB fields are missing', () => {

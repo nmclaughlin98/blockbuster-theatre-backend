@@ -11,7 +11,7 @@ export interface MovieImportLambdaConfig {
 export const movieImportLambdaConfig: MovieImportLambdaConfig = {
     memorySize: 512,
     timeoutSeconds: 25,
-    maxBatch: 25,
+    maxBatch: 50,
     tmdbConcurrency: 5,
     tmdbTimeoutMs: 4000,
     tmdbRetries: 3,
