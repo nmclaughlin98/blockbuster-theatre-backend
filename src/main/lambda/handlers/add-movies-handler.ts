@@ -24,10 +24,17 @@ const CONCURRENCY = intEnv('TMDB_CONCURRENCY', 5);
 const TMDB_TIMEOUT_MS = intEnv('TMDB_TIMEOUT_MS', 4000);
 const TMDB_RETRIES = intEnv('TMDB_RETRIES', 3);
 
+/** Narrows JSON-decoded input to a plain object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Fetches and validates movie details from TMDB, retrying transient failures.
+ * @param id Numeric TMDB movie ID.
+ * @returns The validated TMDB movie response.
+ * @throws If TMDB returns an error or an invalid movie response.
+ */
 async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
     const params = new URLSearchParams({
         append_to_response: 'credits,videos,release_dates',
@@ -105,6 +112,12 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
     throw lastError ?? new Error('TMDB request failed');
 }
 
+/**
+ * Writes movie data to DynamoDB, preserving the coming-soon status unless explicitly set.
+ * @param id Numeric TMDB movie ID.
+ * @param movieData Projected movie data to persist.
+ * @param setComingSoon Whether to overwrite the stored coming-soon flag.
+ */
 async function upsertMovie(
     id: string,
     movieData: ReturnType<typeof projectTmdb>,
@@ -172,6 +185,11 @@ async function upsertMovie(
     );
 }
 
+/**
+ * Imports a batch of TMDB movie IDs and upserts their movie records.
+ * @param event API Gateway request containing movie IDs and an optional coming-soon flag.
+ * @returns Batch results or an API error response.
+ */
 export const handler = async (
     event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {

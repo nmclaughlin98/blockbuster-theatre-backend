@@ -6,7 +6,11 @@ import { isMovieRecord, json, log, projectMovieDetail } from './utils';
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
 
-
+/**
+ * Retrieves one movie by its numeric TMDB ID.
+ * @param event API Gateway request with the movie ID in its path.
+ * @returns Movie detail or an API error response.
+ */
 export const handler = async (
     event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {

@@ -18,6 +18,7 @@ type MovieCursor = {
     GSI1SK: string;
 };
 
+/** Checks that a decoded pagination cursor contains all required index keys. */
 function isMovieCursor(value: unknown): value is MovieCursor {
     return (
         typeof value === 'object' &&
@@ -32,6 +33,12 @@ function isMovieCursor(value: unknown): value is MovieCursor {
     );
 }
 
+/**
+ * Parses the optional page-size query parameter.
+ * @param value Raw `limit` query parameter.
+ * @returns A page size between 1 and the configured maximum.
+ * @throws If the value is not a valid page size.
+ */
 function parsePageSize(value: string | undefined): number {
     if (value === undefined) return DEFAULT_PAGE_SIZE;
 
@@ -42,6 +49,12 @@ function parsePageSize(value: string | undefined): number {
     return pageSize;
 }
 
+/**
+ * Decodes and validates a continuation token for a DynamoDB query.
+ * @param value Base64url-encoded last-evaluated key.
+ * @returns DynamoDB exclusive start key, or undefined for the first page.
+ * @throws If the token is malformed.
+ */
 function parseNextToken(value: string | undefined): Record<string, NativeAttributeValue> | undefined {
     if (value === undefined) return undefined;
 
@@ -63,6 +76,11 @@ function parseNextToken(value: string | undefined): Record<string, NativeAttribu
     };
 }
 
+/**
+ * Returns a paginated list of movie summaries, ordered by release date.
+ * @param event API Gateway request with optional `limit` and `nextToken` query parameters.
+ * @returns A page of summaries and its continuation token.
+ */
 export const handler = async (
     event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {

@@ -16,6 +16,12 @@ export class LambdaConstruct extends Construct {
     public readonly listMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly getMovieFunction: lambdaNodejs.NodejsFunction;
 
+    /**
+     * Creates the movie import, list, and detail Lambda functions with table permissions.
+     * @param scope Parent CDK construct.
+     * @param id Construct identifier.
+     * @param props DynamoDB table and optional import Lambda configuration.
+     */
     constructor(scope: Construct, id: string, props: LambdaConstructProps) {
         super(scope, id);
         const lambdaConfig = props.lambdaConfig ?? cfg;
