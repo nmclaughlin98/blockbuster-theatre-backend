@@ -61,11 +61,11 @@ describe('LambdaConstruct', () => {
         });
     });
 
-    it('should set reserved concurrency', () => {
+    it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
-        template.hasResourceProperties('AWS::Lambda::Function', {
-            ReservedConcurrentExecutions: 5,
-        });
+        const functions = template.findResources('AWS::Lambda::Function');
+        expect(Object.values(functions)).toHaveLength(1);
+        expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
     it('should export addMoviesFunction', () => {
