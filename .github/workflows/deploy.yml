@@ -1,5 +1,5 @@
 name: 2. Deploy Stack
-run-name: 'Deploy Stack'
+run-name: 'Deploy Stack (Build #${{ inputs.build_number }})'
 
 on:
   workflow_dispatch:
@@ -11,41 +11,9 @@ on:
         type: string
 
 jobs:
-  resolve-build:
-    name: Resolve Build Number
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-    outputs:
-      build_number: ${{ steps.resolve.outputs.build_number }}
-
-    steps:
-      - name: Resolve Build Number
-        id: resolve
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
-        run: |
-          TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
-
-          if [ "$TARGET_BUILD" = "latest" ]; then
-            echo "Fetching latest successful build number..."
-            TARGET_BUILD=$(gh run list --workflow build.yml --status success --limit 1 --json number --jq '.[0].number')
-            if [ -z "$TARGET_BUILD" ] || [ "$TARGET_BUILD" = "null" ]; then
-              echo "Error: No successful build runs found for build.yml."
-              exit 1
-            fi
-          fi
-
-          echo "Resolved build number: ${TARGET_BUILD}"
-          echo "build_number=${TARGET_BUILD}" >> "$GITHUB_OUTPUT"
-
   deploy:
-    name: 'Deploy Build #${{ needs.resolve-build.outputs.build_number }}'
-    needs: resolve-build
     runs-on: ubuntu-latest
     permissions:
-      actions: read
       id-token: write
       contents: read
 
@@ -65,8 +33,20 @@ jobs:
       - name: Download Build Artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_BUILD: ${{ needs.resolve-build.outputs.build_number }}
+          INPUT_BUILD_NUMBER: ${{ github.event.inputs.build_number }}
         run: |
+          TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
+
+          if [ "$TARGET_BUILD" = "latest" ]; then
+            echo "No specific build number provided or set to 'latest'. Fetching latest successful build number..."
+            TARGET_BUILD=$(gh run list --workflow build.yml --status success --limit 1 --json number --jq '.[0].number')
+            if [ -z "$TARGET_BUILD" ] || [ "$TARGET_BUILD" = "null" ]; then
+              echo "Error: No successful build runs found for build.yml."
+              exit 1
+            fi
+            echo "Resolved latest successful build number: ${TARGET_BUILD}"
+          fi
+
           echo "Downloading artifact: build-artifact-${TARGET_BUILD}..."
           gh run download --name "build-artifact-${TARGET_BUILD}" --dir cdk-out
 
