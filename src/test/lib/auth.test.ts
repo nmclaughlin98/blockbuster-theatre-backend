@@ -3,7 +3,7 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { AuthenticationConstruct } from '../../../lib/stack';
 
 describe('AuthenticationConstruct', () => {
-    it('creates an invite-only Cognito pool and a public SRP app client', () => {
+    it('creates an invite-only Cognito pool with backend and OAuth clients', () => {
         const stack = new cdk.Stack();
         new AuthenticationConstruct(stack, 'Auth');
 
@@ -15,11 +15,33 @@ describe('AuthenticationConstruct', () => {
                 AllowAdminCreateUserOnly: true,
             },
         });
+        template.hasResourceProperties('AWS::Cognito::UserPoolDomain', {
+            Domain: 'blockbuster-theatre',
+            ManagedLoginVersion: 2,
+        });
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-            ClientName: 'blockbuster-theatre-frontend',
+            ClientName: 'blockbuster-theatre-backend',
             GenerateSecret: false,
             ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH']),
             EnableTokenRevocation: true,
+        });
+        template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+            ClientName: 'postman-test-client',
+            GenerateSecret: false,
+            AllowedOAuthFlows: ['code'],
+            CallbackURLs: [
+                'https://oauth.pstmn.io/v1/callback',
+                'https://oauth.pstmn.io/v1/browser-callback',
+            ],
+        });
+        template.hasResourceProperties('AWS::Cognito::ManagedLoginBranding', {
+            Settings: {
+                categories: {
+                    global: {
+                        colorSchemeMode: 'DARK',
+                    },
+                },
+            },
         });
     });
 });
