@@ -328,6 +328,7 @@ export function projectMovieDetail(movie: MovieRecord): MovieDetail {
         runtime: movie.runtime,
         releaseDate: movie.releaseDate,
         poster: movie.poster,
+        largeStill: movie.largeStill,
         still: movie.still,
         starring: movie.starring,
         director: movie.director,
