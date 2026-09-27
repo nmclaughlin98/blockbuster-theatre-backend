@@ -14,6 +14,7 @@ export interface MovieData {
     director: string;
     synopsis: string;
     still: string;
+    largeStill: string;
     trailer: string;
     poster: string;
     showtimes: Record<string, string[]>;

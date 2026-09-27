@@ -398,6 +398,9 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
         still: raw.backdrop_path
             ? `https://image.tmdb.org/t/p/w1280${raw.backdrop_path}`
             : '',
+        largeStill: raw.backdrop_path
+            ? `https://image.tmdb.org/t/p/w1920${raw.backdrop_path}`
+            : '',
         trailer: trailerKey
             ? `https://www.youtube-nocookie.com/embed/${trailerKey}?rel=0`
             : '',
