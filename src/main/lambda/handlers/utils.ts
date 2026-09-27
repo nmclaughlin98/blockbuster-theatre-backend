@@ -389,7 +389,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
         genres,
         rating,
         score: raw.vote_average ? Number(raw.vote_average.toFixed(1)) : 0,
-        runtime: raw.runtime || "TBD",
+        runtime: raw.runtime || 0,
         releaseDate: raw.release_date ? `${raw.release_date}T00:00:00.000Z` : '',
         visible: true,
         isCarousel: false,
