@@ -332,6 +332,13 @@ export function projectMovieDetail(movie: MovieRecord): MovieDetail {
     };
 }
 
+function checkIsComingSoon(releaseDateString: string): boolean {
+    const releaseDate = new Date(releaseDateString);
+    const dateToday = new Date();
+
+    return dateToday < releaseDate;
+}
+
 /**
  * Converts a TMDB movie response into the shape stored by the application.
  * @param raw Validated TMDB movie response.
@@ -379,7 +386,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
         runtime: raw.runtime || 0,
         releaseDate: raw.release_date ? `${raw.release_date}T00:00:00.000Z` : '',
         visible: true,
-        isComingSoon,
+        isComingSoon: checkIsComingSoon(raw.release_date || '') || false,
         starring,
         director,
         synopsis: raw.overview || '',
