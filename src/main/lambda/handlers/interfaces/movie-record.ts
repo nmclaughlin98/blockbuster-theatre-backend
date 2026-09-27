@@ -4,6 +4,7 @@ export interface MovieRecord {
     title: string;
     visible: boolean;
     isComingSoon?: boolean;
+    isCarousel?: boolean;
     genres: string[];
     rating: string;
     score: number;

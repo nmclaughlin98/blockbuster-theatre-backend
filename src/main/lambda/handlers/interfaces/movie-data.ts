@@ -9,6 +9,7 @@ export interface MovieData {
     releaseDate: string;
     visible: boolean;
     isComingSoon: boolean;
+    isCarousel: boolean;
     starring: string[];
     director: string;
     synopsis: string;

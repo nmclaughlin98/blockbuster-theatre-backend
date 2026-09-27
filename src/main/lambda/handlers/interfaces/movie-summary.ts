@@ -4,6 +4,7 @@ export interface MovieSummary {
     title: string;
     visible: boolean;
     isComingSoon: boolean;
+    isCarousel: boolean;
     poster: string;
     rating: string;
     runtime: number;
