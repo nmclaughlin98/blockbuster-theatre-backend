@@ -45,5 +45,9 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             value: `https://cognito-idp.${this.region}.amazonaws.com/${authentication.userPool.userPoolId}`,
             description: 'JWT issuer configured on the API Gateway authorizer',
         });
+        new cdk.CfnOutput(this, 'CognitoLoginUrl', {
+            value: authentication.loginUrl,
+            description: 'Dark-mode Cognito managed login URL for browser authorization',
+        });
     }
 }
