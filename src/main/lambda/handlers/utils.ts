@@ -350,7 +350,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
     const cast = raw.credits?.cast ?? [];
     const crew = raw.credits?.crew ?? [];
     const starring = cast
-        .slice(0, 5)
+        .slice(0, 10)
         .map((member) => member.name)
         .filter((name): name is string => typeof name === 'string');
     const director = crew
