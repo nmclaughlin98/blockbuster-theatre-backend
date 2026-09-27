@@ -12,6 +12,7 @@ export interface MovieDetail {
     releaseDate: string;
     poster: string;
     still: string;
+    largeStill: string;
     starring: string[];
     director: string;
     synopsis: string;
