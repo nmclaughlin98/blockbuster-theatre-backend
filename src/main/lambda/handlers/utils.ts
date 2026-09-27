@@ -384,7 +384,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
         director,
         synopsis: raw.overview || '',
         still: raw.backdrop_path
-            ? `https://image.tmdb.org/t/p/w1920${raw.backdrop_path}`
+            ? `https://image.tmdb.org/t/p/w1280${raw.backdrop_path}`
             : '',
         trailer: trailerKey
             ? `https://www.youtube-nocookie.com/embed/${trailerKey}?rel=0`
