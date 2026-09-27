@@ -7,6 +7,7 @@ export interface MovieSummary {
     isCarousel: boolean;
     trailer: string;
     still: string;
+    synopsis: string;
     poster: string;
     rating: string;
     runtime: number;

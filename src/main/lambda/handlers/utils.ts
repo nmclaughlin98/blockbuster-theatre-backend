@@ -296,6 +296,7 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
         isComingSoon: movie.isComingSoon ?? false,
         isCarousel: movie.isCarousel ?? false,
         trailer: movie.trailer,
+        synopsis: movie.synopsis,
         still: movie.still,
         poster: movie.poster,
         rating: movie.rating,
