@@ -23,7 +23,7 @@ const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'OPTIONS,POST',
+    'Access-Control-Allow-Methods': 'OPTIONS,POST,PATCH',
 };
 
 /**
@@ -328,6 +328,7 @@ export function projectMovieDetail(movie: MovieRecord): MovieDetail {
         runtime: movie.runtime,
         releaseDate: movie.releaseDate,
         poster: movie.poster,
+        largePoster: movie.largePoster,
         largeStill: movie.largeStill,
         still: movie.still,
         starring: movie.starring,
@@ -407,6 +408,9 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
             ? `https://www.youtube-nocookie.com/embed/${trailerKey}?rel=0`
             : '',
         poster: raw.poster_path
+            ? `https://image.tmdb.org/t/p/w500${raw.poster_path}`
+            : '',
+        largePoster: raw.poster_path
             ? `https://image.tmdb.org/t/p/w1280${raw.poster_path}`
             : '',
         showtimes

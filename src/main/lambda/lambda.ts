@@ -13,11 +13,12 @@ interface LambdaConstructProps {
 
 export class LambdaConstruct extends Construct {
     public readonly addMoviesFunction: lambdaNodejs.NodejsFunction;
+    public readonly updateMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly listMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly getMovieFunction: lambdaNodejs.NodejsFunction;
 
     /**
-     * Creates the movie import, list, and detail Lambda functions with table permissions.
+     * Creates the movie import, update, list, and detail Lambda functions with table permissions.
      * @param scope Parent CDK construct.
      * @param id Construct identifier.
      * @param props DynamoDB table and optional import Lambda configuration.
@@ -47,6 +48,22 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadWriteData(this.addMoviesFunction);
+
+        this.updateMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'UpdateMoviesHandler', {
+            functionName: 'blockbuster-theatre-update-movies-lambda',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            entry: path.join(__dirname, './handlers/update-movies-handler.ts'),
+            handler: 'handler',
+            memorySize: 256,
+            timeout: cdk.Duration.seconds(25),
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                MAX_BATCH: String(lambdaConfig.maxBatch),
+                UPDATE_CONCURRENCY: String(lambdaConfig.tmdbConcurrency),
+            },
+        });
+
+        props.table.grantReadWriteData(this.updateMoviesFunction);
 
         this.listMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ListMoviesHandler', {
             functionName: 'blockbuster-theatre-list-movies-lambda',

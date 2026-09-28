@@ -17,5 +17,6 @@ export interface MovieData {
     largeStill: string;
     trailer: string;
     poster: string;
+    largePoster: string;
     showtimes: Record<string, string[]>;
 }

@@ -11,6 +11,7 @@ export interface MovieDetail {
     runtime: number;
     releaseDate: string;
     poster: string;
+    largePoster: string;
     still: string;
     largeStill: string;
     starring: string[];

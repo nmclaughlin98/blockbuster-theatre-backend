@@ -106,7 +106,7 @@ describe('add movies utilities', () => {
                 starring: ['Actor One'],
                 director: 'Director One',
                 synopsis: 'A synopsis',
-                poster: 'https://image.tmdb.org/t/p/w1280/poster.jpg',
+                poster: 'https://image.tmdb.org/t/p/w500/poster.jpg',
                 still: 'https://image.tmdb.org/t/p/w1920/backdrop.jpg',
             });
             expect(Object.keys(movie.showtimes)).toHaveLength(7);

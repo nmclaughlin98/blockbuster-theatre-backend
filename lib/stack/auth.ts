@@ -32,8 +32,8 @@ export class AuthenticationConstruct extends Construct {
             },
         });
 
-        this.userPoolClient = this.userPool.addClient('FrontendClient', {
-            userPoolClientName: 'blockbuster-theatre-frontend',
+        this.userPoolClient = this.userPool.addClient('BackendClientBackendClient', {
+            userPoolClientName: 'blockbuster-theatre-backend',
             generateSecret: false,
             authFlows: { userSrp: true },
             preventUserExistenceErrors: true,

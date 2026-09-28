@@ -23,6 +23,7 @@ describe('ApiGatewayConstruct', () => {
         );
         construct = new ApiGatewayConstruct(stack, 'TestApiGateway', {
             addMoviesFunction: mockFunction,
+            updateMoviesFunction: mockFunction,
             listMoviesFunction: mockFunction,
             getMovieFunction: mockFunction,
             jwtAuthorizer,
@@ -39,7 +40,7 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 3);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 4);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/{id}',
         });
@@ -48,6 +49,11 @@ describe('ApiGatewayConstruct', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /movies',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'PATCH /movies',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });

@@ -6,6 +6,7 @@ import { Construct } from 'constructs';
 
 interface ApiGatewayConstructProps {
     addMoviesFunction: lambda.IFunction;
+    updateMoviesFunction: lambda.IFunction;
     listMoviesFunction: lambda.IFunction;
     getMovieFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
@@ -24,6 +25,7 @@ export class ApiGatewayConstruct extends Construct {
                 allowMethods: [
                     apigw2.CorsHttpMethod.GET,
                     apigw2.CorsHttpMethod.POST,
+                    apigw2.CorsHttpMethod.PATCH,
                     apigw2.CorsHttpMethod.OPTIONS,
                 ],
                 allowHeaders: ['Content-Type', 'Authorization'],
@@ -33,6 +35,10 @@ export class ApiGatewayConstruct extends Construct {
         const integration = new integrations.HttpLambdaIntegration(
             'AddMoviesIntegration',
             props.addMoviesFunction
+        );
+        const updateMoviesIntegration = new integrations.HttpLambdaIntegration(
+            'UpdateMoviesIntegration',
+            props.updateMoviesFunction
         );
         const listMoviesIntegration = new integrations.HttpLambdaIntegration(
             'ListMoviesIntegration',
@@ -59,6 +65,13 @@ export class ApiGatewayConstruct extends Construct {
             path: '/movies',
             methods: [apigw2.HttpMethod.POST],
             integration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/movies',
+            methods: [apigw2.HttpMethod.PATCH],
+            integration: updateMoviesIntegration,
             authorizer: props.jwtAuthorizer,
         });
     }
