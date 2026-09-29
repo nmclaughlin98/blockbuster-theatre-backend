@@ -60,6 +60,7 @@ describe('List movies Lambda handler', () => {
     it('queries the movies index and returns a page and continuation token', async () => {
         const lastEvaluatedKey = {
             tmdbId: '123',
+            slug: 'movie-123',
             GSI1PK: 'MOVIE',
             GSI1SK: '2025-01-02#123',
         };
@@ -105,6 +106,7 @@ describe('List movies Lambda handler', () => {
     it('uses the continuation token for the next page', async () => {
         const cursor = {
             tmdbId: '123',
+            slug: 'movie-123',
             GSI1PK: 'MOVIE',
             GSI1SK: '2025-01-02#123',
         };

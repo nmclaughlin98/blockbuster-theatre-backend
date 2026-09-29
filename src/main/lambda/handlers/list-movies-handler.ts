@@ -14,6 +14,7 @@ const MAX_PAGE_SIZE = 100;
 
 type MovieCursor = {
     tmdbId: string;
+    slug: string;
     GSI1PK: string;
     GSI1SK: string;
 };
@@ -26,6 +27,8 @@ function isMovieCursor(value: unknown): value is MovieCursor {
         !Array.isArray(value) &&
         'tmdbId' in value &&
         typeof value.tmdbId === 'string' &&
+        'slug' in value &&
+        typeof value.slug === 'string' &&
         'GSI1PK' in value &&
         typeof value.GSI1PK === 'string' &&
         'GSI1SK' in value &&
@@ -71,6 +74,7 @@ function parseNextToken(value: string | undefined): Record<string, NativeAttribu
 
     return {
         tmdbId: parsed.tmdbId,
+        slug: parsed.slug,
         GSI1PK: parsed.GSI1PK,
         GSI1SK: parsed.GSI1SK,
     };

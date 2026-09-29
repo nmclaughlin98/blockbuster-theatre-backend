@@ -15,7 +15,7 @@ describe('DatabaseConstruct', () => {
     it('should create a DynamoDB table', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movies',
+            TableName: 'blockbuster-theatre-movies-v2',
             BillingMode: 'PAY_PER_REQUEST',
         });
     });
@@ -27,14 +27,12 @@ describe('DatabaseConstruct', () => {
         });
     });
 
-    it('should have id as partition key', () => {
+    it('should use tmdbId and slug as the composite primary key', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             KeySchema: [
-                {
-                    AttributeName: 'tmdbId',
-                    KeyType: 'HASH',
-                },
+                { AttributeName: 'tmdbId', KeyType: 'HASH' },
+                { AttributeName: 'slug', KeyType: 'RANGE' },
             ],
         });
     });
@@ -44,6 +42,7 @@ describe('DatabaseConstruct', () => {
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             AttributeDefinitions: Match.arrayWith([
                 { AttributeName: 'tmdbId', AttributeType: 'S' },
+                { AttributeName: 'slug', AttributeType: 'S' },
             ]),
         });
     });

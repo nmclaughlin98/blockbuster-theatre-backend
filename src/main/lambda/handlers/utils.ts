@@ -236,6 +236,7 @@ export function isTmdbMovieResponse(value: unknown): value is TmdbMovieResponse 
         isOptionalNumber(value.runtime) &&
         isOptionalString(value.release_date) &&
         isOptionalString(value.overview) &&
+        isOptionalString(value.tagline) &&
         isOptionalNullableString(value.backdrop_path) &&
         isOptionalNullableString(value.poster_path) &&
         (value.credits === undefined || isTmdbCredits(value.credits)) &&
@@ -384,10 +385,11 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
     const rating = ukRelease?.release_dates?.[0]?.certification || 'PG';
 
     return {
-        slug: slugify(raw.title || ''),
+        slug: slugify(raw.title || '') || String(raw.id),
         movieId: raw.id,
         title: raw.title || 'Untitled',
         genres,
+        mainGenre: genres[0] ?? 'Uncategorized',
         rating,
         score: raw.vote_average ? Number(raw.vote_average.toFixed(1)) : 0,
         runtime: raw.runtime || 0,
@@ -398,6 +400,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
         starring,
         director,
         synopsis: raw.overview || '',
+        tagline: raw.tagline || '',
         still: raw.backdrop_path
             ? `https://image.tmdb.org/t/p/w1280${raw.backdrop_path}`
             : '',

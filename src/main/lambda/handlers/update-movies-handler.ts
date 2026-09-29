@@ -1,7 +1,19 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { intEnv, json, log, mapWithConcurrency, normalizeMovieIds } from './utils';
+import {
+    DynamoDBDocumentClient,
+    QueryCommand,
+    TransactWriteCommand,
+    UpdateCommand,
+} from '@aws-sdk/lib-dynamodb';
+import {
+    intEnv,
+    isMovieRecord,
+    json,
+    log,
+    mapWithConcurrency,
+    normalizeMovieIds,
+} from './utils';
 
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
     marshallOptions: { removeUndefinedValues: true },
@@ -47,6 +59,9 @@ function isShowtimes(value: unknown): boolean {
 }
 
 function isValidFieldValue(field: string, value: unknown): boolean {
+    if (field === 'slug') {
+        return typeof value === 'string' && value.length > 0;
+    }
     if (['visible', 'isComingSoon', 'isCarousel'].includes(field)) {
         return typeof value === 'boolean';
     }
@@ -74,7 +89,54 @@ function isMovieUpdates(value: unknown): value is MovieUpdates {
 }
 
 async function updateMovie(id: string, updates: MovieUpdates): Promise<void> {
-    const fields = Object.keys(updates);
+    const result = await docClient.send(
+        new QueryCommand({
+            TableName: TABLE_NAME,
+            KeyConditionExpression: 'tmdbId = :tmdbId',
+            ExpressionAttributeValues: { ':tmdbId': id },
+            Limit: 2,
+            ConsistentRead: true,
+        })
+    );
+    const items = result.Items ?? [];
+    if (items.length === 0) {
+        throw new Error('Movie not found.');
+    }
+    if (items.length > 1 || !isMovieRecord(items[0])) {
+        throw new Error('DynamoDB returned an invalid or ambiguous movie record.');
+    }
+    const current = items[0];
+
+    if (typeof updates.slug === 'string' && updates.slug !== current.slug) {
+        const updated: Record<string, unknown> = { ...current, ...updates, slug: updates.slug };
+        if (typeof updates.releaseDate === 'string') {
+            updated.GSI1SK = `${updates.releaseDate || '0000-00-00'}#${id}`;
+        }
+        await docClient.send(
+            new TransactWriteCommand({
+                TransactItems: [
+                    {
+                        Delete: {
+                            TableName: TABLE_NAME,
+                            Key: { tmdbId: id, slug: current.slug },
+                            ConditionExpression: 'attribute_exists(tmdbId)',
+                        },
+                    },
+                    {
+                        Put: {
+                            TableName: TABLE_NAME,
+                            Item: updated,
+                            ConditionExpression: 'attribute_not_exists(tmdbId)',
+                        },
+                    },
+                ],
+            })
+        );
+        return;
+    }
+
+    const fields = Object.keys(updates).filter((field) => field !== 'slug');
+    if (fields.length === 0) return;
     const updateAssignments = fields.map((_, index) => `#field${index} = :value${index}`);
     const expressionAttributeNames = Object.fromEntries(
         fields.map((field, index) => [`#field${index}`, field])
@@ -92,9 +154,9 @@ async function updateMovie(id: string, updates: MovieUpdates): Promise<void> {
     await docClient.send(
         new UpdateCommand({
             TableName: TABLE_NAME,
-            Key: { tmdbId: id },
+            Key: { tmdbId: id, slug: current.slug },
             UpdateExpression: `SET ${updateAssignments.join(', ')}`,
-            ConditionExpression: 'attribute_exists(tmdbId)',
+            ConditionExpression: 'attribute_exists(tmdbId) AND attribute_exists(slug)',
             ExpressionAttributeNames: expressionAttributeNames,
             ExpressionAttributeValues: expressionAttributeValues,
         })

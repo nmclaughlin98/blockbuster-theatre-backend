@@ -2,7 +2,12 @@ import type {
     APIGatewayProxyEventV2,
     APIGatewayProxyResultV2,
 } from 'aws-lambda';
-import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import {
+    DynamoDBDocumentClient,
+    QueryCommand,
+    TransactWriteCommand,
+    UpdateCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 process.env.TABLE_NAME = 'test-table';
@@ -111,6 +116,7 @@ function responseBody(
 describe('Add movies Lambda handler', () => {
     beforeEach(() => {
         ddbMock.reset();
+        ddbMock.on(QueryCommand).resolves({ Items: [] });
         fetchMock.mockReset();
         fetchMock.mockResolvedValue(tmdbResponse(tmdbMovie(123)));
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -197,6 +203,62 @@ describe('Add movies Lambda handler', () => {
         expect(
             ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression
         ).toContain('isComingSoon = if_not_exists(isComingSoon, :isComingSoon)');
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.Key).toEqual({
+            tmdbId: '123',
+            slug: 'movie-123',
+        });
+    });
+
+    it('moves an existing record atomically when an import changes its slug', async () => {
+        fetchMock.mockResolvedValue(tmdbResponse(tmdbMovie(123)));
+        ddbMock.on(QueryCommand).resolves({
+            Items: [
+                {
+                    tmdbId: '123',
+                    slug: 'old-movie-title',
+                    title: 'Old Movie Title',
+                    visible: true,
+                    isComingSoon: true,
+                    isCarousel: true,
+                    genres: ['Drama'],
+                    rating: 'PG',
+                    score: 7,
+                    runtime: 100,
+                    releaseDate: '2025-01-02T00:00:00.000Z',
+                    poster: '',
+                    still: '',
+                    starring: [],
+                    director: 'Unknown',
+                    synopsis: '',
+                    trailer: '',
+                    showtimes: {},
+                },
+            ],
+        });
+        ddbMock.on(TransactWriteCommand).resolves({});
+
+        const result = await invoke(JSON.stringify({ movieIds: [123] }));
+        const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
+
+        expect(result.statusCode).toBe(200);
+        expect(transaction.TransactItems).toMatchObject([
+            {
+                Delete: {
+                    Key: { tmdbId: '123', slug: 'old-movie-title' },
+                },
+            },
+            {
+                Put: {
+                    Item: {
+                        tmdbId: '123',
+                        slug: 'movie-123',
+                        isComingSoon: true,
+                        isCarousel: true,
+                    },
+                },
+            },
+        ]);
+        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
     it('marks imported movies as coming soon when requested', async () => {

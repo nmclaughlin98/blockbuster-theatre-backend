@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { isMovieRecord, json, log, projectMovieDetail } from './utils';
 
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -28,21 +28,30 @@ export const handler = async (
 
     try {
         const result = await docClient.send(
-            new GetCommand({
+            new QueryCommand({
                 TableName: TABLE_NAME,
-                Key: { tmdbId: id },
+                KeyConditionExpression: 'tmdbId = :tmdbId',
+                ExpressionAttributeValues: { ':tmdbId': id },
+                Limit: 2,
+                ConsistentRead: true,
             })
         );
 
-        if (!result.Item) {
+        const movies = result.Items ?? [];
+        if (movies.length > 1) {
+            return json(409, { message: 'Multiple movie records match this ID.' });
+        }
+        const movie = movies[0];
+
+        if (!movie) {
             return json(404, { message: 'Movie not found.' });
         }
 
-        if (!isMovieRecord(result.Item)) {
+        if (!isMovieRecord(movie)) {
             throw new Error('DynamoDB returned an invalid movie record.');
         }
 
-        return json(200, projectMovieDetail(result.Item));
+        return json(200, projectMovieDetail(movie));
     } catch (error: unknown) {
         log('ERROR', 'Failed to retrieve movie', {
             requestId,

@@ -9,8 +9,10 @@ export class DatabaseConstruct extends Construct {
         super(scope, id);
 
         this.table = new dynamodb.Table(this, 'BlockbusterTheatreMovies', {
-            tableName: 'blockbuster-theatre-movies',
+            // Use a new physical name so CloudFormation can replace the old key schema safely.
+            tableName: 'blockbuster-theatre-movies-v2',
             partitionKey: { name: 'tmdbId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'slug', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
 
             // Instructs CloudFormation to delete the physical table when destroyed or replaced
