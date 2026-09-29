@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 process.env.TABLE_NAME = 'test-movies-table';
@@ -59,7 +59,7 @@ describe('Get movie Lambda handler', () => {
     });
 
     it('returns the detail projection for a movie ID', async () => {
-        ddbMock.on(GetCommand).resolves({ Item: movieRecord });
+        ddbMock.on(QueryCommand).resolves({ Items: [movieRecord] });
 
         const result = await handler(createEvent('12345'));
 
@@ -87,19 +87,34 @@ describe('Get movie Lambda handler', () => {
                 Tuesday: ['13:00', '20:00'],
             },
         });
-        expect(ddbMock.commandCalls(GetCommand)[0].args[0].input).toMatchObject({
+        expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-movies-table',
-            Key: { tmdbId: '12345' },
+            KeyConditionExpression: 'tmdbId = :tmdbId',
+            ExpressionAttributeValues: { ':tmdbId': '12345' },
+            ConsistentRead: true,
         });
     });
 
     it('returns 404 when the movie does not exist', async () => {
-        ddbMock.on(GetCommand).resolves({});
+        ddbMock.on(QueryCommand).resolves({ Items: [] });
 
         const result = await handler(createEvent('12345'));
 
         expect(result).toMatchObject({ statusCode: 404 });
         expect(responseBody(result)).toEqual({ message: 'Movie not found.' });
+    });
+
+    it('returns 409 if an ID unexpectedly has multiple slug keys', async () => {
+        ddbMock.on(QueryCommand).resolves({
+            Items: [movieRecord, { ...movieRecord, slug: 'another-slug' }],
+        });
+
+        const result = await handler(createEvent('12345'));
+
+        expect(result).toMatchObject({ statusCode: 409 });
+        expect(responseBody(result)).toEqual({
+            message: 'Multiple movie records match this ID.',
+        });
     });
 
     it('rejects non-numeric IDs', async () => {
@@ -109,6 +124,6 @@ describe('Get movie Lambda handler', () => {
         expect(responseBody(result)).toEqual({
             message: 'A numeric movie ID is required.',
         });
-        expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
     });
 });

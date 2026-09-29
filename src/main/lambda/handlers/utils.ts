@@ -23,7 +23,7 @@ const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'OPTIONS,POST',
+    'Access-Control-Allow-Methods': 'OPTIONS,POST,PATCH',
 };
 
 /**
@@ -236,6 +236,7 @@ export function isTmdbMovieResponse(value: unknown): value is TmdbMovieResponse 
         isOptionalNumber(value.runtime) &&
         isOptionalString(value.release_date) &&
         isOptionalString(value.overview) &&
+        isOptionalString(value.tagline) &&
         isOptionalNullableString(value.backdrop_path) &&
         isOptionalNullableString(value.poster_path) &&
         (value.credits === undefined || isTmdbCredits(value.credits)) &&
@@ -297,12 +298,14 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
         isCarousel: movie.isCarousel ?? false,
         trailer: movie.trailer,
         synopsis: movie.synopsis,
+        tagline: movie.tagline,
         still: movie.still,
         largeStill: movie.largeStill,
         poster: movie.poster,
         rating: movie.rating,
         runtime: movie.runtime,
         genres: movie.genres,
+        mainGenre: movie.mainGenre,
         releaseDate: movie.releaseDate.slice(0, 10),
         score: movie.score,
         showtimes: movie.showtimes,
@@ -322,17 +325,19 @@ export function projectMovieDetail(movie: MovieRecord): MovieDetail {
         visible: movie.visible,
         isComingSoon: movie.isComingSoon ?? false,
         genres: movie.genres,
-        genre: movie.genres[0] ?? 'Uncategorized',
+        mainGenre: movie.mainGenre,
         rating: movie.rating,
         score: movie.score,
         runtime: movie.runtime,
         releaseDate: movie.releaseDate,
         poster: movie.poster,
+        largePoster: movie.largePoster,
         largeStill: movie.largeStill,
         still: movie.still,
         starring: movie.starring,
         director: movie.director,
         synopsis: movie.synopsis,
+        tagline: movie.tagline,
         trailer: movie.trailer,
         showtimes: movie.showtimes,
     };
@@ -383,10 +388,11 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
     const rating = ukRelease?.release_dates?.[0]?.certification || 'PG';
 
     return {
-        slug: slugify(raw.title || ''),
+        slug: slugify(raw.title || '') || String(raw.id),
         movieId: raw.id,
         title: raw.title || 'Untitled',
         genres,
+        mainGenre: genres[0] ?? 'Uncategorized',
         rating,
         score: raw.vote_average ? Number(raw.vote_average.toFixed(1)) : 0,
         runtime: raw.runtime || 0,
@@ -397,6 +403,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
         starring,
         director,
         synopsis: raw.overview || '',
+        tagline: raw.tagline || '',
         still: raw.backdrop_path
             ? `https://image.tmdb.org/t/p/w1280${raw.backdrop_path}`
             : '',
@@ -407,6 +414,9 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
             ? `https://www.youtube-nocookie.com/embed/${trailerKey}?rel=0`
             : '',
         poster: raw.poster_path
+            ? `https://image.tmdb.org/t/p/w500${raw.poster_path}`
+            : '',
+        largePoster: raw.poster_path
             ? `https://image.tmdb.org/t/p/w1280${raw.poster_path}`
             : '',
         showtimes

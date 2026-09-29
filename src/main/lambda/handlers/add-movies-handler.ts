@@ -1,9 +1,15 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import {
+    DynamoDBDocumentClient,
+    QueryCommand,
+    TransactWriteCommand,
+    UpdateCommand,
+} from '@aws-sdk/lib-dynamodb';
 import type { ProcessResult, TmdbMovieResponse } from './interfaces';
 import {
     intEnv,
+    isMovieRecord,
     isTmdbMovieResponse,
     json,
     log,
@@ -125,20 +131,39 @@ async function upsertMovie(
 ) {
     log('INFO', 'Upserting movie into DynamoDB', { id, title: movieData.title });
 
+    const existingResult = await docClient.send(
+        new QueryCommand({
+            TableName: TABLE_NAME,
+            KeyConditionExpression: 'tmdbId = :tmdbId',
+            ExpressionAttributeValues: { ':tmdbId': id },
+            Limit: 2,
+            ConsistentRead: true,
+        })
+    );
+    const existingItems = existingResult.Items ?? [];
+    if (existingItems.length > 1) {
+        throw new Error('Multiple movie records match this TMDB ID.');
+    }
+    const existingItem = existingItems[0];
+    if (existingItem && !isMovieRecord(existingItem)) {
+        throw new Error('DynamoDB returned an invalid movie record.');
+    }
+    const existing = existingItem;
+
     const comingSoonUpdate = setComingSoon
         ? 'isComingSoon = :isComingSoon,'
         : 'isComingSoon = if_not_exists(isComingSoon, :isComingSoon),';
 
-    await docClient.send(
-        new UpdateCommand({
-            TableName: TABLE_NAME,
-            Key: {
-                tmdbId: `${id}`,
-            },
-            UpdateExpression: `
-            SET slug = :slug,
-                title = :title,
+    const updateInput = {
+        TableName: TABLE_NAME,
+        Key: {
+            tmdbId: `${id}`,
+            slug: movieData.slug,
+        },
+        UpdateExpression: `
+            SET title = :title,
                 genres = :genres,
+                mainGenre = :mainGenre,
                 ${comingSoonUpdate}
                 rating = :rating,
                 score = :score,
@@ -148,6 +173,7 @@ async function upsertMovie(
                 starring = :starring,
                 director = :director,
                 synopsis = :synopsis,
+                tagline = :tagline,
                 still = :still,
                 largeStill = :largeStill,
                 trailer = :trailer,
@@ -158,31 +184,77 @@ async function upsertMovie(
                 GSI1PK = :gsi1pk,
                 GSI1SK = :gsi1sk,
                 isCarousel = if_not_exists(isCarousel, :defaultCarousel)
-            `,
-            ExpressionAttributeValues: {
-                ':slug': movieData.slug,
-                ':title': movieData.title,
-                ':genres': movieData.genres,
-                ':isComingSoon': movieData.isComingSoon,
-                ':rating': movieData.rating,
-                ':score': movieData.score,
-                ':runtime': movieData.runtime,
-                ':releaseDate': movieData.releaseDate,
-                ':visible': movieData.visible,
-                ':starring': movieData.starring,
-                ':director': movieData.director,
-                ':synopsis': movieData.synopsis,
-                ':still': movieData.still,
-                ':largeStill': movieData.largeStill,
-                ':trailer': movieData.trailer,
-                ':poster': movieData.poster,
-                ':showtimes': movieData.showtimes,
-                ':entityType': 'Movie',
-                ':lastUpdated': new Date().toISOString(),
-                ':gsi1pk': 'MOVIE',
-                ':gsi1sk': `${movieData.releaseDate || '0000-00-00'}#${id}`,
-                ':defaultCarousel': false,
-            },
+        `,
+        ExpressionAttributeValues: {
+            ':title': movieData.title,
+            ':genres': movieData.genres,
+            ':mainGenre': movieData.mainGenre,
+            ':isComingSoon': movieData.isComingSoon,
+            ':rating': movieData.rating,
+            ':score': movieData.score,
+            ':runtime': movieData.runtime,
+            ':releaseDate': movieData.releaseDate,
+            ':visible': movieData.visible,
+            ':starring': movieData.starring,
+            ':director': movieData.director,
+            ':synopsis': movieData.synopsis,
+            ':tagline': movieData.tagline,
+            ':still': movieData.still,
+            ':largeStill': movieData.largeStill,
+            ':trailer': movieData.trailer,
+            ':poster': movieData.poster,
+            ':showtimes': movieData.showtimes,
+            ':entityType': 'Movie',
+            ':lastUpdated': new Date().toISOString(),
+            ':gsi1pk': 'MOVIE',
+            ':gsi1sk': `${movieData.releaseDate || '0000-00-00'}#${id}`,
+            ':defaultCarousel': false,
+        },
+    };
+
+    if (existing && existing.slug !== movieData.slug) {
+        const { movieId, ...movieAttributes } = movieData;
+        await docClient.send(
+            new TransactWriteCommand({
+                TransactItems: [
+                    {
+                        Delete: {
+                            TableName: TABLE_NAME,
+                            Key: { tmdbId: id, slug: existing.slug },
+                            ConditionExpression: 'attribute_exists(tmdbId)',
+                        },
+                    },
+                    {
+                        Put: {
+                            TableName: TABLE_NAME,
+                            Item: {
+                                ...existing,
+                                ...movieAttributes,
+                                tmdbId: String(movieId),
+                                entityType: 'Movie',
+                                lastUpdated: new Date().toISOString(),
+                                GSI1PK: 'MOVIE',
+                                GSI1SK: `${movieData.releaseDate || '0000-00-00'}#${id}`,
+                                isComingSoon: setComingSoon
+                                    ? movieData.isComingSoon
+                                    : existing.isComingSoon ?? movieData.isComingSoon,
+                                isCarousel: existing.isCarousel ?? false,
+                            },
+                            ConditionExpression: 'attribute_not_exists(tmdbId)',
+                        },
+                    },
+                ],
+            })
+        );
+        return;
+    }
+
+    await docClient.send(
+        new UpdateCommand({
+            ...updateInput,
+            ConditionExpression: existing
+                ? 'attribute_exists(tmdbId)'
+                : 'attribute_not_exists(tmdbId)',
         })
     );
 }
