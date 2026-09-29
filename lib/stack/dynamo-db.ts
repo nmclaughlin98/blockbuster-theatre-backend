@@ -10,7 +10,7 @@ export class DatabaseConstruct extends Construct {
 
         this.table = new dynamodb.Table(this, 'BlockbusterTheatreMovies', {
             // Use a new physical name so CloudFormation can replace the old key schema safely.
-            tableName: 'blockbuster-theatre-movies-v2',
+            tableName: 'blockbuster-theatre-movies',
             partitionKey: { name: 'tmdbId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'slug', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
