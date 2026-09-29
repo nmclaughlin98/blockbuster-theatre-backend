@@ -11,6 +11,7 @@ export interface TmdbMovieResponse {
     runtime?: number;
     release_date?: string;
     overview?: string;
+    tagline?: string;
     backdrop_path?: string | null;
     poster_path?: string | null;
     credits?: TmdbCredits;

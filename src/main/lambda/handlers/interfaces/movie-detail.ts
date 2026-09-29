@@ -5,7 +5,7 @@ export interface MovieDetail {
     visible: boolean;
     isComingSoon: boolean;
     genres: string[];
-    genre: string;
+    mainGenre: string;
     rating: string;
     score: number;
     runtime: number;
@@ -17,6 +17,7 @@ export interface MovieDetail {
     starring: string[];
     director: string;
     synopsis: string;
+    tagline: string;
     trailer: string;
     showtimes: Record<string, string[]>;
 }

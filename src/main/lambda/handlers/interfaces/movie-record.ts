@@ -6,6 +6,7 @@ export interface MovieRecord {
     isComingSoon?: boolean;
     isCarousel?: boolean;
     genres: string[];
+    mainGenre: string;
     rating: string;
     score: number;
     runtime: number;
@@ -17,6 +18,7 @@ export interface MovieRecord {
     starring: string[];
     director: string;
     synopsis: string;
+    tagline: string;
     trailer: string;
     showtimes: Record<string, string[]>;
 }

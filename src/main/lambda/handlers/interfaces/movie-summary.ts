@@ -9,10 +9,12 @@ export interface MovieSummary {
     still: string;
     largeStill: string;
     synopsis: string;
+    tagline: string;
     poster: string;
     rating: string;
     runtime: number;
     genres: string[];
+    mainGenre: string;
     releaseDate: string;
     score: number;
     showtimes: Record<string, string[]>;

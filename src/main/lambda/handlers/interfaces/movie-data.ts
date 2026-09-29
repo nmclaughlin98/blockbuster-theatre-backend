@@ -3,6 +3,7 @@ export interface MovieData {
     movieId: number;
     title: string;
     genres: string[];
+    mainGenre: string;
     rating: string;
     score: number;
     runtime: number;
@@ -13,6 +14,7 @@ export interface MovieData {
     starring: string[];
     director: string;
     synopsis: string;
+    tagline: string;
     still: string;
     largeStill: string;
     trailer: string;
