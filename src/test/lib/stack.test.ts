@@ -60,6 +60,9 @@ describe('BackendStack', () => {
         template.hasOutput('UserPoolId', {});
         template.hasOutput('UserPoolClientId', {});
         template.hasOutput('UserPoolIssuer', {});
+        template.hasOutput('CognitoLoginUrl', {
+            Description: 'Dark-mode Cognito managed login URL for browser authorization',
+        });
     });
 
     it('should grant Lambda permissions to DynamoDB', () => {
