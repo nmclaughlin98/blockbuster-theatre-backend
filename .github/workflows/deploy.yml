@@ -4,7 +4,7 @@ run-name: 'Deploy Stack (${{ github.event.workflow_run.head_branch || github.ref
 on:
   workflow_run:
     workflows:
-      - Build and Package
+      - 1. Build and Package
     types:
       - completed
     branches:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       build_number:
-        description: 'Build number to deploy (leave as "latest" or empty for the most recent successful build on this branch)'
+        description: 'Build number to deploy (leave as "latest" or empty for most recent successful main build)'
         required: false
         default: 'latest'
         type: string
@@ -25,18 +25,18 @@ jobs:
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
-      actions: write
+      actions: read
       id-token: write
       contents: read
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          ref: \${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'npm'
@@ -46,50 +46,44 @@ jobs:
 
       - name: Download Build Artifact
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          INPUT_BUILD_NUMBER: \${{ inputs.build_number }}
-          TRIGGER_RUN_ID: \${{ github.event.workflow_run.id }}
-          TRIGGER_RUN_NUMBER: \${{ github.event.workflow_run.run_number }}
-          TARGET_BRANCH: \${{ github.event.workflow_run.head_branch || github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
         run: |
-          if [ "\$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            BUILD_RUN_ID="\$TRIGGER_RUN_ID"
-            TARGET_BUILD="\$TRIGGER_RUN_NUMBER"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            BUILD_RUN_ID="$TRIGGER_RUN_ID"
+            TARGET_BUILD="$TRIGGER_RUN_NUMBER"
           else
-            TARGET_BUILD="\${INPUT_BUILD_NUMBER:-latest}"
+            TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
 
-            if [ "\$TARGET_BUILD" = "latest" ]; then
-              BUILD_INFO=\$(gh run list --workflow build.yml --branch "\$TARGET_BRANCH" --status success --limit 1 --json databaseId,number --jq '.[0] | [.databaseId, .number] | @tsv')
+            if [ "$TARGET_BUILD" = "latest" ]; then
+              BUILD_INFO=$(gh run list --workflow build.yml --branch main --status success --limit 1 --json databaseId,number --jq '.[0] | [.databaseId, .number] | @tsv')
             else
               if ! [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
                 echo "Error: Build number must be numeric or 'latest'."
                 exit 1
               fi
-              BUILD_INFO=\$(gh run list --workflow build.yml --branch "\$TARGET_BRANCH" --status success --limit 100 --json databaseId,number --jq ".[] | select(.number == \${TARGET_BUILD}) | [.databaseId, .number] | @tsv" | head -n 1)
+              BUILD_INFO=$(gh run list --workflow build.yml --branch main --status success --limit 100 --json databaseId,number --jq ".[] | select(.number == ${TARGET_BUILD}) | [.databaseId, .number] | @tsv" | head -n 1)
             fi
 
-            if [ -z "$BUILD_INFO" ] \vert{}\vert{} [ "$BUILD_INFO" = "null" ]; then
-              echo "Error: No successful build found for build ${TARGET_BUILD} on branch${TARGET_BRANCH}."
+            if [ -z "$BUILD_INFO" ] || [ "$BUILD_INFO" = "null" ]; then
+              echo "Error: No successful build found for the requested main-branch build."
               exit 1
             fi
 
-            read -r BUILD_RUN_ID TARGET_BUILD <<< "\$BUILD_INFO"
+            read -r BUILD_RUN_ID TARGET_BUILD <<< "$BUILD_INFO"
           fi
 
-          # Dynamically update the workflow run title in GitHub UI
-          gh api -X PATCH "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            -f name="Deploy Stack (${TARGET_BRANCH} Build #${TARGET_BUILD})"
-
-          echo "Downloading build artifact for run \${BUILD_RUN_ID}..."
+          echo "Downloading build artifact for run ${BUILD_RUN_ID}..."
           gh run download "$BUILD_RUN_ID" --name "build-artifact-${TARGET_BUILD}" --dir cdk-out
 
           echo "## 🚀 Deploying Build #${TARGET_BUILD}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Branch:** \`${TARGET_BRANCH}\`" >> "\$GITHUB_STEP_SUMMARY"
-          echo "**Build Number:** \`${TARGET_BUILD}\`" >> "\$GITHUB_STEP_SUMMARY"
-          echo "**Build Run ID:** \`${BUILD_RUN_ID}\`" >> "\$GITHUB_STEP_SUMMARY"
+          echo "**Build Number:** \`${TARGET_BUILD}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Build Run ID:** \`${BUILD_RUN_ID}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: eu-west-2
           role-to-assume: arn:aws:iam::334624057595:role/blockbuster-theatre-backend-github-deploy-role
@@ -99,7 +93,7 @@ jobs:
         env:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
-          TMDB_API_KEY: \${{ secrets.TMDB_API_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
           npx cdk synth --output cdk-out-deploy
           npx cdk deploy --app cdk-out-deploy --require-approval never
