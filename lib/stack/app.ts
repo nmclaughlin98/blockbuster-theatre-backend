@@ -3,7 +3,7 @@ import { BlockbusterTheatreBackendStack } from '../stack-configuration';
 
 const app = new cdk.App();
 
-new BlockbusterTheatreBackendStack(app, 'BlockbusterTheatreBackendStack', {
+new BlockbusterTheatreBackendStack(app, 'BlockbusterTheatreStack', {
     description: 'BlockbusterTheatre Backend Infrastructure',
     env: {
         account: '334624057595',
