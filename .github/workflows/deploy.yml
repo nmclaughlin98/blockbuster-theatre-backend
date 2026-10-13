@@ -1,5 +1,5 @@
 name: 2. Deploy Stack
-run-name: 'Deploy Stack (${{ github.event.workflow_run.head_branch \vert{}\vert{} github.ref_name }} Build #${{ github.event.workflow_run.run_number || inputs.build_number }})'
+run-name: 'Deploy Stack (${{ coalesce(github.event.workflow_run.head_branch, github.ref_name) }} Build #${{ coalesce(github.event.workflow_run.run_number, inputs.build_number) }})'
 
 on:
   workflow_run:
