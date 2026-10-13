@@ -120,9 +120,9 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
 
 /**
  * Writes movie data to DynamoDB, preserving the coming-soon status unless explicitly set.
- * @param id Numeric TMDB movie ID.
- * @param movieData Projected movie data to persist.
- * @param setComingSoon Whether to overwrite the stored coming-soon flag.
+ * @param {string} id Numeric TMDB movie ID.
+ * @param {ReturnType<typeof projectTmdb>} movieData Projected movie data to persist.
+ * @param {boolean} setComingSoon Whether to overwrite the stored coming-soon flag.
  */
 async function upsertMovie(
     id: string,
