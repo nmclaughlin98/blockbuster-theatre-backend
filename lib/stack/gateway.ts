@@ -9,6 +9,8 @@ interface ApiGatewayConstructProps {
     updateMoviesFunction: lambda.IFunction;
     listMoviesFunction: lambda.IFunction;
     getMovieFunction: lambda.IFunction;
+    exportMoviesFunction: lambda.IFunction;
+    listTmdbIdsFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
@@ -48,6 +50,14 @@ export class ApiGatewayConstruct extends Construct {
             'GetMovieIntegration',
             props.getMovieFunction
         );
+        const exportMoviesIntegration = new integrations.HttpLambdaIntegration(
+            'ExportMoviesIntegration',
+            props.exportMoviesFunction
+        );
+        const listTmdbIdsIntegration = new integrations.HttpLambdaIntegration(
+            'ListTmdbIdsIntegration',
+            props.listTmdbIdsFunction
+        );
 
         this.httpApi.addRoutes({
             path: '/movies',
@@ -59,6 +69,20 @@ export class ApiGatewayConstruct extends Construct {
             path: '/movies/{id}',
             methods: [apigw2.HttpMethod.GET],
             integration: getMovieIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/movies/export',
+            methods: [apigw2.HttpMethod.GET],
+            integration: exportMoviesIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/movies/tmdb-ids',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listTmdbIdsIntegration,
+            authorizer: props.jwtAuthorizer,
         });
 
         this.httpApi.addRoutes({

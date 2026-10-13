@@ -356,7 +356,10 @@ function checkIsComingSoon(releaseDateString: string): boolean {
  * @param isComingSoon Whether the imported movie should be marked as upcoming.
  * @returns Movie data ready to persist.
  */
-export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): MovieData {
+export function projectTmdb(
+    raw: TmdbMovieResponse,
+    isComingSoon?: boolean
+): MovieData {
     const genres = raw.genres?.map((genre) => genre.name) ?? [];
     const cast = raw.credits?.cast ?? [];
     const crew = raw.credits?.crew ?? [];
@@ -399,7 +402,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
         releaseDate: raw.release_date ? `${raw.release_date}T00:00:00.000Z` : '',
         visible: true,
         isCarousel: false,
-        isComingSoon: checkIsComingSoon(raw.release_date || '') || false,
+        isComingSoon: isComingSoon ?? checkIsComingSoon(raw.release_date || ''),
         starring,
         director,
         synopsis: raw.overview || '',
@@ -408,7 +411,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
             ? `https://image.tmdb.org/t/p/w1280${raw.backdrop_path}`
             : '',
         largeStill: raw.backdrop_path
-            ? `https://image.tmdb.org/t/p/w1920${raw.backdrop_path}`
+            ? `https://image.tmdb.org/t/p/original${raw.backdrop_path}`
             : '',
         trailer: trailerKey
             ? `https://www.youtube-nocookie.com/embed/${trailerKey}?rel=0`
@@ -417,7 +420,7 @@ export function projectTmdb(raw: TmdbMovieResponse, isComingSoon = false): Movie
             ? `https://image.tmdb.org/t/p/w500${raw.poster_path}`
             : '',
         largePoster: raw.poster_path
-            ? `https://image.tmdb.org/t/p/w1280${raw.poster_path}`
+            ? `https://image.tmdb.org/t/p/original${raw.poster_path}`
             : '',
         showtimes
     };

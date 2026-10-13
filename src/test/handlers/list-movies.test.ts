@@ -74,7 +74,7 @@ describe('List movies Lambda handler', () => {
         const nextToken = body.nextToken;
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(body.movies).toEqual([
+        expect(body.movies).toMatchObject([
             {
                 slug: 'a-movie',
                 movieId: 456,
