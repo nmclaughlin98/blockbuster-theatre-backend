@@ -26,6 +26,8 @@ describe('ApiGatewayConstruct', () => {
             updateMoviesFunction: mockFunction,
             listMoviesFunction: mockFunction,
             getMovieFunction: mockFunction,
+            exportMoviesFunction: mockFunction,
+            listTmdbIdsFunction: mockFunction,
             jwtAuthorizer,
         });
     });
@@ -40,7 +42,17 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 4);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 6);
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/export',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/tmdb-ids',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/{id}',
         });

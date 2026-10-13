@@ -16,6 +16,8 @@ export class LambdaConstruct extends Construct {
     public readonly updateMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly listMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly getMovieFunction: lambdaNodejs.NodejsFunction;
+    public readonly exportMoviesFunction: lambdaNodejs.NodejsFunction;
+    public readonly listTmdbIdsFunction: lambdaNodejs.NodejsFunction;
 
     /**
      * Creates the movie import, update, list, and detail Lambda functions with table permissions.
@@ -92,5 +94,33 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadData(this.getMovieFunction);
+
+        this.exportMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ExportMoviesHandler', {
+            functionName: 'blockbuster-theatre-export-movies-lambda',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            entry: path.join(__dirname, './handlers/export-movies-handler.ts'),
+            handler: 'handler',
+            memorySize: 512,
+            timeout: cdk.Duration.seconds(30),
+            environment: {
+                TABLE_NAME: props.table.tableName,
+            },
+        });
+
+        props.table.grantReadData(this.exportMoviesFunction);
+
+        this.listTmdbIdsFunction = new lambdaNodejs.NodejsFunction(this, 'ListTmdbIdsHandler', {
+            functionName: 'blockbuster-theatre-list-tmdb-ids-lambda',
+            runtime: lambda.Runtime.NODEJS_24_X,
+            entry: path.join(__dirname, './handlers/list-tmdb-ids-handler.ts'),
+            handler: 'handler',
+            memorySize: 256,
+            timeout: cdk.Duration.seconds(30),
+            environment: {
+                TABLE_NAME: props.table.tableName,
+            },
+        });
+
+        props.table.grantReadData(this.listTmdbIdsFunction);
     }
 }

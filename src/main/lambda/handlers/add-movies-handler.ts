@@ -342,7 +342,7 @@ export const handler = async (
             async (id) => {
                 try {
                     const raw = await fetchTmdbMovie(id);
-                    const movieData = projectTmdb(raw, isComingSoon ?? false);
+                    const movieData = projectTmdb(raw, isComingSoon);
                     await upsertMovie(id, movieData, isComingSoon !== undefined);
                     log('INFO', 'Movie processed successfully', {
                         requestId,

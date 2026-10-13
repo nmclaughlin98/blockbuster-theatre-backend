@@ -101,13 +101,13 @@ describe('add movies utilities', () => {
                 movieId: 42,
                 title: 'A Movie!',
                 genres: ['Drama'],
-                genre: 'Drama',
+                mainGenre: 'Drama',
                 score: 8.3,
                 starring: ['Actor One'],
                 director: 'Director One',
                 synopsis: 'A synopsis',
                 poster: 'https://image.tmdb.org/t/p/w500/poster.jpg',
-                still: 'https://image.tmdb.org/t/p/w1920/backdrop.jpg',
+                still: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
             });
             expect(Object.keys(movie.showtimes)).toHaveLength(7);
         });
@@ -130,11 +130,11 @@ describe('add movies utilities', () => {
 
         it('supplies defaults when optional TMDB fields are missing', () => {
             expect(projectTmdb({ id: 7, vote_average: 0 })).toMatchObject({
-                slug: '',
+                slug: '7',
                 movieId: 7,
                 title: 'Untitled',
                 genres: [],
-                genre: 'Uncategorized',
+                mainGenre: 'Uncategorized',
                 score: 0,
                 runtime: 0,
                 releaseDate: '',
