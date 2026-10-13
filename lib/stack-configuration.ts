@@ -16,7 +16,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         const authentication = new AuthenticationConstruct(this, 'Authentication');
 
         // 2. Instantiate Lambda & pass DB table
-        const lambdaServices = new LambdaConstruct(this, 'AddMoviesLambda', {
+        const lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {
             table: database.table,
         });
 

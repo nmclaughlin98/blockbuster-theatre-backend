@@ -1,4 +1,5 @@
 name: 1. Build and Package
+run-name: 'Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
 
 on:
   push:
@@ -10,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
     outputs:
       build_number: ${{ github.run_number }}
 
@@ -46,10 +49,8 @@ jobs:
 
       - name: Display Build Number
         run: |
-          echo "Build Number: ${{ github.run_number }}"
+          echo "Build Number: ${{ github.run_number }} (branch: ${BUILD_BRANCH})"
           echo "### 🚀 Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "**Build Number:**" >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          echo "${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${BUILD_BRANCH}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Number:** \`${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Artifact Name:** \`build-artifact-${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
