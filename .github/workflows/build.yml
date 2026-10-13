@@ -18,27 +18,33 @@ jobs:
 
     steps:
       - name: Checkout Code
+        id: checkout
         uses: actions/checkout@v7
 
       - name: Setup Node.js
+        id: setup_node
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'npm'
 
       - name: Install Dependencies
+        id: install_dependencies
         run: npm ci --include=dev
 
       - name: Check TypeScript Compilation
+        id: compile
         run: npm run build
 
       - name: Synthesize CDK App
+        id: synthesize
         env:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
         run: npx cdk synth --output cdk-out
 
       - name: Upload Build Artifact
+        id: upload_artifact
         uses: actions/upload-artifact@v7
         with:
           name: build-artifact-${{ github.run_number }}
@@ -47,10 +53,49 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-      - name: Display Build Number
+      - name: Write Build Summary
+        if: always()
+        env:
+          BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          JOB_STATUS: ${{ job.status }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          SYNTHESIZE_OUTCOME: ${{ steps.synthesize.outcome }}
+          UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
         run: |
-          echo "Build Number: ${{ github.run_number }} (branch: ${BUILD_BRANCH})"
-          echo "### 🚀 Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** \`${BUILD_BRANCH}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Build Number:** \`${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Artifact Name:** \`build-artifact-${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
+          COMPLETED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          {
+            echo "### 🚀 Build Summary"
+            echo "**Completed at:** \`${COMPLETED_AT}\`"
+            echo "**Status:** \`${JOB_STATUS}\`"
+            echo "**Branch:** \`${BUILD_BRANCH}\`"
+            echo "**Build Number:** \`${BUILD_NUMBER}\`"
+            echo "**Artifact Name:** \`build-artifact-${BUILD_NUMBER}\`"
+
+            if [ "$JOB_STATUS" = "failure" ]; then
+              echo
+              echo "#### Failure Summary"
+              FAILED_STEP_FOUND=false
+              for step in \
+                "Checkout Code:${CHECKOUT_OUTCOME}" \
+                "Setup Node.js:${SETUP_NODE_OUTCOME}" \
+                "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
+                "Check TypeScript Compilation:${COMPILE_OUTCOME}" \
+                "Synthesize CDK App:${SYNTHESIZE_OUTCOME}" \
+                "Upload Build Artifact:${UPLOAD_ARTIFACT_OUTCOME}"; do
+                STEP_NAME="${step%%:*}"
+                STEP_OUTCOME="${step#*:}"
+                if [ "$STEP_OUTCOME" = "failure" ]; then
+                  echo "- ${STEP_NAME} failed."
+                  FAILED_STEP_FOUND=true
+                fi
+              done
+              if [ "$FAILED_STEP_FOUND" = false ]; then
+                echo "- The job failed, but no individual step reported a failure."
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Build #${BUILD_NUMBER} on ${BUILD_BRANCH}: ${JOB_STATUS} at ${COMPLETED_AT}"
