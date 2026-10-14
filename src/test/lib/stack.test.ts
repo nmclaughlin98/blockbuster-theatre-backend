@@ -28,24 +28,24 @@ describe('BackendStack', () => {
             Properties: Match.objectLike({ TableName: 'blockbuster-theatre-movie-catalogue' }),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-pricing',
+            TableName: 'blockbuster-theatre-ticket-pricing',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'pricingId', KeyType: 'HASH' }],
         });
         template.hasResource('AWS::DynamoDB::Table', {
             DeletionPolicy: 'Retain',
             UpdateReplacePolicy: 'Retain',
-            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-pricing' }),
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-ticket-pricing' }),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-offers',
+            TableName: 'blockbuster-theatre-booking-offers',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'offerId', KeyType: 'HASH' }],
         });
         template.hasResource('AWS::DynamoDB::Table', {
             DeletionPolicy: 'Retain',
             UpdateReplacePolicy: 'Retain',
-            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-offers' }),
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-booking-offers' }),
         });
     });
 
@@ -72,7 +72,7 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 9);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 11);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies',
         });
@@ -110,7 +110,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 9);
+        template.resourceCountIs('AWS::IAM::Policy', 11);
     });
 
     it('should have correct resource order (DB -> Lambda -> API)', () => {

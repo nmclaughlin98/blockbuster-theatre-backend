@@ -98,7 +98,7 @@ function isPricingTier(value: unknown): value is PricingTier {
     );
 }
 
-function isPricingRecord(value: unknown): value is PricingRecord {
+export function isPricingRecord(value: unknown): value is PricingRecord {
     return (
         isRecord(value) &&
         typeof value.pricingId === 'string' &&

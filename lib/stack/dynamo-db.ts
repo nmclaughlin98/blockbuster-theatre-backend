@@ -21,14 +21,14 @@ export class DatabaseConstruct extends Construct {
         });
 
         this.pricingTable = new dynamodb.Table(this, 'BlockbusterTheatrePricing', {
-            tableName: 'blockbuster-theatre-pricing',
+            tableName: 'blockbuster-theatre-ticket-pricing',
             partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
         this.offersTable = new dynamodb.Table(this, 'BlockbusterTheatreOffers', {
-            tableName: 'blockbuster-theatre-offers',
+            tableName: 'blockbuster-theatre-booking-offers',
             partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy: cdk.RemovalPolicy.RETAIN,

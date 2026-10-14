@@ -75,7 +75,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(9);
+        expect(Object.values(functions)).toHaveLength(11);
         expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
@@ -138,6 +138,8 @@ describe('LambdaConstruct', () => {
         expect(construct.listFilmSelectionsFunction).toBeDefined();
         expect(construct.getTicketPricingFunction).toBeDefined();
         expect(construct.validateCheckoutFunction).toBeDefined();
+        expect(construct.upsertBookingOffersFunction).toBeDefined();
+        expect(construct.upsertTicketPricingFunction).toBeDefined();
     });
 
     it('should grant read/write permissions to DynamoDB', () => {
