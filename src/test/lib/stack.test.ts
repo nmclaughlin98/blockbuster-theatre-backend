@@ -17,16 +17,27 @@ describe('BackendStack', () => {
 
     it('should create DynamoDB table', () => {
         const template = Template.fromStack(stack);
+        template.resourceCountIs('AWS::DynamoDB::Table', 3);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-movie-catalogue',
             BillingMode: 'PAY_PER_REQUEST',
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-pricing',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'pricingId', KeyType: 'HASH' }],
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-offers',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'offerId', KeyType: 'HASH' }],
         });
     });
 
     it('should create Lambda function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-lambda',
+            FunctionName: 'blockbuster-theatre-add-movies-handler',
         });
     });
 
@@ -46,9 +57,18 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 6);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 9);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /film-selections',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /ticket-pricing',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /checkout/validate',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/export',
@@ -75,7 +95,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 6);
+        template.resourceCountIs('AWS::IAM::Policy', 9);
     });
 
     it('should have correct resource order (DB -> Lambda -> API)', () => {
@@ -86,7 +106,7 @@ describe('BackendStack', () => {
         });
         // Lambda should be created with correct name
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-lambda',
+            FunctionName: 'blockbuster-theatre-add-movies-handler',
         });
         // API should integrate with Lambda
         template.hasResourceProperties('AWS::ApiGatewayV2::Integration', {

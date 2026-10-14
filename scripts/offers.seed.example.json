@@ -1,0 +1,27 @@
+[
+  {
+    "offerId": "kids-club",
+    "title": "Kids Club",
+    "tagline": "Every Tuesday - Morning & Matinee",
+    "priceDescription": "Kids Club tickets from £2.50",
+    "ctaLabel": "Book tickets",
+    "featuredMovieId": "123456",
+    "pricingId": "KIDS_CLUB_RATES",
+    "isActive": false,
+    "overrideShowtimes": {
+      "Tuesday": ["11:00", "14:00"]
+    },
+    "displayLabel": "OFFER - Featured Movie - Matinee"
+  },
+  {
+    "offerId": "crazy-tuesday",
+    "title": "Crazy Tuesday",
+    "tagline": "Every Tuesday",
+    "priceDescription": "Every ticket £4.00",
+    "ctaLabel": "Book tickets",
+    "featuredMovieId": "123456",
+    "pricingId": "CRAZY_TUESDAY_RATES",
+    "isActive": false,
+    "displayLabel": "OFFER - Featured Movie - Crazy Tuesday"
+  }
+]

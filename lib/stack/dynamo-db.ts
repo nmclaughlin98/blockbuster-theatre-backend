@@ -4,6 +4,8 @@ import { Construct } from 'constructs';
 
 export class DatabaseConstruct extends Construct {
     public readonly table: dynamodb.Table;
+    public readonly pricingTable: dynamodb.Table;
+    public readonly offersTable: dynamodb.Table;
 
     constructor(scope: Construct, id: string) {
         super(scope, id);
@@ -16,6 +18,20 @@ export class DatabaseConstruct extends Construct {
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
 
             // Instructs CloudFormation to delete the physical table when destroyed or replaced
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+        });
+
+        this.pricingTable = new dynamodb.Table(this, 'BlockbusterTheatrePricing', {
+            tableName: 'blockbuster-theatre-pricing',
+            partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+        });
+
+        this.offersTable = new dynamodb.Table(this, 'BlockbusterTheatreOffers', {
+            tableName: 'blockbuster-theatre-offers',
+            partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy: cdk.RemovalPolicy.DESTROY,
         });
 

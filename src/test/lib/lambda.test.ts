@@ -7,6 +7,8 @@ import { movieImportLambdaConfig as cfg } from '../../../lib/stack/lambda';
 describe('LambdaConstruct', () => {
     let stack: cdk.Stack;
     let table: dynamodb.Table;
+    let pricingTable: dynamodb.Table;
+    let offersTable: dynamodb.Table;
     let construct: LambdaConstruct;
 
     beforeEach(() => {
@@ -15,13 +17,21 @@ describe('LambdaConstruct', () => {
             partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
-        construct = new LambdaConstruct(stack, 'TestLambda', { table });
+        pricingTable = new dynamodb.Table(stack, 'TestPricingTable', {
+            partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+        offersTable = new dynamodb.Table(stack, 'TestOffersTable', {
+            partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+        construct = new LambdaConstruct(stack, 'TestLambda', { table, pricingTable, offersTable });
     });
 
     it('should create a Lambda function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-lambda',
+            FunctionName: 'blockbuster-theatre-add-movies-handler',
         });
     });
 
@@ -49,7 +59,7 @@ describe('LambdaConstruct', () => {
     it('should set environment variables for movie imports', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-lambda',
+            FunctionName: 'blockbuster-theatre-add-movies-handler',
             Environment: {
                 Variables: Match.objectLike({
                     TABLE_NAME: Match.anyValue(),
@@ -65,7 +75,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(6);
+        expect(Object.values(functions)).toHaveLength(9);
         expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
@@ -75,9 +85,19 @@ describe('LambdaConstruct', () => {
             partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+        const configuredPricingTable = new dynamodb.Table(configuredStack, 'ConfiguredPricingTable', {
+            partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+        const configuredOffersTable = new dynamodb.Table(configuredStack, 'ConfiguredOffersTable', {
+            partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
 
         new LambdaConstruct(configuredStack, 'ConfiguredLambda', {
             table: configuredTable,
+            pricingTable: configuredPricingTable,
+            offersTable: configuredOffersTable,
             lambdaConfig: {
                 ...cfg,
                 reservedConcurrentExecutions: 3,
@@ -112,6 +132,12 @@ describe('LambdaConstruct', () => {
 
     it('should export listTmdbIdsFunction', () => {
         expect(construct.listTmdbIdsFunction).toBeDefined();
+    });
+
+    it('should export special offers functions', () => {
+        expect(construct.listFilmSelectionsFunction).toBeDefined();
+        expect(construct.getTicketPricingFunction).toBeDefined();
+        expect(construct.validateCheckoutFunction).toBeDefined();
     });
 
     it('should grant read/write permissions to DynamoDB', () => {
