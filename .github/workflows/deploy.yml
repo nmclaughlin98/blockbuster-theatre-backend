@@ -1,5 +1,5 @@
 name: 2. Deploy Stack
-run-name: 'Deploy Stack (Build #${{ github.event.workflow_run.run_number || inputs.build_number }})'
+run-name: 'Deploy Stack (${{ github.event.workflow_run.head_branch || github.ref_name }} Build #${{ github.event.workflow_run.run_number || inputs.build_number }})'
 
 on:
   workflow_run:
@@ -31,20 +31,24 @@ jobs:
 
     steps:
       - name: Checkout Repository
+        id: checkout
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
+        id: setup_node
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'npm'
 
       - name: Install Dependencies
+        id: install_dependencies
         run: npm ci
 
       - name: Download Build Artifact
+        id: download_artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
@@ -75,6 +79,8 @@ jobs:
             read -r BUILD_RUN_ID TARGET_BUILD <<< "$BUILD_INFO"
           fi
 
+          echo "build_number=${TARGET_BUILD}" >> "$GITHUB_OUTPUT"
+          echo "build_run_id=${BUILD_RUN_ID}" >> "$GITHUB_OUTPUT"
           echo "Downloading build artifact for run ${BUILD_RUN_ID}..."
           gh run download "$BUILD_RUN_ID" --name "build-artifact-${TARGET_BUILD}" --dir cdk-out
 
@@ -83,6 +89,7 @@ jobs:
           echo "**Build Run ID:** \`${BUILD_RUN_ID}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configure AWS Credentials
+        id: configure_aws
         uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: eu-west-2
@@ -90,6 +97,7 @@ jobs:
           role-session-name: bb-theatre-gh-actions-deploy
 
       - name: Deploy CDK Stack
+        id: deploy_cdk
         env:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
@@ -97,3 +105,53 @@ jobs:
         run: |
           npx cdk synth --output cdk-out-deploy
           npx cdk deploy --app cdk-out-deploy --require-approval never
+
+      - name: Write Deploy Summary
+        if: always()
+        env:
+          DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          DEPLOY_BUILD_NUMBER: ${{ steps.download_artifact.outputs.build_number || github.event.workflow_run.run_number || inputs.build_number }}
+          DEPLOY_BUILD_RUN_ID: ${{ steps.download_artifact.outputs.build_run_id || github.event.workflow_run.id }}
+          JOB_STATUS: ${{ job.status }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
+          DOWNLOAD_ARTIFACT_OUTCOME: ${{ steps.download_artifact.outcome }}
+          CONFIGURE_AWS_OUTCOME: ${{ steps.configure_aws.outcome }}
+          DEPLOY_CDK_OUTCOME: ${{ steps.deploy_cdk.outcome }}
+        run: |
+          COMPLETED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          {
+            echo "### 🚀 Deploy Summary"
+            echo "**Completed at:** \`${COMPLETED_AT}\`"
+            echo "**Status:** \`${JOB_STATUS}\`"
+            echo "**Branch:** \`${DEPLOY_BRANCH}\`"
+            echo "**Build Number:** \`${DEPLOY_BUILD_NUMBER}\`"
+            if [ -n "$DEPLOY_BUILD_RUN_ID" ]; then
+              echo "**Build Run ID:** \`${DEPLOY_BUILD_RUN_ID}\`"
+            fi
+
+            if [ "$JOB_STATUS" = "failure" ]; then
+              echo
+              echo "#### Failure Summary"
+              FAILED_STEP_FOUND=false
+              for step in \
+                "Checkout Repository:${CHECKOUT_OUTCOME}" \
+                "Setup Node.js:${SETUP_NODE_OUTCOME}" \
+                "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
+                "Download Build Artifact:${DOWNLOAD_ARTIFACT_OUTCOME}" \
+                "Configure AWS Credentials:${CONFIGURE_AWS_OUTCOME}" \
+                "Deploy CDK Stack:${DEPLOY_CDK_OUTCOME}"; do
+                STEP_NAME="${step%%:*}"
+                STEP_OUTCOME="${step#*:}"
+                if [ "$STEP_OUTCOME" = "failure" ]; then
+                  echo "- ${STEP_NAME} failed."
+                  FAILED_STEP_FOUND=true
+                fi
+              done
+              if [ "$FAILED_STEP_FOUND" = false ]; then
+                echo "- The job failed, but no individual step reported a failure."
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Deploy of build #${DEPLOY_BUILD_NUMBER} on ${DEPLOY_BRANCH}: ${JOB_STATUS} at ${COMPLETED_AT}"

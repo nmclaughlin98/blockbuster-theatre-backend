@@ -18,7 +18,7 @@ describe('BackendStack', () => {
     it('should create DynamoDB table', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movies',
+            TableName: 'blockbuster-theatre-movie-catalogue',
             BillingMode: 'PAY_PER_REQUEST',
         });
     });
@@ -82,7 +82,7 @@ describe('BackendStack', () => {
         const template = Template.fromStack(stack);
         // Database should be created first (no dependencies)
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movies',
+            TableName: 'blockbuster-theatre-movie-catalogue',
         });
         // Lambda should be created with correct name
         template.hasResourceProperties('AWS::Lambda::Function', {

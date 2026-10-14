@@ -30,7 +30,7 @@ export class LambdaConstruct extends Construct {
         const lambdaConfig = props.lambdaConfig ?? cfg;
 
         this.addMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
-            functionName: 'blockbuster-theatre-add-movies-lambda',
+            functionName: 'blockbuster-theatre-add-movies-handler',
             runtime: lambda.Runtime.NODEJS_24_X,
             entry: path.join(__dirname, './handlers/add-movies-handler.ts'),
             handler: 'handler',
@@ -52,7 +52,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadWriteData(this.addMoviesFunction);
 
         this.updateMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'UpdateMoviesHandler', {
-            functionName: 'blockbuster-theatre-update-movies-lambda',
+            functionName: 'blockbuster-theatre-update-movies-handler',
             runtime: lambda.Runtime.NODEJS_24_X,
             entry: path.join(__dirname, './handlers/update-movies-handler.ts'),
             handler: 'handler',
@@ -68,7 +68,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadWriteData(this.updateMoviesFunction);
 
         this.listMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ListMoviesHandler', {
-            functionName: 'blockbuster-theatre-list-movies-lambda',
+            functionName: 'blockbuster-theatre-list-movies-handler',
             runtime: lambda.Runtime.NODEJS_24_X,
             entry: path.join(__dirname, './handlers/list-movies-handler.ts'),
             handler: 'handler',
@@ -96,7 +96,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadData(this.getMovieFunction);
 
         this.exportMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ExportMoviesHandler', {
-            functionName: 'blockbuster-theatre-export-movies-lambda',
+            functionName: 'blockbuster-theatre-export-movies-handler',
             runtime: lambda.Runtime.NODEJS_24_X,
             entry: path.join(__dirname, './handlers/export-movies-handler.ts'),
             handler: 'handler',

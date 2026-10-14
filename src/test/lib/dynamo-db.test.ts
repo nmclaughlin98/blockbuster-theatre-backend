@@ -15,7 +15,7 @@ describe('DatabaseConstruct', () => {
     it('should create a DynamoDB table', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movies',
+            TableName: 'blockbuster-theatre-movie-catalogue',
             BillingMode: 'PAY_PER_REQUEST',
         });
     });
