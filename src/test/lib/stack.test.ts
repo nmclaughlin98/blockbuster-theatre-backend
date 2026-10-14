@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { BlockbusterTheatreBackendStack } from '../../../lib/stack-configuration';
 
 describe('BackendStack', () => {
@@ -22,15 +22,30 @@ describe('BackendStack', () => {
             TableName: 'blockbuster-theatre-movie-catalogue',
             BillingMode: 'PAY_PER_REQUEST',
         });
+        template.hasResource('AWS::DynamoDB::Table', {
+            DeletionPolicy: 'Retain',
+            UpdateReplacePolicy: 'Retain',
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-movie-catalogue' }),
+        });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-pricing',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'pricingId', KeyType: 'HASH' }],
         });
+        template.hasResource('AWS::DynamoDB::Table', {
+            DeletionPolicy: 'Retain',
+            UpdateReplacePolicy: 'Retain',
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-pricing' }),
+        });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-offers',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'offerId', KeyType: 'HASH' }],
+        });
+        template.hasResource('AWS::DynamoDB::Table', {
+            DeletionPolicy: 'Retain',
+            UpdateReplacePolicy: 'Retain',
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-offers' }),
         });
     });
 

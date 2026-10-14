@@ -52,11 +52,11 @@ describe('DatabaseConstruct', () => {
         expect(construct.table).toHaveProperty('tableName');
     });
 
-    it('should have DESTROY removal policy', () => {
+    it('should retain the movie table when the stack is removed or replaced', () => {
         const template = Template.fromStack(stack);
         template.hasResource('AWS::DynamoDB::Table', Match.objectLike({
-            DeletionPolicy: 'Delete',
-            UpdateReplacePolicy: 'Delete',
+            DeletionPolicy: 'Retain',
+            UpdateReplacePolicy: 'Retain',
         }));
     });
 });

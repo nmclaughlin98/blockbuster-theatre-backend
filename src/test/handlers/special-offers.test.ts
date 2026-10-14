@@ -58,6 +58,13 @@ const kidsClubOffer = {
     overrideShowtimes: { Tuesday: ['11:00'] },
     displayLabel: 'OFFER - A Movie - Matinee',
 };
+const secondOfferForSameMovie = {
+    ...kidsClubOffer,
+    offerId: 'kids-club-evening',
+    title: 'Kids Club Evening',
+    pricingId: 'CRAZY_TUESDAY_RATES',
+    overrideShowtimes: { Tuesday: ['19:00'] },
+};
 
 const offPeakPricing = {
     pricingId: 'OFF_PEAK_RATES',
@@ -110,7 +117,9 @@ describe('Special offers and pricing handlers', () => {
 
     it('combines visible movies and active offers for film selection', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
-        ddbMock.on(ScanCommand).resolves({ Items: [kidsClubOffer] });
+        ddbMock.on(ScanCommand).resolves({
+            Items: [kidsClubOffer, secondOfferForSameMovie, { ...kidsClubOffer, isActive: false }],
+        });
 
         const result = await listSelections(createEvent());
 
@@ -131,12 +140,40 @@ describe('Special offers and pricing handlers', () => {
                 label: 'OFFER - A Movie - Matinee',
                 featuredMovieId: '456',
                 pricingId: 'KIDS_CLUB_RATES',
+                overrideShowtimes: { Tuesday: ['11:00'] },
+            },
+            {
+                type: 'offer',
+                id: 'kids-club-evening',
+                offerId: 'kids-club-evening',
+                title: 'Kids Club Evening',
+                label: 'OFFER - A Movie - Matinee',
+                featuredMovieId: '456',
+                pricingId: 'CRAZY_TUESDAY_RATES',
+                overrideShowtimes: { Tuesday: ['19:00'] },
             },
         ]);
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input.IndexName).toBe('GSI1');
         expect(ddbMock.commandCalls(ScanCommand)[0].args[0].input.TableName).toBe(
             'test-offers-table'
         );
+    });
+
+    it('returns a request ID when film selection retrieval fails', async () => {
+        const offersTableName = process.env.OFFERS_TABLE_NAME;
+        delete process.env.OFFERS_TABLE_NAME;
+
+        try {
+            const result = await listSelections(createEvent());
+
+            expect(result).toMatchObject({ statusCode: 500 });
+            expect(responseBody(result)).toEqual({
+                message: 'Unable to retrieve film selections.',
+                requestId: 'special-offers-test-request',
+            });
+        } finally {
+            process.env.OFFERS_TABLE_NAME = offersTableName;
+        }
     });
 
     it('selects off-peak rates for a weekday show before 17:00', async () => {
@@ -163,7 +200,59 @@ describe('Special offers and pricing handlers', () => {
         });
     });
 
-    it('validates checkout totals from offer pricing and ignores client-supplied prices', async () => {
+    it('uses offer-specific showtimes and pricing while keeping its ID distinct', async () => {
+        ddbMock.on(GetCommand).callsFake((input) => {
+            if (input.TableName === 'test-offers-table') {
+                return { Item: secondOfferForSameMovie };
+            }
+            return {
+                Item: {
+                    pricingId: 'CRAZY_TUESDAY_RATES',
+                    name: 'Crazy Tuesday Rates',
+                    currency: 'GBP',
+                    ticketTiers: [
+                        {
+                            id: 'adult',
+                            label: 'Standard Adult',
+                            description: 'Crazy Tuesday adult admission',
+                            price: 4,
+                        },
+                    ],
+                },
+            };
+        });
+        ddbMock.on(QueryCommand).resolves({ Items: [movie] });
+
+        const result = await getTicketPricing(
+            createEvent({
+                queryStringParameters: {
+                    offerId: 'kids-club-evening',
+                    day: 'Tuesday',
+                    time: '19:00',
+                },
+            })
+        );
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result)).toMatchObject({
+            movieId: '456',
+            offerId: 'kids-club-evening',
+            pricing: { pricingId: 'CRAZY_TUESDAY_RATES' },
+        });
+
+        const invalidShowtime = await getTicketPricing(
+            createEvent({
+                queryStringParameters: {
+                    offerId: 'kids-club-evening',
+                    day: 'Tuesday',
+                    time: '11:00',
+                },
+            })
+        );
+        expect(invalidShowtime).toMatchObject({ statusCode: 400 });
+    });
+
+    it('validates checkout totals from the selected offer pricing', async () => {
         ddbMock.on(GetCommand).callsFake((input) => {
             if (input.TableName === 'test-offers-table') {
                 return { Item: kidsClubOffer };
@@ -177,7 +266,7 @@ describe('Special offers and pricing handlers', () => {
                 body: JSON.stringify({
                     offerId: 'kids-club',
                     showtime: { day: 'Tuesday', time: '11:00' },
-                    tickets: [{ tierId: 'child', quantity: 2, price: 0.01 }],
+                    tickets: [{ tierId: 'child', quantity: 2 }],
                 }),
             })
         );
@@ -194,6 +283,25 @@ describe('Special offers and pricing handlers', () => {
             'test-offers-table',
             'test-pricing-table',
         ]);
+    });
+
+    it('rejects client-supplied prices without reading DynamoDB', async () => {
+        const result = await validateCheckout(
+            createEvent({
+                body: JSON.stringify({
+                    offerId: 'kids-club',
+                    showtime: { day: 'Tuesday', time: '11:00' },
+                    tickets: [{ tierId: 'child', quantity: 2, price: 0.01 }],
+                }),
+            })
+        );
+
+        expect(result).toMatchObject({ statusCode: 400 });
+        expect(responseBody(result)).toEqual({
+            message: 'Ticket items only accept tierId and quantity.',
+        });
+        expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
     });
 
     it('rejects an unscheduled showtime before reading its price plan', async () => {

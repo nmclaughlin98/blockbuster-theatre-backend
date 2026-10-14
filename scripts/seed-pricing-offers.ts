@@ -37,7 +37,29 @@ const pricingRecords: PricingRecord[] = [
         name: 'Kids Club Rates',
         currency: 'GBP',
         ticketTiers: [
-            { id: 'child', label: 'Kids Club Ticket', description: 'Kids Club child admission', price: 2.5 },
+            { id: 'child', label: 'Kids Club Child Ticket', description: 'Kids Club admission per child', price: 2.5 },
+            { id: 'adult', label: 'Adult Companion', description: 'Adult admission with a Kids Club child ticket', price: 0 },
+        ],
+    },
+    {
+        pricingId: 'STUDENT_NIGHT_RATES',
+        name: 'Student Night Rates',
+        currency: 'GBP',
+        ticketTiers: [
+            { id: 'student', label: 'Student Ticket', description: 'Valid student ID required', price: 2.5 },
+        ],
+    },
+    {
+        pricingId: 'BIRTHDAY_PARTY_RATES',
+        name: 'Birthday Party Rates',
+        currency: 'GBP',
+        ticketTiers: [
+            {
+                id: 'child-party-package',
+                label: 'Child Party Package',
+                description: 'Includes film, popcorn and soft drink',
+                price: 6,
+            },
         ],
     },
     {
@@ -154,6 +176,9 @@ async function main(): Promise<void> {
     console.log(
         `Seeded ${pricingRecords.length} pricing records and ${offers.length} offers.`
     );
+    if (!offersFile) {
+        console.log('No offer data file supplied; no offer records were written.');
+    }
 }
 
 main().catch((error: unknown) => {

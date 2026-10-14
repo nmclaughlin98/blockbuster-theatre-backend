@@ -13,6 +13,9 @@ export const handler = async (
             requestId,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
-        return json(500, { message: 'Unable to retrieve film selections.' });
+        return json(500, {
+            message: 'Unable to retrieve film selections.',
+            requestId,
+        });
     }
 };

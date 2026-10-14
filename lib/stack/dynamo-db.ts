@@ -17,22 +17,21 @@ export class DatabaseConstruct extends Construct {
             sortKey: { name: 'slug', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
 
-            // Instructs CloudFormation to delete the physical table when destroyed or replaced
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
         this.pricingTable = new dynamodb.Table(this, 'BlockbusterTheatrePricing', {
             tableName: 'blockbuster-theatre-pricing',
             partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
         this.offersTable = new dynamodb.Table(this, 'BlockbusterTheatreOffers', {
             tableName: 'blockbuster-theatre-offers',
             partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
         this.table.addGlobalSecondaryIndex({
