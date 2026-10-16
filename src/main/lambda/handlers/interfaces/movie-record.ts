@@ -1,6 +1,7 @@
 export interface MovieRecord {
     tmdbId: string;
     slug: string;
+    sortTitle?: string;
     title: string;
     visible: boolean;
     isComingSoon?: boolean;

@@ -8,12 +8,12 @@ import {
 import { createDynamoDBClient } from './dynamodb-client';
 import {
     intEnv,
-    isMovieRecord,
     json,
     log,
     mapWithConcurrency,
     normalizeMovieIds,
-} from './utils';
+} from './utils/common';
+import { isMovieRecord } from './utils/movie-validation';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient(), {
     marshallOptions: { removeUndefinedValues: true },
@@ -24,6 +24,7 @@ const MAX_BATCH = intEnv('MAX_BATCH', 25);
 const CONCURRENCY = intEnv('UPDATE_CONCURRENCY', 5);
 const mutableFields = new Set([
     'slug',
+    'sortTitle',
     'title',
     'visible',
     'isComingSoon',
@@ -60,7 +61,10 @@ function isShowtimes(value: unknown): boolean {
 
 function isValidFieldValue(field: string, value: unknown): boolean {
     if (field === 'slug') {
-        return typeof value === 'string' && value.length > 0;
+        return typeof value === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+    }
+    if (field === 'sortTitle') {
+        return typeof value === 'string' && Boolean(value.trim());
     }
     if (['visible', 'isComingSoon', 'isCarousel'].includes(field)) {
         return typeof value === 'boolean';

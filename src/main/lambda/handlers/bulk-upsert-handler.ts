@@ -8,7 +8,7 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
-import { json, log } from './utils';
+import { json, log } from './utils/common';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const MAX_BATCH = 25;

@@ -1,5 +1,6 @@
 export interface MovieDetail {
     slug: string;
+    sortTitle: string;
     movieId: number;
     title: string;
     visible: boolean;

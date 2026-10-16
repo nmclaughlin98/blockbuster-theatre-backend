@@ -4,8 +4,10 @@ import {
     log,
     mapWithConcurrency,
     normalizeMovieIds,
+} from '../../main/lambda/handlers/utils/common';
+import {
     projectTmdb,
-} from '../../main/lambda/handlers/utils';
+} from '../../main/lambda/handlers/utils/movie-projection';
 
 describe('add movies utilities', () => {
     describe('intEnv', () => {
@@ -98,6 +100,7 @@ describe('add movies utilities', () => {
 
             expect(movie).toMatchObject({
                 slug: 'a-movie',
+                sortTitle: 'A Movie!',
                 movieId: 42,
                 title: 'A Movie!',
                 genres: ['Drama'],
@@ -110,6 +113,45 @@ describe('add movies utilities', () => {
                 still: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
             });
             expect(Object.keys(movie.showtimes)).toHaveLength(7);
+        });
+
+        it('applies metadata overrides by TMDB ID', () => {
+            const movie = projectTmdb({
+                id: 1895,
+                title: 'Star Wars: Episode III - Revenge of the Sith',
+            });
+
+            expect(movie).toMatchObject({
+                title: 'Star Wars: Episode III - Revenge of the Sith',
+                slug: 'star-wars-revenge-of-the-sith',
+                sortTitle: 'Star Wars 03 - Revenge of the Sith',
+            });
+        });
+
+        it('collapses repeated separators in generated slugs', () => {
+            const movie = projectTmdb({
+                id: 999,
+                title: 'Star Wars: Episode III - Revenge of the Sith',
+            });
+
+            expect(movie.slug).toBe('star-wars-episode-iii-revenge-of-the-sith');
+            expect(movie.slug).not.toContain('---');
+        });
+
+        it('uses ordinary titles as sort titles for movies without overrides', () => {
+            expect(projectTmdb({ id: 999, title: 'A New Film' }).sortTitle).toBe('A New Film');
+        });
+
+        it('supports sort-only overrides for franchise spin-offs', () => {
+            const movie = projectTmdb({
+                id: 330459,
+                title: 'Rogue One: A Star Wars Story',
+            });
+
+            expect(movie).toMatchObject({
+                title: 'Rogue One: A Star Wars Story',
+                sortTitle: 'Star Wars 03.5 - Rogue One',
+            });
         });
 
         it('includes up to three directors', () => {

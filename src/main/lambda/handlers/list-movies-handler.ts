@@ -5,7 +5,9 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
-import { isMovieRecord, json, log, projectMovieSummary } from './utils';
+import { json, log } from './utils/common';
+import { projectMovieSummary } from './utils/movie-projection';
+import { isMovieRecord } from './utils/movie-validation';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const TABLE_NAME = process.env.TABLE_NAME ?? '';

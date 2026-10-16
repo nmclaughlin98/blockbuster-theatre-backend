@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { PricingServiceError, validateCheckout } from './pricing-service';
-import { json, log } from './utils';
+import { json, log } from './utils/common';
 
 export const handler = async (
     event: APIGatewayProxyEventV2

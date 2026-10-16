@@ -199,7 +199,13 @@ describe('Add movies Lambda handler', () => {
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(2);
         expect(
             ddbMock.commandCalls(UpdateCommand)[0].args[0].input.ExpressionAttributeValues
-        ).toMatchObject({ ':isComingSoon': false });
+        ).toMatchObject({
+            ':isComingSoon': false,
+            ':sortTitle': 'Movie 123',
+        });
+        expect(
+            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression
+        ).toContain('sortTitle = :sortTitle');
         expect(
             ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression
         ).toContain('isComingSoon = if_not_exists(isComingSoon, :isComingSoon)');

@@ -1,5 +1,6 @@
 export interface MovieData {
     slug: string;
+    sortTitle: string;
     movieId: number;
     title: string;
     genres: string[];

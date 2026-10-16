@@ -135,6 +135,21 @@ describe('Update movies Lambda handler', () => {
         });
     });
 
+    it('updates a movie sort title', async () => {
+        ddbMock.on(UpdateCommand).resolves({});
+
+        const result = await invoke(
+            JSON.stringify({ movieIds: [123], updates: { sortTitle: 'Saga 01 - First Film' } })
+        );
+
+        expect(result.statusCode).toBe(200);
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
+            UpdateExpression: 'SET #field0 = :value0',
+            ExpressionAttributeNames: { '#field0': 'sortTitle' },
+            ExpressionAttributeValues: { ':value0': 'Saga 01 - First Film' },
+        });
+    });
+
     it('keeps the release-date index synchronized when releaseDate is changed', async () => {
         ddbMock.on(UpdateCommand).resolves({});
 
@@ -194,6 +209,9 @@ describe('Update movies Lambda handler', () => {
         ['unknown attribute', { movieIds: [123], updates: { tmdbId: '456' } }],
         ['incorrect value type', { movieIds: [123], updates: { visible: 'false' } }],
         ['empty slug', { movieIds: [123], updates: { slug: '' } }],
+        ['slug with repeated separators', { movieIds: [123], updates: { slug: 'star-wars---episode-iii' } }],
+        ['slug with uppercase letters', { movieIds: [123], updates: { slug: 'Movie-Title' } }],
+        ['empty sort title', { movieIds: [123], updates: { sortTitle: '   ' } }],
         ['empty IDs', { movieIds: [], updates: { title: 'New title' } }],
         ['nonnumeric ID', { movieIds: ['12x'], updates: { title: 'New title' } }],
     ])('rejects %s without writing', async (_name, request) => {

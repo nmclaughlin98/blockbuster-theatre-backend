@@ -1,7 +1,9 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
-import { isMovieRecord, json, log, projectMovieDetail } from './utils';
+import { json, log } from './utils/common';
+import { projectMovieDetail } from './utils/movie-projection';
+import { isMovieRecord } from './utils/movie-validation';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const TABLE_NAME = process.env.TABLE_NAME ?? '';

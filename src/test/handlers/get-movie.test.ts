@@ -67,6 +67,7 @@ describe('Get movie Lambda handler', () => {
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toEqual({
             slug: 'example-movie',
+            sortTitle: 'Example Movie',
             movieId: 12345,
             title: 'Example Movie',
             visible: true,

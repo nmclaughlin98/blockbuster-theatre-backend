@@ -1,5 +1,6 @@
 export interface MovieSummary {
     slug: string;
+    sortTitle: string;
     movieId: number;
     title: string;
     visible: boolean;
