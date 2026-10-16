@@ -18,6 +18,8 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         // 2. Instantiate Lambda & pass DB table
         const lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {
             table: database.table,
+            pricingTable: database.pricingTable,
+            offersTable: database.offersTable,
         });
 
         // 3. Instantiate API Gateway & pass Lambda handler
@@ -28,6 +30,11 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             getMovieFunction: lambdaServices.getMovieFunction,
             exportMoviesFunction: lambdaServices.exportMoviesFunction,
             listTmdbIdsFunction: lambdaServices.listTmdbIdsFunction,
+            listFilmSelectionsFunction: lambdaServices.listFilmSelectionsFunction,
+            getTicketPricingFunction: lambdaServices.getTicketPricingFunction,
+            validateCheckoutFunction: lambdaServices.validateCheckoutFunction,
+            upsertBookingOffersFunction: lambdaServices.upsertBookingOffersFunction,
+            upsertTicketPricingFunction: lambdaServices.upsertTicketPricingFunction,
             jwtAuthorizer: authentication.jwtAuthorizer,
         });
 

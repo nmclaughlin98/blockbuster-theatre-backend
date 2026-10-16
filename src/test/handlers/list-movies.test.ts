@@ -77,6 +77,7 @@ describe('List movies Lambda handler', () => {
         expect(body.movies).toMatchObject([
             {
                 slug: 'a-movie',
+                sortTitle: 'A Movie',
                 movieId: 456,
                 title: 'A Movie',
                 visible: true,

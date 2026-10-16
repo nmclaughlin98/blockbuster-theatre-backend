@@ -28,6 +28,11 @@ describe('ApiGatewayConstruct', () => {
             getMovieFunction: mockFunction,
             exportMoviesFunction: mockFunction,
             listTmdbIdsFunction: mockFunction,
+            listFilmSelectionsFunction: mockFunction,
+            getTicketPricingFunction: mockFunction,
+            validateCheckoutFunction: mockFunction,
+            upsertBookingOffersFunction: mockFunction,
+            upsertTicketPricingFunction: mockFunction,
             jwtAuthorizer,
         });
     });
@@ -42,7 +47,7 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 6);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 11);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/export',
             AuthorizationType: 'JWT',
@@ -75,6 +80,28 @@ describe('ApiGatewayConstruct', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/{id}',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /film-selections',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /ticket-pricing',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /ticket-pricing',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /booking-offers',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /checkout/validate',
             AuthorizationType: 'NONE',
         });
     });

@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { json, log } from './utils';
+import { json, log } from './utils/common';
 import { scanTable } from './scan-table';
 
 const TABLE_NAME = process.env.TABLE_NAME ?? '';

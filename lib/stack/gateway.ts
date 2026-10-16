@@ -11,6 +11,11 @@ interface ApiGatewayConstructProps {
     getMovieFunction: lambda.IFunction;
     exportMoviesFunction: lambda.IFunction;
     listTmdbIdsFunction: lambda.IFunction;
+    listFilmSelectionsFunction: lambda.IFunction;
+    getTicketPricingFunction: lambda.IFunction;
+    validateCheckoutFunction: lambda.IFunction;
+    upsertBookingOffersFunction: lambda.IFunction;
+    upsertTicketPricingFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
@@ -58,6 +63,58 @@ export class ApiGatewayConstruct extends Construct {
             'ListTmdbIdsIntegration',
             props.listTmdbIdsFunction
         );
+        const listFilmSelectionsIntegration = new integrations.HttpLambdaIntegration(
+            'ListFilmSelectionsIntegration',
+            props.listFilmSelectionsFunction
+        );
+        const getTicketPricingIntegration = new integrations.HttpLambdaIntegration(
+            'GetTicketPricingIntegration',
+            props.getTicketPricingFunction
+        );
+        const validateCheckoutIntegration = new integrations.HttpLambdaIntegration(
+            'ValidateCheckoutIntegration',
+            props.validateCheckoutFunction
+        );
+        const upsertBookingOffersIntegration = new integrations.HttpLambdaIntegration(
+            'UpsertBookingOffersIntegration',
+            props.upsertBookingOffersFunction
+        );
+        const upsertTicketPricingIntegration = new integrations.HttpLambdaIntegration(
+            'UpsertTicketPricingIntegration',
+            props.upsertTicketPricingFunction
+        );
+
+        this.httpApi.addRoutes({
+            path: '/film-selections',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listFilmSelectionsIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/ticket-pricing',
+            methods: [apigw2.HttpMethod.GET],
+            integration: getTicketPricingIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/ticket-pricing',
+            methods: [apigw2.HttpMethod.POST],
+            integration: upsertTicketPricingIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/booking-offers',
+            methods: [apigw2.HttpMethod.POST],
+            integration: upsertBookingOffersIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/checkout/validate',
+            methods: [apigw2.HttpMethod.POST],
+            integration: validateCheckoutIntegration,
+        });
 
         this.httpApi.addRoutes({
             path: '/movies',

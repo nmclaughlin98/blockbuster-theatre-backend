@@ -1,25 +1,24 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
     DynamoDBDocumentClient,
     QueryCommand,
     TransactWriteCommand,
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { createDynamoDBClient } from './dynamodb-client';
 import type { ProcessResult, TmdbMovieResponse } from './interfaces';
 import {
     intEnv,
-    isMovieRecord,
-    isTmdbMovieResponse,
     json,
     log,
     mapWithConcurrency,
     normalizeMovieIds,
-    projectTmdb,
     sleep,
-} from './utils';
+} from './utils/common';
+import { projectTmdb } from './utils/movie-projection';
+import { isMovieRecord, isTmdbMovieResponse } from './utils/movie-validation';
 
-const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
+const docClient = DynamoDBDocumentClient.from(createDynamoDBClient(), {
     marshallOptions: { removeUndefinedValues: true },
 });
 
@@ -162,6 +161,7 @@ async function upsertMovie(
         },
         UpdateExpression: `
             SET title = :title,
+                sortTitle = :sortTitle,
                 genres = :genres,
                 mainGenre = :mainGenre,
                 ${comingSoonUpdate}
@@ -187,6 +187,7 @@ async function upsertMovie(
         `,
         ExpressionAttributeValues: {
             ':title': movieData.title,
+            ':sortTitle': movieData.sortTitle,
             ':genres': movieData.genres,
             ':mainGenre': movieData.mainGenre,
             ':isComingSoon': movieData.isComingSoon,

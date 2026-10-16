@@ -8,6 +8,8 @@ import { movieImportLambdaConfig as cfg, type MovieImportLambdaConfig } from '..
 
 interface LambdaConstructProps {
     table: dynamodb.Table;
+    pricingTable: dynamodb.Table;
+    offersTable: dynamodb.Table;
     lambdaConfig?: MovieImportLambdaConfig;
 }
 
@@ -18,6 +20,11 @@ export class LambdaConstruct extends Construct {
     public readonly getMovieFunction: lambdaNodejs.NodejsFunction;
     public readonly exportMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly listTmdbIdsFunction: lambdaNodejs.NodejsFunction;
+    public readonly listFilmSelectionsFunction: lambdaNodejs.NodejsFunction;
+    public readonly getTicketPricingFunction: lambdaNodejs.NodejsFunction;
+    public readonly validateCheckoutFunction: lambdaNodejs.NodejsFunction;
+    public readonly upsertBookingOffersFunction: lambdaNodejs.NodejsFunction;
+    public readonly upsertTicketPricingFunction: lambdaNodejs.NodejsFunction;
 
     /**
      * Creates the movie import, update, list, and detail Lambda functions with table permissions.
@@ -122,5 +129,105 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadData(this.listTmdbIdsFunction);
+
+        this.listFilmSelectionsFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'ListFilmSelectionsHandler',
+            {
+                functionName: 'blockbuster-theatre-film-selections-handler',
+                runtime: lambda.Runtime.NODEJS_24_X,
+                entry: path.join(__dirname, './handlers/list-film-selections-handler.ts'),
+                handler: 'handler',
+                memorySize: 256,
+                timeout: cdk.Duration.seconds(15),
+                environment: {
+                    TABLE_NAME: props.table.tableName,
+                    OFFERS_TABLE_NAME: props.offersTable.tableName,
+                },
+            }
+        );
+
+        props.table.grantReadData(this.listFilmSelectionsFunction);
+        props.offersTable.grantReadData(this.listFilmSelectionsFunction);
+
+        this.getTicketPricingFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'GetTicketPricingHandler',
+            {
+                functionName: 'blockbuster-theatre-ticket-pricing-handler',
+                runtime: lambda.Runtime.NODEJS_24_X,
+                entry: path.join(__dirname, './handlers/get-ticket-pricing-handler.ts'),
+                handler: 'handler',
+                memorySize: 256,
+                timeout: cdk.Duration.seconds(10),
+                environment: {
+                    TABLE_NAME: props.table.tableName,
+                    PRICING_TABLE_NAME: props.pricingTable.tableName,
+                    OFFERS_TABLE_NAME: props.offersTable.tableName,
+                },
+            }
+        );
+
+        props.table.grantReadData(this.getTicketPricingFunction);
+        props.pricingTable.grantReadData(this.getTicketPricingFunction);
+        props.offersTable.grantReadData(this.getTicketPricingFunction);
+
+        this.validateCheckoutFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'ValidateCheckoutHandler',
+            {
+                functionName: 'blockbuster-theatre-checkout-validation-handler',
+                runtime: lambda.Runtime.NODEJS_24_X,
+                entry: path.join(__dirname, './handlers/validate-checkout-handler.ts'),
+                handler: 'handler',
+                memorySize: 256,
+                timeout: cdk.Duration.seconds(10),
+                environment: {
+                    TABLE_NAME: props.table.tableName,
+                    PRICING_TABLE_NAME: props.pricingTable.tableName,
+                    OFFERS_TABLE_NAME: props.offersTable.tableName,
+                },
+            }
+        );
+
+        props.table.grantReadData(this.validateCheckoutFunction);
+        props.pricingTable.grantReadData(this.validateCheckoutFunction);
+        props.offersTable.grantReadData(this.validateCheckoutFunction);
+
+        this.upsertBookingOffersFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'UpsertBookingOffersHandler',
+            {
+                functionName: 'blockbuster-theatre-upsert-booking-offers-handler',
+                runtime: lambda.Runtime.NODEJS_24_X,
+                entry: path.join(__dirname, './handlers/upsert-booking-offers-handler.ts'),
+                handler: 'handler',
+                memorySize: 256,
+                timeout: cdk.Duration.seconds(10),
+                environment: {
+                    OFFERS_TABLE_NAME: props.offersTable.tableName,
+                },
+            }
+        );
+
+        props.offersTable.grantReadWriteData(this.upsertBookingOffersFunction);
+
+        this.upsertTicketPricingFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'UpsertTicketPricingHandler',
+            {
+                functionName: 'blockbuster-theatre-upsert-ticket-pricing-handler',
+                runtime: lambda.Runtime.NODEJS_24_X,
+                entry: path.join(__dirname, './handlers/upsert-ticket-pricing-handler.ts'),
+                handler: 'handler',
+                memorySize: 256,
+                timeout: cdk.Duration.seconds(10),
+                environment: {
+                    PRICING_TABLE_NAME: props.pricingTable.tableName,
+                },
+            }
+        );
+
+        props.pricingTable.grantReadWriteData(this.upsertTicketPricingFunction);
     }
 }
