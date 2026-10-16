@@ -5,7 +5,7 @@ export interface MovieCollectionRecord {
     poster: string;
     backdrop: string;
     parentCollectionId?: string;
-    sortOrder: number;
+    sortOrder?: number;
     GSI1PK?: string;
     GSI1SK?: string;
     lastUpdated?: string;

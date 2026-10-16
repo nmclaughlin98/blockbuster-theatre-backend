@@ -155,6 +155,29 @@ describe('Movie collection handlers', () => {
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
 
+    it('accepts older imported parent records without a sortOrder', async () => {
+        ddbMock.on(GetCommand).resolves({
+            Item: {
+                collectionId: rootCollection.collectionId,
+                name: rootCollection.name,
+                overview: rootCollection.overview,
+                poster: rootCollection.poster,
+                backdrop: rootCollection.backdrop,
+            },
+        });
+
+        const result = await upsertCollections(createEvent(JSON.stringify({
+            collections: [{
+                ...childCollection,
+                GSI1PK: undefined,
+                GSI1SK: undefined,
+            }],
+        })));
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(1);
+    });
+
     it('returns a parent collection, ordered descendants, and each movie once', async () => {
         ddbMock.on(GetCommand).resolves({ Item: rootCollection });
         ddbMock.on(QueryCommand).callsFake((input) => {

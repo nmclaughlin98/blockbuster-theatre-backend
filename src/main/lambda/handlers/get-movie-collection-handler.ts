@@ -29,7 +29,7 @@ function collectionResponse(record: MovieCollectionRecord) {
         ...(record.parentCollectionId && {
             parentCollectionId: record.parentCollectionId,
         }),
-        sortOrder: record.sortOrder,
+        sortOrder: record.sortOrder ?? 0,
     };
 }
 

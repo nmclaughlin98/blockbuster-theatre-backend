@@ -233,6 +233,7 @@ async function upsertTmdbCollection(
                     overview = :overview,
                     poster = :poster,
                     backdrop = :backdrop,
+                    sortOrder = if_not_exists(sortOrder, :sortOrder),
                     lastUpdated = :lastUpdated
             `,
             ExpressionAttributeNames: { '#name': 'name' },
@@ -241,6 +242,7 @@ async function upsertTmdbCollection(
                 ':overview': item.overview,
                 ':poster': item.poster,
                 ':backdrop': item.backdrop,
+                ':sortOrder': item.sortOrder,
                 ':lastUpdated': item.lastUpdated,
             },
         })

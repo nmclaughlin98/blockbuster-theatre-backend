@@ -257,7 +257,11 @@ describe('Add movies Lambda handler', () => {
                 ':overview': 'Collection overview',
                 ':poster': 'https://image.tmdb.org/t/p/w500/collection-poster.jpg',
                 ':backdrop': 'https://image.tmdb.org/t/p/w1280/collection-backdrop.jpg',
+                ':sortOrder': 0,
             },
+            UpdateExpression: expect.stringContaining(
+                'sortOrder = if_not_exists(sortOrder, :sortOrder)'
+            ),
         });
         expect(ddbMock.commandCalls(UpdateCommand)[1].args[0].input.ExpressionAttributeValues)
             .toMatchObject({

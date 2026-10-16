@@ -40,9 +40,14 @@ export function isMovieCollectionRecord(value: unknown): value is MovieCollectio
         typeof value.poster === 'string' &&
         typeof value.backdrop === 'string' &&
         (value.parentCollectionId === undefined || isCollectionId(value.parentCollectionId)) &&
-        Number.isSafeInteger(value.sortOrder) &&
-        typeof value.sortOrder === 'number' &&
-        value.sortOrder >= 0 &&
+        (
+            value.sortOrder === undefined ||
+            (
+                Number.isSafeInteger(value.sortOrder) &&
+                typeof value.sortOrder === 'number' &&
+                value.sortOrder >= 0
+            )
+        ) &&
         (value.GSI1PK === undefined || typeof value.GSI1PK === 'string') &&
         (value.GSI1SK === undefined || typeof value.GSI1SK === 'string');
 }
