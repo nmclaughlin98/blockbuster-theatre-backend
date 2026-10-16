@@ -1,79 +1,14 @@
 import { readFile } from 'node:fs/promises';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
     DynamoDBDocumentClient,
     PutCommand,
     QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
-import type { OfferRecord, PricingRecord, PricingTier } from '../src/main/lambda/handlers/interfaces';
+import type { OfferRecord, PricingTier } from '../src/main/lambda/handlers/interfaces';
+import { createDynamoDBClient } from '../src/main/lambda/handlers/dynamodb-client';
 import { isOfferRecord } from '../src/main/lambda/handlers/pricing-service';
 import { isMovieRecord } from '../src/main/lambda/handlers/utils';
-
-const pricingRecords: PricingRecord[] = [
-    {
-        pricingId: 'STANDARD_RATES',
-        name: 'Standard Peak Rates',
-        currency: 'GBP',
-        ticketTiers: [
-            { id: 'adult', label: 'Standard Adult', description: 'Standard adult admission', price: 9.5 },
-            { id: 'child', label: 'Child Ticket', description: 'Child admission', price: 6 },
-            { id: 'student', label: 'Student Ticket', description: 'Student admission', price: 7.5 },
-            { id: 'senior', label: 'Senior / OAP', description: 'Senior admission', price: 7 },
-        ],
-    },
-    {
-        pricingId: 'OFF_PEAK_RATES',
-        name: 'Off-Peak Rates',
-        currency: 'GBP',
-        ticketTiers: [
-            { id: 'adult', label: 'Standard Adult', description: 'Off-peak adult admission', price: 7.6 },
-            { id: 'child', label: 'Child Ticket', description: 'Off-peak child admission', price: 4.8 },
-            { id: 'student', label: 'Student Ticket', description: 'Off-peak student admission', price: 6 },
-            { id: 'senior', label: 'Senior / OAP', description: 'Off-peak senior admission', price: 5.6 },
-        ],
-    },
-    {
-        pricingId: 'KIDS_CLUB_RATES',
-        name: 'Kids Club Rates',
-        currency: 'GBP',
-        ticketTiers: [
-            { id: 'child', label: 'Kids Club Child Ticket', description: 'Kids Club admission per child', price: 2.5 },
-            { id: 'adult', label: 'Adult Companion', description: 'Adult admission with a Kids Club child ticket', price: 0 },
-        ],
-    },
-    {
-        pricingId: 'STUDENT_NIGHT_RATES',
-        name: 'Student Night Rates',
-        currency: 'GBP',
-        ticketTiers: [
-            { id: 'student', label: 'Student Ticket', description: 'Valid student ID required', price: 2.5 },
-        ],
-    },
-    {
-        pricingId: 'BIRTHDAY_PARTY_RATES',
-        name: 'Birthday Party Rates',
-        currency: 'GBP',
-        ticketTiers: [
-            {
-                id: 'child-party-package',
-                label: 'Child Party Package',
-                description: 'Includes film, popcorn and soft drink',
-                price: 6,
-            },
-        ],
-    },
-    {
-        pricingId: 'CRAZY_TUESDAY_RATES',
-        name: 'Crazy Tuesday Rates',
-        currency: 'GBP',
-        ticketTiers: [
-            { id: 'adult', label: 'Standard Adult', description: 'Crazy Tuesday adult admission', price: 4 },
-            { id: 'child', label: 'Child Ticket', description: 'Crazy Tuesday child admission', price: 4 },
-            { id: 'student', label: 'Student Ticket', description: 'Crazy Tuesday student admission', price: 4 },
-            { id: 'senior', label: 'Senior / OAP', description: 'Crazy Tuesday senior admission', price: 4 },
-        ],
-    },
-];
+import { pricingRecords } from './pricing-records';
 
 function requiredEnvironmentValue(name: string): string {
     const value = process.env[name];
@@ -144,7 +79,7 @@ async function main(): Promise<void> {
     const offersFile = process.argv[2];
     const offers = offersFile ? await readOffersFile(offersFile) : [];
     const pricingIds = new Set(pricingRecords.map((record) => record.pricingId));
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+    const client = DynamoDBDocumentClient.from(createDynamoDBClient());
 
     for (const pricing of pricingRecords) {
         if (!pricing.ticketTiers.every(isPricingTier)) {

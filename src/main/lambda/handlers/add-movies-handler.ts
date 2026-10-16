@@ -1,11 +1,11 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
     DynamoDBDocumentClient,
     QueryCommand,
     TransactWriteCommand,
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { createDynamoDBClient } from './dynamodb-client';
 import type { ProcessResult, TmdbMovieResponse } from './interfaces';
 import {
     intEnv,
@@ -19,7 +19,7 @@ import {
     sleep,
 } from './utils';
 
-const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
+const docClient = DynamoDBDocumentClient.from(createDynamoDBClient(), {
     marshallOptions: { removeUndefinedValues: true },
 });
 

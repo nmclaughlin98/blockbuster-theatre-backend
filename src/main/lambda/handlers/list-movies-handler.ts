@@ -1,13 +1,13 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
     DynamoDBDocumentClient,
     QueryCommand,
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
+import { createDynamoDBClient } from './dynamodb-client';
 import { isMovieRecord, json, log, projectMovieSummary } from './utils';
 
-const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;

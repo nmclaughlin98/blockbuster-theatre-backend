@@ -1,11 +1,11 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
     DynamoDBDocumentClient,
     ScanCommand,
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
+import { createDynamoDBClient } from './dynamodb-client';
 
-const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 
 interface ScanOptions {
     projectionExpression?: string;

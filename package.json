@@ -15,7 +15,13 @@
     "destroy": "cdk destroy",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "seed:pricing": "ts-node scripts/seed-pricing-offers.ts"
+    "seed:pricing": "ts-node scripts/seed-pricing-offers.ts",
+    "local:db:start": "docker compose up -d dynamodb-local",
+    "local:db:stop": "docker compose stop dynamodb-local",
+    "local:init": "ts-node scripts/init-local-db.ts",
+    "local:api": "ts-node scripts/local-api.ts",
+    "local:cloud": "ts-node scripts/local-api.ts --cloud-db",
+    "local": "npm run local:db:start && npm run local:init && npm run local:api"
   },
   "devDependencies": {
     "@swc/core": "^1.3.0",

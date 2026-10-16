@@ -2,15 +2,15 @@ import type {
     APIGatewayProxyEventV2,
     APIGatewayProxyResultV2,
 } from 'aws-lambda';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
     DynamoDBDocumentClient,
     TransactWriteCommand,
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
+import { createDynamoDBClient } from './dynamodb-client';
 import { json, log } from './utils';
 
-const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const MAX_BATCH = 25;
 
 interface BulkUpsertOptions<T> {

@@ -85,6 +85,20 @@ const kidsClubPricing = {
     ],
 };
 
+const crazyTuesdayPricing = {
+    pricingId: 'CRAZY_TUESDAY_RATES',
+    name: 'Crazy Tuesday Rates',
+    currency: 'GBP',
+    ticketTiers: [
+        {
+            id: 'crazy-tuesday',
+            label: 'Crazy Tuesday Ticket',
+            description: 'Admission for any Tuesday movie showing',
+            price: 4,
+        },
+    ],
+};
+
 function createEvent(options: {
     queryStringParameters?: Record<string, string>;
     body?: string;
@@ -200,35 +214,51 @@ describe('Special offers and pricing handlers', () => {
         });
     });
 
-    it('uses offer-specific showtimes and pricing while keeping its ID distinct', async () => {
+    it('uses the single Crazy Tuesday tier for Tuesday movie showings at any time', async () => {
+        ddbMock.on(QueryCommand).resolves({
+            Items: [{
+                ...movie,
+                showtimes: { Monday: ['11:00'], Tuesday: ['11:00', '19:00'] },
+            }],
+        });
+        ddbMock.on(GetCommand).resolves({ Item: crazyTuesdayPricing });
+
+        for (const time of ['11:00', '19:00']) {
+            const result = await getTicketPricing(
+                createEvent({
+                    queryStringParameters: {
+                        movieId: '456',
+                        day: 'Tuesday',
+                        time,
+                    },
+                })
+            );
+
+            expect(result).toMatchObject({ statusCode: 200 });
+            expect(responseBody(result).pricing).toEqual(crazyTuesdayPricing);
+        }
+        expect(ddbMock.commandCalls(GetCommand)).toHaveLength(2);
+        expect(ddbMock.commandCalls(GetCommand).map(({ args }) => args[0].input.Key)).toEqual([
+            { pricingId: 'CRAZY_TUESDAY_RATES' },
+            { pricingId: 'CRAZY_TUESDAY_RATES' },
+        ]);
+    });
+
+    it('keeps offer-specific showtimes and pricing on Tuesday', async () => {
         ddbMock.on(GetCommand).callsFake((input) => {
             if (input.TableName === 'test-offers-table') {
-                return { Item: secondOfferForSameMovie };
+                return { Item: kidsClubOffer };
             }
-            return {
-                Item: {
-                    pricingId: 'CRAZY_TUESDAY_RATES',
-                    name: 'Crazy Tuesday Rates',
-                    currency: 'GBP',
-                    ticketTiers: [
-                        {
-                            id: 'adult',
-                            label: 'Standard Adult',
-                            description: 'Crazy Tuesday adult admission',
-                            price: 4,
-                        },
-                    ],
-                },
-            };
+            return { Item: kidsClubPricing };
         });
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
 
         const result = await getTicketPricing(
             createEvent({
                 queryStringParameters: {
-                    offerId: 'kids-club-evening',
+                    offerId: 'kids-club',
                     day: 'Tuesday',
-                    time: '19:00',
+                    time: '11:00',
                 },
             })
         );
@@ -236,16 +266,16 @@ describe('Special offers and pricing handlers', () => {
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toMatchObject({
             movieId: '456',
-            offerId: 'kids-club-evening',
-            pricing: { pricingId: 'CRAZY_TUESDAY_RATES' },
+            offerId: 'kids-club',
+            pricing: { pricingId: 'KIDS_CLUB_RATES' },
         });
 
         const invalidShowtime = await getTicketPricing(
             createEvent({
                 queryStringParameters: {
-                    offerId: 'kids-club-evening',
+                    offerId: 'kids-club',
                     day: 'Tuesday',
-                    time: '11:00',
+                    time: '19:00',
                 },
             })
         );

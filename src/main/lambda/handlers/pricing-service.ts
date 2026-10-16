@@ -1,4 +1,3 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
     DynamoDBDocumentClient,
     GetCommand,
@@ -6,10 +5,11 @@ import {
     ScanCommand,
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
+import { createDynamoDBClient } from './dynamodb-client';
 import type { MovieRecord, OfferRecord, PricingRecord, PricingTier } from './interfaces';
 import { isMovieRecord } from './utils';
 
-const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 type UnknownRecord = Record<string, unknown>;
@@ -255,6 +255,8 @@ function validateScheduledTime(
 }
 
 function standardPricingId(showtime: ShowtimeSelection): string {
+    if (showtime.day === 'Tuesday') return 'CRAZY_TUESDAY_RATES';
+
     const isWeekday = DAYS.slice(0, 5).includes(showtime.day);
     return isWeekday && showtime.time < '17:00' ? 'OFF_PEAK_RATES' : 'STANDARD_RATES';
 }
