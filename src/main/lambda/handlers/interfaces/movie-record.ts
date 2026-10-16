@@ -1,6 +1,9 @@
 export interface MovieRecord {
     tmdbId: string;
     slug: string;
+    collectionId?: string;
+    GSI2PK?: string;
+    GSI2SK?: string;
     sortTitle?: string;
     title: string;
     visible: boolean;

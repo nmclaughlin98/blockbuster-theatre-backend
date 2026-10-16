@@ -2,6 +2,7 @@ export interface MovieSummary {
     slug: string;
     sortTitle: string;
     movieId: number;
+    collectionId?: string;
     title: string;
     visible: boolean;
     isComingSoon: boolean;

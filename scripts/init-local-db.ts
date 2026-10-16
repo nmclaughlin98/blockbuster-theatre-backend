@@ -2,6 +2,7 @@ import {
     CreateTableCommand,
     DescribeTableCommand,
     ListTablesCommand,
+    UpdateTableCommand,
     waitUntilTableExists,
     type CreateTableCommandInput,
 } from '@aws-sdk/client-dynamodb';
@@ -19,6 +20,7 @@ const tableNames = {
     movies: 'blockbuster-theatre-movie-catalogue-local',
     pricing: 'blockbuster-theatre-ticket-pricing-local',
     offers: 'blockbuster-theatre-booking-offers-local',
+    collections: 'blockbuster-theatre-movie-collections-local',
 };
 
 process.env.LOCAL_API = 'true';
@@ -38,6 +40,8 @@ const tableDefinitions: CreateTableCommandInput[] = [
             { AttributeName: 'slug', AttributeType: 'S' },
             { AttributeName: 'GSI1PK', AttributeType: 'S' },
             { AttributeName: 'GSI1SK', AttributeType: 'S' },
+            { AttributeName: 'GSI2PK', AttributeType: 'S' },
+            { AttributeName: 'GSI2SK', AttributeType: 'S' },
         ],
         KeySchema: [
             { AttributeName: 'tmdbId', KeyType: 'HASH' },
@@ -49,6 +53,14 @@ const tableDefinitions: CreateTableCommandInput[] = [
                 KeySchema: [
                     { AttributeName: 'GSI1PK', KeyType: 'HASH' },
                     { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+            {
+                IndexName: 'GSI2',
+                KeySchema: [
+                    { AttributeName: 'GSI2PK', KeyType: 'HASH' },
+                    { AttributeName: 'GSI2SK', KeyType: 'RANGE' },
                 ],
                 Projection: { ProjectionType: 'ALL' },
             },
@@ -65,6 +77,26 @@ const tableDefinitions: CreateTableCommandInput[] = [
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [{ AttributeName: 'offerId', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'offerId', KeyType: 'HASH' }],
+    },
+    {
+        TableName: tableNames.collections,
+        BillingMode: 'PAY_PER_REQUEST',
+        AttributeDefinitions: [
+            { AttributeName: 'collectionId', AttributeType: 'S' },
+            { AttributeName: 'GSI1PK', AttributeType: 'S' },
+            { AttributeName: 'GSI1SK', AttributeType: 'S' },
+        ],
+        KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
+        GlobalSecondaryIndexes: [
+            {
+                IndexName: 'GSI1',
+                KeySchema: [
+                    { AttributeName: 'GSI1PK', KeyType: 'HASH' },
+                    { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+        ],
     },
 ];
 
@@ -91,7 +123,50 @@ async function createTableIfMissing(input: CreateTableCommandInput): Promise<voi
     if (!tableName) throw new Error('Local table definition is missing TableName.');
 
     try {
-        await client.send(new DescribeTableCommand({ TableName: tableName }));
+        const description = await client.send(
+            new DescribeTableCommand({ TableName: tableName })
+        );
+        const existingIndexes = new Set(
+            description.Table?.GlobalSecondaryIndexes?.flatMap((index) =>
+                index.IndexName ? [index.IndexName] : []
+            ) ?? []
+        );
+        const missingIndexes = (input.GlobalSecondaryIndexes ?? []).filter(
+            (index) => index.IndexName !== undefined && !existingIndexes.has(index.IndexName)
+        );
+        if (missingIndexes.length === 0) return;
+
+        const existingAttributes = new Set(
+            description.Table?.AttributeDefinitions
+                ?.map((attribute) => attribute.AttributeName)
+                .filter((name): name is string => typeof name === 'string') ?? []
+        );
+        const requiredIndexAttributes = new Set(
+            missingIndexes.flatMap((index) =>
+                index.KeySchema?.flatMap((key) =>
+                    key.AttributeName ? [key.AttributeName] : []
+                ) ?? []
+            )
+        );
+        const newAttributeDefinitions = (input.AttributeDefinitions ?? []).filter(
+            (attribute) =>
+                typeof attribute.AttributeName === 'string' &&
+                requiredIndexAttributes.has(attribute.AttributeName) &&
+                !existingAttributes.has(attribute.AttributeName)
+        );
+
+        await client.send(
+            new UpdateTableCommand({
+                TableName: tableName,
+                ...(newAttributeDefinitions.length && {
+                    AttributeDefinitions: newAttributeDefinitions,
+                }),
+                GlobalSecondaryIndexUpdates: missingIndexes.map((index) => ({
+                    Create: index,
+                })),
+            })
+        );
+        await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: tableName });
         return;
     } catch (error: unknown) {
         if (

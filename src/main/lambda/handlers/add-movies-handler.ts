@@ -6,7 +6,12 @@ import {
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
-import type { ProcessResult, TmdbMovieResponse } from './interfaces';
+import type {
+    MovieCollectionRecord,
+    ProcessResult,
+    TmdbCollectionResponse,
+    TmdbMovieResponse,
+} from './interfaces';
 import {
     intEnv,
     json,
@@ -23,6 +28,7 @@ const docClient = DynamoDBDocumentClient.from(createDynamoDBClient(), {
 });
 
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
+const COLLECTIONS_TABLE_NAME = process.env.COLLECTIONS_TABLE_NAME ?? '';
 const TMDB_TOKEN = process.env.TMDB_API_KEY ?? '';
 const MAX_BATCH = intEnv('MAX_BATCH', 25);
 const CONCURRENCY = intEnv('TMDB_CONCURRENCY', 5);
@@ -117,6 +123,130 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
     throw lastError ?? new Error('TMDB request failed');
 }
 
+function isTmdbCollectionResponse(value: unknown): value is TmdbCollectionResponse {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const record = value as Record<string, unknown>;
+    return typeof record.id === 'number' &&
+        typeof record.name === 'string' &&
+        (record.overview === undefined || typeof record.overview === 'string') &&
+        (record.poster_path === undefined ||
+            record.poster_path === null ||
+            typeof record.poster_path === 'string') &&
+        (record.backdrop_path === undefined ||
+            record.backdrop_path === null ||
+            typeof record.backdrop_path === 'string');
+}
+
+async function fetchTmdbCollection(id: string): Promise<TmdbCollectionResponse> {
+    const url = `https://api.themoviedb.org/3/collection/${id}`;
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt < TMDB_RETRIES; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TMDB_TIMEOUT_MS);
+
+        log('INFO', 'Fetching collection from TMDB', {
+            id,
+            attempt: attempt + 1,
+            maxAttempts: TMDB_RETRIES,
+        });
+
+        try {
+            const res = await fetch(url, {
+                headers: {
+                    Authorization: `Bearer ${TMDB_TOKEN}`,
+                    Accept: 'application/json',
+                },
+                signal: controller.signal,
+            });
+
+            if (res.status === 404) {
+                throw new Error(`TMDB collection ${id} was not found.`);
+            }
+
+            if (res.status === 429 || res.status >= 500) {
+                const retryAfterHeader = res.headers.get('retry-after');
+                const retryAfter = Number(retryAfterHeader);
+                const delay = retryAfterHeader && Number.isFinite(retryAfter)
+                    ? retryAfter * 1000
+                    : 200 * 2 ** attempt;
+                log('WARN', 'TMDB collection request failed, retrying', {
+                    id,
+                    attempt: attempt + 1,
+                    status: res.status,
+                    delayMs: delay,
+                });
+                await sleep(delay);
+                lastError = new Error(`TMDB collection request returned ${res.status}.`);
+                continue;
+            }
+
+            if (!res.ok) {
+                throw new Error(`TMDB collection request returned ${res.status}.`);
+            }
+
+            const body: unknown = await res.json();
+            if (!isTmdbCollectionResponse(body) || String(body.id) !== id) {
+                throw new Error('TMDB returned an invalid collection response.');
+            }
+            return body;
+        } catch (error: unknown) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                lastError = new Error('TMDB collection request timed out.');
+                continue;
+            }
+            throw error;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    throw lastError ?? new Error('TMDB collection request failed.');
+}
+
+async function upsertTmdbCollection(
+    collection: TmdbCollectionResponse
+): Promise<void> {
+    const poster = collection.poster_path
+        ? `https://image.tmdb.org/t/p/w500${collection.poster_path}`
+        : '';
+    const backdrop = collection.backdrop_path
+        ? `https://image.tmdb.org/t/p/w1280${collection.backdrop_path}`
+        : '';
+
+    const item: MovieCollectionRecord = {
+        collectionId: String(collection.id),
+        name: collection.name,
+        overview: collection.overview ?? '',
+        poster,
+        backdrop,
+        sortOrder: 0,
+        lastUpdated: new Date().toISOString(),
+    };
+
+    await docClient.send(
+        new UpdateCommand({
+            TableName: COLLECTIONS_TABLE_NAME,
+            Key: { collectionId: item.collectionId },
+            UpdateExpression: `
+                SET #name = :name,
+                    overview = :overview,
+                    poster = :poster,
+                    backdrop = :backdrop,
+                    lastUpdated = :lastUpdated
+            `,
+            ExpressionAttributeNames: { '#name': 'name' },
+            ExpressionAttributeValues: {
+                ':name': item.name,
+                ':overview': item.overview,
+                ':poster': item.poster,
+                ':backdrop': item.backdrop,
+                ':lastUpdated': item.lastUpdated,
+            },
+        })
+    );
+}
+
 /**
  * Writes movie data to DynamoDB, preserving the coming-soon status unless explicitly set.
  * @param {string} id Numeric TMDB movie ID.
@@ -152,6 +282,9 @@ async function upsertMovie(
     const comingSoonUpdate = setComingSoon
         ? 'isComingSoon = :isComingSoon,'
         : 'isComingSoon = if_not_exists(isComingSoon, :isComingSoon),';
+    const collectionUpdate = movieData.collectionId
+        ? ', collectionId = :collectionId, GSI2PK = :gsi2pk, GSI2SK = :gsi2sk'
+        : ' REMOVE collectionId, GSI2PK, GSI2SK';
 
     const updateInput = {
         TableName: TABLE_NAME,
@@ -183,7 +316,7 @@ async function upsertMovie(
                 lastUpdated = :lastUpdated,
                 GSI1PK = :gsi1pk,
                 GSI1SK = :gsi1sk,
-                isCarousel = if_not_exists(isCarousel, :defaultCarousel)
+                isCarousel = if_not_exists(isCarousel, :defaultCarousel)${collectionUpdate}
         `,
         ExpressionAttributeValues: {
             ':title': movieData.title,
@@ -210,11 +343,36 @@ async function upsertMovie(
             ':gsi1pk': 'MOVIE',
             ':gsi1sk': `${movieData.releaseDate || '0000-00-00'}#${id}`,
             ':defaultCarousel': false,
+            ...(movieData.collectionId && {
+                ':collectionId': movieData.collectionId,
+                ':gsi2pk': `COLLECTION#${movieData.collectionId}`,
+                ':gsi2sk': `${movieData.sortTitle.toLowerCase()}#${id}`,
+            }),
         },
     };
 
     if (existing && existing.slug !== movieData.slug) {
         const { movieId, ...movieAttributes } = movieData;
+        const movedRecord = {
+            ...existing,
+            ...movieAttributes,
+            tmdbId: String(movieId),
+            entityType: 'Movie',
+            lastUpdated: new Date().toISOString(),
+            GSI1PK: 'MOVIE',
+            GSI1SK: `${movieData.releaseDate || '0000-00-00'}#${id}`,
+            GSI2PK: movieData.collectionId
+                ? `COLLECTION#${movieData.collectionId}`
+                : undefined,
+            GSI2SK: movieData.collectionId
+                ? `${movieData.sortTitle.toLowerCase()}#${id}`
+                : undefined,
+            isComingSoon: setComingSoon
+                ? movieData.isComingSoon
+                : existing.isComingSoon ?? movieData.isComingSoon,
+            isCarousel: existing.isCarousel ?? false,
+        };
+        if (!movieData.collectionId) delete movedRecord.collectionId;
         await docClient.send(
             new TransactWriteCommand({
                 TransactItems: [
@@ -228,19 +386,7 @@ async function upsertMovie(
                     {
                         Put: {
                             TableName: TABLE_NAME,
-                            Item: {
-                                ...existing,
-                                ...movieAttributes,
-                                tmdbId: String(movieId),
-                                entityType: 'Movie',
-                                lastUpdated: new Date().toISOString(),
-                                GSI1PK: 'MOVIE',
-                                GSI1SK: `${movieData.releaseDate || '0000-00-00'}#${id}`,
-                                isComingSoon: setComingSoon
-                                    ? movieData.isComingSoon
-                                    : existing.isComingSoon ?? movieData.isComingSoon,
-                                isCarousel: existing.isCarousel ?? false,
-                            },
+                            Item: movedRecord,
                             ConditionExpression: 'attribute_not_exists(tmdbId)',
                         },
                     },
@@ -276,6 +422,11 @@ export const handler = async (
         if (!TABLE_NAME) {
             log('ERROR', 'TABLE_NAME is not configured', { requestId });
             return json(500, { message: 'TABLE_NAME is not configured.' });
+        }
+
+        if (!COLLECTIONS_TABLE_NAME) {
+            log('ERROR', 'COLLECTIONS_TABLE_NAME is not configured', { requestId });
+            return json(500, { message: 'COLLECTIONS_TABLE_NAME is not configured.' });
         }
 
         if (!TMDB_TOKEN) {
@@ -337,6 +488,7 @@ export const handler = async (
             concurrency: CONCURRENCY,
         });
 
+        const collectionImports = new Map<string, Promise<void>>();
         const results: ProcessResult[] = await mapWithConcurrency(
             ids,
             CONCURRENCY,
@@ -344,6 +496,15 @@ export const handler = async (
                 try {
                     const raw = await fetchTmdbMovie(id);
                     const movieData = projectTmdb(raw, isComingSoon);
+                    if (movieData.collectionId) {
+                        let collectionImport = collectionImports.get(movieData.collectionId);
+                        if (!collectionImport) {
+                            collectionImport = fetchTmdbCollection(movieData.collectionId)
+                                .then(upsertTmdbCollection);
+                            collectionImports.set(movieData.collectionId, collectionImport);
+                        }
+                        await collectionImport;
+                    }
                     await upsertMovie(id, movieData, isComingSoon !== undefined);
                     log('INFO', 'Movie processed successfully', {
                         requestId,

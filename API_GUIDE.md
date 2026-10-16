@@ -4,6 +4,32 @@ Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lamb
 
 The bulk upsert endpoints use the same JWT authorizer as the existing movie administration POST endpoint. Each request accepts 1–25 complete records in the matching array property. Submitted IDs are replaced atomically; records not included in the request are unchanged. Duplicate IDs in one request are rejected.
 
+## Movie collections
+
+Movie imports use TMDB's optional `belongs_to_collection` relationship. The import also fetches that collection's metadata and stores it in the separate movie collections table. The movie itself stores only its `collectionId`; its poster, synopsis, showtimes, and other movie data remain in the movie table.
+
+Each movie belongs to at most one collection. Collections can have a `parentCollectionId`, so a collection with its own TMDB ID (for example, a Rogue One collection) can be placed under a broader Star Wars collection. `GET /collections/{id}` returns the requested collection, its descendants, and the movies from all those collections. Each movie is stored and returned once.
+
+Use `POST /collections` to upsert collection metadata and hierarchy. Lower `sortOrder` values appear first among sibling collections; movies within each collection are ordered by their `sortTitle`.
+
+```json
+{
+  "collections": [
+    {
+      "collectionId": "99901",
+      "name": "Rogue One Collection",
+      "overview": "Collection overview",
+      "poster": "https://image.tmdb.org/t/p/w500/poster.jpg",
+      "backdrop": "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
+      "parentCollectionId": "10",
+      "sortOrder": 1
+    }
+  ]
+}
+```
+
+Collection IDs are numeric TMDB IDs represented as strings. When a parent is provided it must already exist or be included in the same request; circular parent relationships are rejected. The complete submitted records replace their stored versions, so include `parentCollectionId` and `sortOrder` when retaining or changing the hierarchy. Omit `parentCollectionId` to make a collection a root.
+
 ## Upsert ticket pricing
 
 `POST /ticket-pricing`
@@ -115,7 +141,8 @@ $env:AWS_REGION = "eu-west-2"
 $env:LOCAL_CLOUD_TABLE_NAME = "blockbuster-theatre-movie-catalogue-dev"
 $env:LOCAL_CLOUD_PRICING_TABLE_NAME = "blockbuster-theatre-ticket-pricing-dev"
 $env:LOCAL_CLOUD_OFFERS_TABLE_NAME = "blockbuster-theatre-booking-offers-dev"
+$env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections-dev"
 npm run local:cloud
 ```
 
-The profile must have DynamoDB permissions for those tables. The tables must already exist with the same keys and movie-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing` and `POST /booking-offers` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.
+The profile must have DynamoDB permissions for those tables. The tables must already exist with the same keys and movie-table `GSI1`/`GSI2` and collection-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.

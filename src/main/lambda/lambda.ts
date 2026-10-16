@@ -1,15 +1,20 @@
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import { movieImportLambdaConfig as cfg, type MovieImportLambdaConfig } from '../../../lib/stack/lambda';
+import {
+    lambdaSettings,
+    movieImportLambdaConfig as cfg,
+    movieUpdateMaxBatch,
+    type MovieImportLambdaConfig,
+} from '../../../lib/stack/lambda';
 
 interface LambdaConstructProps {
     table: dynamodb.Table;
     pricingTable: dynamodb.Table;
     offersTable: dynamodb.Table;
+    collectionsTable: dynamodb.Table;
     lambdaConfig?: MovieImportLambdaConfig;
 }
 
@@ -25,6 +30,8 @@ export class LambdaConstruct extends Construct {
     public readonly validateCheckoutFunction: lambdaNodejs.NodejsFunction;
     public readonly upsertBookingOffersFunction: lambdaNodejs.NodejsFunction;
     public readonly upsertTicketPricingFunction: lambdaNodejs.NodejsFunction;
+    public readonly getMovieCollectionFunction: lambdaNodejs.NodejsFunction;
+    public readonly upsertMovieCollectionsFunction: lambdaNodejs.NodejsFunction;
 
     /**
      * Creates the movie import, update, list, and detail Lambda functions with table permissions.
@@ -38,7 +45,7 @@ export class LambdaConstruct extends Construct {
 
         this.addMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
             functionName: 'blockbuster-theatre-add-movies-handler',
-            runtime: lambda.Runtime.NODEJS_24_X,
+            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/add-movies-handler.ts'),
             handler: 'handler',
             memorySize: lambdaConfig.memorySize,
@@ -48,6 +55,7 @@ export class LambdaConstruct extends Construct {
             }),
             environment: {
                 TABLE_NAME: props.table.tableName,
+                COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
                 TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',
                 MAX_BATCH: String(lambdaConfig.maxBatch),
                 TMDB_CONCURRENCY: String(lambdaConfig.tmdbConcurrency),
@@ -57,17 +65,18 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadWriteData(this.addMoviesFunction);
+        props.collectionsTable.grantReadWriteData(this.addMoviesFunction);
 
         this.updateMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'UpdateMoviesHandler', {
             functionName: 'blockbuster-theatre-update-movies-handler',
-            runtime: lambda.Runtime.NODEJS_24_X,
+            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/update-movies-handler.ts'),
             handler: 'handler',
-            memorySize: 256,
-            timeout: cdk.Duration.seconds(25),
+            memorySize: lambdaSettings.batchProcessing.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.batchProcessing.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
-                MAX_BATCH: String(lambdaConfig.maxBatch),
+                MAX_BATCH: String(movieUpdateMaxBatch),
                 UPDATE_CONCURRENCY: String(lambdaConfig.tmdbConcurrency),
             },
         });
@@ -76,11 +85,11 @@ export class LambdaConstruct extends Construct {
 
         this.listMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ListMoviesHandler', {
             functionName: 'blockbuster-theatre-list-movies-handler',
-            runtime: lambda.Runtime.NODEJS_24_X,
+            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/list-movies-handler.ts'),
             handler: 'handler',
-            memorySize: 256,
-            timeout: cdk.Duration.seconds(10),
+            memorySize: lambdaSettings.default.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
             },
@@ -90,11 +99,11 @@ export class LambdaConstruct extends Construct {
 
         this.getMovieFunction = new lambdaNodejs.NodejsFunction(this, 'GetMovieHandler', {
             functionName: 'blockbuster-theatre-get-movie-lambda',
-            runtime: lambda.Runtime.NODEJS_24_X,
+            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/get-movie-handler.ts'),
             handler: 'handler',
-            memorySize: 256,
-            timeout: cdk.Duration.seconds(10),
+            memorySize: lambdaSettings.default.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
             },
@@ -102,13 +111,33 @@ export class LambdaConstruct extends Construct {
 
         props.table.grantReadData(this.getMovieFunction);
 
+        this.getMovieCollectionFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'GetMovieCollectionHandler',
+            {
+                functionName: 'blockbuster-theatre-get-movie-collection-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/get-movie-collection-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.collectionTreeRead.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.collectionTreeRead.timeoutSeconds),
+                environment: {
+                    TABLE_NAME: props.table.tableName,
+                    COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
+                },
+            }
+        );
+
+        props.table.grantReadData(this.getMovieCollectionFunction);
+        props.collectionsTable.grantReadData(this.getMovieCollectionFunction);
+
         this.exportMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ExportMoviesHandler', {
             functionName: 'blockbuster-theatre-export-movies-handler',
-            runtime: lambda.Runtime.NODEJS_24_X,
+            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/export-movies-handler.ts'),
             handler: 'handler',
-            memorySize: 512,
-            timeout: cdk.Duration.seconds(30),
+            memorySize: lambdaSettings.fullTableExport.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.fullTableExport.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
             },
@@ -118,11 +147,11 @@ export class LambdaConstruct extends Construct {
 
         this.listTmdbIdsFunction = new lambdaNodejs.NodejsFunction(this, 'ListTmdbIdsHandler', {
             functionName: 'blockbuster-theatre-list-tmdb-ids-lambda',
-            runtime: lambda.Runtime.NODEJS_24_X,
+            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/list-tmdb-ids-handler.ts'),
             handler: 'handler',
-            memorySize: 256,
-            timeout: cdk.Duration.seconds(30),
+            memorySize: lambdaSettings.fullTableRead.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.fullTableRead.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
             },
@@ -135,11 +164,11 @@ export class LambdaConstruct extends Construct {
             'ListFilmSelectionsHandler',
             {
                 functionName: 'blockbuster-theatre-film-selections-handler',
-                runtime: lambda.Runtime.NODEJS_24_X,
+                runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/list-film-selections-handler.ts'),
                 handler: 'handler',
-                memorySize: 256,
-                timeout: cdk.Duration.seconds(15),
+                memorySize: lambdaSettings.paginatedSelectionRead.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.paginatedSelectionRead.timeoutSeconds),
                 environment: {
                     TABLE_NAME: props.table.tableName,
                     OFFERS_TABLE_NAME: props.offersTable.tableName,
@@ -155,11 +184,11 @@ export class LambdaConstruct extends Construct {
             'GetTicketPricingHandler',
             {
                 functionName: 'blockbuster-theatre-ticket-pricing-handler',
-                runtime: lambda.Runtime.NODEJS_24_X,
+                runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/get-ticket-pricing-handler.ts'),
                 handler: 'handler',
-                memorySize: 256,
-                timeout: cdk.Duration.seconds(10),
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     TABLE_NAME: props.table.tableName,
                     PRICING_TABLE_NAME: props.pricingTable.tableName,
@@ -177,11 +206,11 @@ export class LambdaConstruct extends Construct {
             'ValidateCheckoutHandler',
             {
                 functionName: 'blockbuster-theatre-checkout-validation-handler',
-                runtime: lambda.Runtime.NODEJS_24_X,
+                runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/validate-checkout-handler.ts'),
                 handler: 'handler',
-                memorySize: 256,
-                timeout: cdk.Duration.seconds(10),
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     TABLE_NAME: props.table.tableName,
                     PRICING_TABLE_NAME: props.pricingTable.tableName,
@@ -199,11 +228,11 @@ export class LambdaConstruct extends Construct {
             'UpsertBookingOffersHandler',
             {
                 functionName: 'blockbuster-theatre-upsert-booking-offers-handler',
-                runtime: lambda.Runtime.NODEJS_24_X,
+                runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/upsert-booking-offers-handler.ts'),
                 handler: 'handler',
-                memorySize: 256,
-                timeout: cdk.Duration.seconds(10),
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     OFFERS_TABLE_NAME: props.offersTable.tableName,
                 },
@@ -217,11 +246,11 @@ export class LambdaConstruct extends Construct {
             'UpsertTicketPricingHandler',
             {
                 functionName: 'blockbuster-theatre-upsert-ticket-pricing-handler',
-                runtime: lambda.Runtime.NODEJS_24_X,
+                runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/upsert-ticket-pricing-handler.ts'),
                 handler: 'handler',
-                memorySize: 256,
-                timeout: cdk.Duration.seconds(10),
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     PRICING_TABLE_NAME: props.pricingTable.tableName,
                 },
@@ -229,5 +258,23 @@ export class LambdaConstruct extends Construct {
         );
 
         props.pricingTable.grantReadWriteData(this.upsertTicketPricingFunction);
+
+        this.upsertMovieCollectionsFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'UpsertMovieCollectionsHandler',
+            {
+                functionName: 'blockbuster-theatre-upsert-movie-collections-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/upsert-movie-collections-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.collectionUpsert.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.collectionUpsert.timeoutSeconds),
+                environment: {
+                    COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
+                },
+            }
+        );
+
+        props.collectionsTable.grantReadWriteData(this.upsertMovieCollectionsFunction);
     }
 }

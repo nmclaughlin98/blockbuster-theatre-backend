@@ -2,6 +2,7 @@ export interface MovieData {
     slug: string;
     sortTitle: string;
     movieId: number;
+    collectionId?: string;
     title: string;
     genres: string[];
     mainGenre: string;

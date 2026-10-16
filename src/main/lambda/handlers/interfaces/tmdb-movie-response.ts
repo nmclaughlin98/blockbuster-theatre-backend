@@ -1,4 +1,5 @@
 import type { TmdbCredits } from './tmdb-credits';
+import type { TmdbMovieCollectionSummary } from './tmdb-movie-collection-summary';
 import type { TmdbGenre } from './tmdb-genre';
 import type { TmdbReleaseDates } from './tmdb-release-dates';
 import type { TmdbVideos } from './tmdb-videos';
@@ -17,4 +18,5 @@ export interface TmdbMovieResponse {
     credits?: TmdbCredits;
     videos?: TmdbVideos;
     release_dates?: TmdbReleaseDates;
+    belongs_to_collection?: TmdbMovieCollectionSummary | null;
 }

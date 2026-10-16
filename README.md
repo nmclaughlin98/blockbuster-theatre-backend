@@ -1,6 +1,6 @@
 # Blockbuster Theatre Backend
 
-Backend API and AWS CDK infrastructure for the Blockbuster Theatre website. The API runs on AWS Lambda behind API Gateway and uses DynamoDB for movie catalogue, ticket pricing, and booking offer data.
+Backend API and AWS CDK infrastructure for the Blockbuster Theatre website. The API runs on AWS Lambda behind API Gateway and uses DynamoDB for movie catalogue, movie collections, ticket pricing, and booking offer data.
 
 ## Requirements
 
@@ -35,10 +35,11 @@ npm run synth
 The API supports:
 
 - `GET /movies` and `GET /movies/{id}` for the movie catalogue. The list endpoint is paginated.
+- `GET /collections/{id}` for a collection and its descendants, including each movie once.
 - `GET /film-selections` for active movie and offer booking selections.
 - `GET /ticket-pricing` for pricing resolved by movie or offer, weekday, and showtime.
 - `POST /checkout/validate` to validate booking selections and calculate authoritative totals.
-- Admin operations for movie, pricing, and offer data. Protected admin routes require the configured API Gateway JWT authorizer.
+- Admin operations for movie, collection, pricing, and offer data. Protected admin routes require the configured API Gateway JWT authorizer.
 
 See [API_GUIDE.md](./API_GUIDE.md) for booking data examples and local API instructions.
 

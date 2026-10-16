@@ -4,6 +4,7 @@ import type {
     TmdbCountryRelease,
     TmdbCredits,
     TmdbCrewMember,
+    TmdbMovieCollectionSummary,
     TmdbGenre,
     TmdbMovieResponse,
     TmdbReleaseCertification,
@@ -86,6 +87,16 @@ function isTmdbReleaseDates(value: unknown): value is TmdbReleaseDates {
     return isRecord(value) && isOptionalArray(value.results, isTmdbCountryRelease);
 }
 
+function isTmdbMovieCollectionSummary(
+    value: unknown
+): value is TmdbMovieCollectionSummary {
+    return isRecord(value) &&
+        typeof value.id === 'number' &&
+        typeof value.name === 'string' &&
+        isOptionalNullableString(value.poster_path) &&
+        isOptionalNullableString(value.backdrop_path);
+}
+
 /**
  * Checks that an unknown API payload has the supported TMDB movie response shape.
  * @param value Parsed TMDB response payload.
@@ -105,7 +116,12 @@ export function isTmdbMovieResponse(value: unknown): value is TmdbMovieResponse 
         isOptionalNullableString(value.poster_path) &&
         (value.credits === undefined || isTmdbCredits(value.credits)) &&
         (value.videos === undefined || isTmdbVideos(value.videos)) &&
-        (value.release_dates === undefined || isTmdbReleaseDates(value.release_dates));
+        (value.release_dates === undefined || isTmdbReleaseDates(value.release_dates)) &&
+        (
+            value.belongs_to_collection === undefined ||
+            value.belongs_to_collection === null ||
+            isTmdbMovieCollectionSummary(value.belongs_to_collection)
+        );
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -127,6 +143,10 @@ export function isMovieRecord(value: unknown): value is MovieRecord {
         typeof value.tmdbId === 'string' &&
         /^\d+$/.test(value.tmdbId) &&
         typeof value.slug === 'string' &&
+        (
+            value.collectionId === undefined ||
+            (typeof value.collectionId === 'string' && /^\d+$/.test(value.collectionId))
+        ) &&
         (
             value.sortTitle === undefined ||
             (typeof value.sortTitle === 'string' && Boolean(value.sortTitle.trim()))

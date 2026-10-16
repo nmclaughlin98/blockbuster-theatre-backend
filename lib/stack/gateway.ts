@@ -16,6 +16,8 @@ interface ApiGatewayConstructProps {
     validateCheckoutFunction: lambda.IFunction;
     upsertBookingOffersFunction: lambda.IFunction;
     upsertTicketPricingFunction: lambda.IFunction;
+    getMovieCollectionFunction: lambda.IFunction;
+    upsertMovieCollectionsFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
@@ -82,6 +84,14 @@ export class ApiGatewayConstruct extends Construct {
         const upsertTicketPricingIntegration = new integrations.HttpLambdaIntegration(
             'UpsertTicketPricingIntegration',
             props.upsertTicketPricingFunction
+        );
+        const getMovieCollectionIntegration = new integrations.HttpLambdaIntegration(
+            'GetMovieCollectionIntegration',
+            props.getMovieCollectionFunction
+        );
+        const upsertMovieCollectionsIntegration = new integrations.HttpLambdaIntegration(
+            'UpsertMovieCollectionsIntegration',
+            props.upsertMovieCollectionsFunction
         );
 
         this.httpApi.addRoutes({
@@ -153,6 +163,19 @@ export class ApiGatewayConstruct extends Construct {
             path: '/movies',
             methods: [apigw2.HttpMethod.PATCH],
             integration: updateMoviesIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/collections/{id}',
+            methods: [apigw2.HttpMethod.GET],
+            integration: getMovieCollectionIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/collections',
+            methods: [apigw2.HttpMethod.POST],
+            integration: upsertMovieCollectionsIntegration,
             authorizer: props.jwtAuthorizer,
         });
     }
