@@ -1,5 +1,7 @@
 # Booking Data API
 
+Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
+
 The bulk upsert endpoints use the same JWT authorizer as the existing movie administration POST endpoint. Each request accepts 1–25 complete records in the matching array property. Submitted IDs are replaced atomically; records not included in the request are unchanged. Duplicate IDs in one request are rejected.
 
 ## Upsert ticket pricing

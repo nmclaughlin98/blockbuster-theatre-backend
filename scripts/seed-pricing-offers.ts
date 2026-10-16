@@ -7,7 +7,7 @@ import {
 import type { OfferRecord, PricingTier } from '../src/main/lambda/handlers/interfaces';
 import { createDynamoDBClient } from '../src/main/lambda/handlers/dynamodb-client';
 import { isOfferRecord } from '../src/main/lambda/handlers/pricing-service';
-import { isMovieRecord } from '../src/main/lambda/handlers/utils';
+import { isMovieRecord } from '../src/main/lambda/handlers/utils/movie-validation';
 import { pricingRecords } from './pricing-records';
 
 function requiredEnvironmentValue(name: string): string {
