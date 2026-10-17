@@ -112,7 +112,7 @@ describe('ApiGatewayConstruct', () => {
             AuthorizationType: 'NONE',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /collections/{id}/refresh',
+            RouteKey: 'POST /collections/refresh',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
             AuthorizationType: 'JWT',

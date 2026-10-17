@@ -37,9 +37,14 @@ const { handler: listCollections } = require(
 const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
 global.fetch = fetchMock;
 
-function createEvent(id?: string): APIGatewayProxyEventV2 {
+function createEvent(id?: string, body?: unknown): APIGatewayProxyEventV2 {
     return {
         pathParameters: id ? { id } : undefined,
+        body: body === undefined
+            ? undefined
+            : typeof body === 'string'
+                ? body
+                : JSON.stringify(body),
         requestContext: { requestId: 'movie-collections-test-request' },
     } as unknown as APIGatewayProxyEventV2;
 }
@@ -73,9 +78,7 @@ function movie(tmdbId: string) {
         runtime: 120,
         releaseDate: '2025-01-01T00:00:00.000Z',
         poster: '',
-        largePoster: '',
         still: '',
-        largeStill: '',
         starring: [],
         director: 'Director',
         synopsis: 'Synopsis',
@@ -135,9 +138,21 @@ describe('TMDB list-backed movie collections', () => {
             });
         });
 
-        const result = await refreshCollection(createEvent('8706524'));
+        const result = await refreshCollection(createEvent(undefined, {
+            ids: ['8706524'],
+        }));
 
         expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result)).toMatchObject({
+            refreshedCount: 1,
+            failedCount: 0,
+            results: [{
+                collectionId: '8706524',
+                success: true,
+                name: 'Marvel Cinematic Universe',
+                movieCount: 3,
+            }],
+        });
         expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(new URL(String(fetchMock.mock.calls[0][0])).toString()).toContain(
             '/3/list/8706524?language=en-US&page=1'
@@ -155,13 +170,83 @@ describe('TMDB list-backed movie collections', () => {
         });
     });
 
-    it('rejects invalid list IDs and leaves stored data untouched for missing lists', async () => {
-        const invalidId = await refreshCollection(createEvent('abc'));
-        expect(invalidId).toMatchObject({ statusCode: 400 });
+    it('validates the IDs array and rejects duplicates before making TMDB requests', async () => {
+        const missingBody = await refreshCollection(createEvent());
+        const invalidJson = await refreshCollection(createEvent(undefined, '{'));
+        const emptyIds = await refreshCollection(createEvent(undefined, { ids: [] }));
+        const invalidId = await refreshCollection(createEvent(undefined, {
+            ids: ['abc'],
+        }));
+        const duplicateIds = await refreshCollection(createEvent(undefined, {
+            ids: ['00123', 123],
+        }));
+        const tooManyIds = await refreshCollection(createEvent(undefined, {
+            ids: Array.from({ length: 26 }, (_, index) => String(index + 1)),
+        }));
 
+        expect(missingBody).toMatchObject({ statusCode: 400 });
+        expect(invalidJson).toMatchObject({ statusCode: 400 });
+        expect(emptyIds).toMatchObject({ statusCode: 400 });
+        expect(invalidId).toMatchObject({ statusCode: 400 });
+        expect(responseBody(invalidId)).toMatchObject({ invalidIndexes: [0] });
+        expect(duplicateIds).toMatchObject({ statusCode: 400 });
+        expect(responseBody(duplicateIds)).toMatchObject({ duplicateIds: ['123'] });
+        expect(tooManyIds).toMatchObject({ statusCode: 400 });
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
+    });
+
+    it('reports per-ID failures while refreshing other lists in the same request', async () => {
+        fetchMock.mockImplementation(async (input) => {
+            const url = new URL(String(input));
+            if (url.pathname.endsWith('/404')) {
+                return tmdbResponse({ status_message: 'not found' }, 404);
+            }
+            return tmdbResponse({
+                id: 8706524,
+                name: 'Marvel Cinematic Universe',
+                description: 'An interconnected film series.',
+                page: 1,
+                total_pages: 1,
+                items: [{ id: 1726, media_type: 'movie' }],
+            });
+        });
+
+        const result = await refreshCollection(createEvent(undefined, {
+            ids: ['8706524', '404'],
+        }));
+
+        expect(result).toMatchObject({ statusCode: 207 });
+        expect(responseBody(result)).toMatchObject({
+            refreshedCount: 1,
+            failedCount: 1,
+            results: [
+                { collectionId: '8706524', success: true },
+                {
+                    collectionId: '404',
+                    success: false,
+                    statusCode: 404,
+                    message: 'TMDB list not found.',
+                },
+            ],
+        });
+        expect(ddbMock.commandCalls(PutCommand)).toHaveLength(1);
+    });
+
+    it('reports a missing TMDB list as a per-ID failure', async () => {
         fetchMock.mockResolvedValue(tmdbResponse({ status_message: 'not found' }, 404));
-        const missing = await refreshCollection(createEvent('404'));
-        expect(missing).toMatchObject({ statusCode: 404 });
+        const missing = await refreshCollection(createEvent(undefined, {
+            ids: ['404'],
+        }));
+        expect(missing).toMatchObject({ statusCode: 207 });
+        expect(responseBody(missing)).toMatchObject({
+            failedCount: 1,
+            results: [{
+                collectionId: '404',
+                success: false,
+                statusCode: 404,
+            }],
+        });
         expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
     });
 
@@ -177,7 +262,7 @@ describe('TMDB list-backed movie collections', () => {
             items: [{ id: 1726, media_type: 'movie' }],
         }));
 
-        await refreshCollection(createEvent('8706524'));
+        await refreshCollection(createEvent(undefined, { ids: ['8706524'] }));
 
         expect(ddbMock.commandCalls(PutCommand)[0].args[0].input.Item).toMatchObject({
             posterUrl: 'https://image.tmdb.org/t/p/w500/poster.jpg',

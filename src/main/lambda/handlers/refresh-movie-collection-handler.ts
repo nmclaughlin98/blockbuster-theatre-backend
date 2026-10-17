@@ -8,13 +8,36 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
 import type { MovieCollectionRecord } from './interfaces';
-import { intEnv, json, log, sleep } from './utils/common';
+import {
+    intEnv,
+    json,
+    log,
+    mapWithConcurrency,
+    sleep,
+} from './utils/common';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const COLLECTIONS_TABLE_NAME = process.env.COLLECTIONS_TABLE_NAME ?? '';
 const TMDB_TOKEN = process.env.TMDB_API_KEY ?? '';
 const TMDB_TIMEOUT_MS = intEnv('TMDB_TIMEOUT_MS', 4000);
 const TMDB_RETRIES = intEnv('TMDB_RETRIES', 3);
+const MAX_COLLECTIONS_PER_REFRESH = 25;
+const REFRESH_CONCURRENCY = 5;
+
+type RefreshResult =
+    | {
+        collectionId: string;
+        success: true;
+        name: string;
+        movieCount: number;
+        lastUpdated: string;
+    }
+    | {
+        collectionId: string;
+        success: false;
+        statusCode: number;
+        message: string;
+    };
 
 interface TmdbListItem {
     id: number;
@@ -40,6 +63,73 @@ class TmdbListError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseCollectionIds(event: APIGatewayProxyEventV2):
+    | { ids: string[] }
+    | { error: string; invalidIndexes?: number[]; duplicateIds?: string[] } {
+    if (!event.body) {
+        return { error: 'Missing request body.' };
+    }
+
+    let body: unknown;
+    try {
+        const content = event.isBase64Encoded
+            ? Buffer.from(event.body, 'base64').toString('utf8')
+            : event.body;
+        body = JSON.parse(content);
+    } catch {
+        return { error: 'Request body is not valid JSON.' };
+    }
+
+    const ids = isRecord(body) ? body.ids : undefined;
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return { error: 'ids must be a non-empty array.' };
+    }
+    if (ids.length > MAX_COLLECTIONS_PER_REFRESH) {
+        return {
+            error: `ids cannot exceed ${MAX_COLLECTIONS_PER_REFRESH} items per request.`,
+        };
+    }
+
+    const normalizedIds: string[] = [];
+    const invalidIndexes: number[] = [];
+    const seenIds = new Set<string>();
+    const duplicateIds = new Set<string>();
+
+    ids.forEach((value, index) => {
+        const rawId = typeof value === 'number' && Number.isSafeInteger(value)
+            ? String(value)
+            : typeof value === 'string'
+                ? value
+                : '';
+        if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(Number(rawId)) ||
+            Number(rawId) <= 0
+        ) {
+            invalidIndexes.push(index);
+            return;
+        }
+
+        const id = String(Number(rawId));
+        if (seenIds.has(id)) duplicateIds.add(id);
+        seenIds.add(id);
+        normalizedIds.push(id);
+    });
+
+    if (invalidIndexes.length > 0) {
+        return {
+            error: 'Every collection ID must be a positive safe integer.',
+            invalidIndexes,
+        };
+    }
+    if (duplicateIds.size > 0) {
+        return {
+            error: 'Duplicate collection IDs are not allowed in one request.',
+            duplicateIds: [...duplicateIds],
+        };
+    }
+
+    return { ids: normalizedIds };
 }
 
 function isTmdbListItem(value: unknown): value is TmdbListItem {
@@ -152,32 +242,10 @@ async function fetchTmdbListPage(
     throw lastError ?? new TmdbListError('TMDB list request failed.', 502);
 }
 
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
-    const requestId = event.requestContext?.requestId;
-    const rawListId = event.pathParameters?.id;
-
-    if (!COLLECTIONS_TABLE_NAME) {
-        log('ERROR', 'Collection table is not configured', {
-            requestId,
-            collectionsTableConfigured: Boolean(COLLECTIONS_TABLE_NAME),
-        });
-        return json(500, { message: 'Collection data is not configured.' });
-    }
-    if (!TMDB_TOKEN) {
-        log('ERROR', 'TMDB_API_KEY is not configured', { requestId });
-        return json(500, { message: 'TMDB_API_KEY is not configured.' });
-    }
-    if (!rawListId ||
-        !/^\d+$/.test(rawListId) ||
-        !Number.isSafeInteger(Number(rawListId)) ||
-        Number(rawListId) <= 0
-    ) {
-        return json(400, { message: 'A numeric TMDB list ID is required.' });
-    }
-    const listId = String(Number(rawListId));
-
+async function refreshList(
+    listId: string,
+    requestId: string | undefined
+): Promise<RefreshResult> {
     try {
         const firstPage = await fetchTmdbListPage(listId, 1);
         const itemPages = [firstPage];
@@ -218,13 +286,13 @@ export const handler = async (
             pages: firstPage.total_pages,
             movieCount: movieIds.length,
         });
-        return json(200, {
-            message: 'TMDB list refreshed successfully.',
+        return {
             collectionId: listId,
+            success: true,
             name: collection.name,
             movieCount: movieIds.length,
             lastUpdated: collection.lastUpdated,
-        });
+        };
     } catch (error: unknown) {
         const statusCode = error instanceof TmdbListError
             ? error.statusCode
@@ -234,12 +302,58 @@ export const handler = async (
             listId,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
-        return json(statusCode, {
+        return {
+            collectionId: listId,
+            success: false,
+            statusCode,
             message: statusCode === 404
                 ? 'TMDB list not found.'
                 : statusCode === 502
                     ? 'Unable to retrieve the TMDB list.'
                     : 'Unable to refresh the collection.',
+        };
+    }
+}
+
+export const handler = async (
+    event: APIGatewayProxyEventV2
+): Promise<APIGatewayProxyResultV2> => {
+    const requestId = event.requestContext?.requestId;
+
+    if (!COLLECTIONS_TABLE_NAME) {
+        log('ERROR', 'Collection table is not configured', {
+            requestId,
+            collectionsTableConfigured: Boolean(COLLECTIONS_TABLE_NAME),
+        });
+        return json(500, { message: 'Collection data is not configured.' });
+    }
+    if (!TMDB_TOKEN) {
+        log('ERROR', 'TMDB_API_KEY is not configured', { requestId });
+        return json(500, { message: 'TMDB_API_KEY is not configured.' });
+    }
+
+    const parsedIds = parseCollectionIds(event);
+    if ('error' in parsedIds) {
+        return json(400, {
+            message: parsedIds.error,
+            ...(parsedIds.invalidIndexes && { invalidIndexes: parsedIds.invalidIndexes }),
+            ...(parsedIds.duplicateIds && { duplicateIds: parsedIds.duplicateIds }),
         });
     }
+
+    const results = await mapWithConcurrency(
+        parsedIds.ids,
+        REFRESH_CONCURRENCY,
+        (listId) => refreshList(listId, requestId)
+    );
+    const failedCount = results.filter((result) => !result.success).length;
+
+    return json(failedCount > 0 ? 207 : 200, {
+        message: failedCount > 0
+            ? 'One or more TMDB lists could not be refreshed.'
+            : 'TMDB lists refreshed successfully.',
+        refreshedCount: results.length - failedCount,
+        failedCount,
+        results,
+    });
 };

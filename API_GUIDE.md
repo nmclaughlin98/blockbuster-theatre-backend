@@ -2,6 +2,16 @@
 
 Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
 
+Movie records store TMDB `poster` and `still` URLs at original resolution. To backfill existing movie records, set `MOVIE_TABLE_NAME` and AWS credentials/region, then run `npm run migrate:movie-image-urls` to preview changes. The script scans every page and updates only those two URL attributes while preserving the rest of each record. Add `-- --apply` to write the changes after reviewing the dry-run output:
+
+```powershell
+$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue"
+$env:AWS_PROFILE = "your-aws-profile"
+$env:AWS_REGION = "eu-west-2"
+npm run migrate:movie-image-urls
+npm run migrate:movie-image-urls -- --apply
+```
+
 The bulk upsert endpoints use the same JWT authorizer as the existing movie administration POST endpoint. Each request accepts 1–25 complete records in the matching array property. Submitted IDs are replaced atomically; records not included in the request are unchanged. Duplicate IDs in one request are rejected.
 
 ## Movie collections
@@ -31,11 +41,44 @@ The response contains collection summaries sorted by name. Each summary includes
 
 The TMDB list ID is used as `collectionId`; movie IDs are stored as strings in the list's order. Non-movie list entries are excluded.
 
-Refresh a collection from TMDB with the authenticated admin endpoint:
+Refresh one or more collections from TMDB with the authenticated admin endpoint:
 
-`POST /collections/{id}/refresh`
+`POST /collections/refresh`
 
-For example, refresh list `8706524` with `POST /collections/8706524/refresh`. No request body is needed. The Lambda uses the configured `TMDB_API_KEY`, retrieves every page from `/3/list/{id}?language=en-US&page={page}`, and replaces the stored list data only after all pages have been fetched successfully. List poster and backdrop paths are converted to TMDB `w500` and `w1280` URLs; when TMDB has no path, the URL is an empty string.
+Provide a non-empty `ids` array of positive TMDB list IDs as strings or numbers. Requests support up to 25 IDs and reject invalid or duplicate IDs before refreshing any lists.
+
+```json
+{
+  "ids": ["8706524", "1234567"]
+}
+```
+
+The response contains a result for each ID in request order. Each list is refreshed independently: successful records are replaced only after every TMDB page has been fetched, while failures are reported per ID. The endpoint returns HTTP 200 if all refreshes succeed or HTTP 207 if one or more fail. The Lambda uses the configured `TMDB_API_KEY`, retrieves every page from `/3/list/{id}?language=en-US&page={page}`, and converts poster and backdrop paths to TMDB `w500` and `w1280` URLs; when TMDB has no path, the URL is an empty string.
+
+Example partial-success response:
+
+```json
+{
+  "message": "One or more TMDB lists could not be refreshed.",
+  "refreshedCount": 1,
+  "failedCount": 1,
+  "results": [
+    {
+      "collectionId": "8706524",
+      "success": true,
+      "name": "Marvel Cinematic Universe",
+      "movieCount": 3,
+      "lastUpdated": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "collectionId": "1234567",
+      "success": false,
+      "statusCode": 404,
+      "message": "TMDB list not found."
+    }
+  ]
+}
+```
 
 Set `TMDB_API_KEY` in the environment used to synthesize/deploy the stack. For local API testing, set that same environment variable before starting the local API; the local refresh route also requires the local admin token.
 
@@ -172,4 +215,4 @@ $env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections
 npm run local:cloud
 ```
 
-The profile must have DynamoDB permissions for those tables. The tables must already exist with the same keys and movie-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections/{id}/refresh` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.
+The profile must have DynamoDB permissions for those tables. The tables must already exist with the same keys and movie-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections/refresh` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.

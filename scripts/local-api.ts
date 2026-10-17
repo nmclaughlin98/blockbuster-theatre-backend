@@ -162,13 +162,9 @@ function routeRequest(
             pathParameters: { id: movieMatch[1] },
         };
     }
-    const collectionRefreshMatch = method === 'POST'
-        ? /^\/collections\/(\d+)\/refresh$/.exec(pathname)
-        : null;
-    if (collectionRefreshMatch) {
+    if (method === 'POST' && pathname === '/collections/refresh') {
         return {
             handler: handlers.refreshMovieCollection,
-            pathParameters: { id: collectionRefreshMatch[1] },
             requiresLocalToken: true,
         };
     }

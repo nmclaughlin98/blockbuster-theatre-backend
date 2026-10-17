@@ -184,7 +184,7 @@ export class ApiGatewayConstruct extends Construct {
         });
 
         this.httpApi.addRoutes({
-            path: '/collections/{id}/refresh',
+            path: '/collections/refresh',
             methods: [apigw2.HttpMethod.POST],
             integration: refreshMovieCollectionIntegration,
             authorizer: props.jwtAuthorizer,
