@@ -119,7 +119,7 @@ describe('BackendStack', () => {
             RouteKey: 'GET /collections/{id}',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /collections',
+            RouteKey: 'POST /collections/{id}/refresh',
             AuthorizationType: 'JWT',
         });
     });

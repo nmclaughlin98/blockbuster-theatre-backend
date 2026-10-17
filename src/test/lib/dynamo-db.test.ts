@@ -37,32 +37,11 @@ describe('DatabaseConstruct', () => {
         });
     });
 
-    it('should index movies by collection and collection children by parent', () => {
+    it('should store TMDB list collections without a hierarchy index', () => {
         const template = Template.fromStack(stack);
-        template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movie-catalogue',
-            GlobalSecondaryIndexes: Match.arrayWith([
-                Match.objectLike({
-                    IndexName: 'GSI2',
-                    KeySchema: [
-                        { AttributeName: 'GSI2PK', KeyType: 'HASH' },
-                        { AttributeName: 'GSI2SK', KeyType: 'RANGE' },
-                    ],
-                }),
-            ]),
-        });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-movie-collections',
             KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
-            GlobalSecondaryIndexes: Match.arrayWith([
-                Match.objectLike({
-                    IndexName: 'GSI1',
-                    KeySchema: [
-                        { AttributeName: 'GSI1PK', KeyType: 'HASH' },
-                        { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
-                    ],
-                }),
-            ]),
             BillingMode: 'PAY_PER_REQUEST',
         });
     });

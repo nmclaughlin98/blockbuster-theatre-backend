@@ -40,8 +40,6 @@ const tableDefinitions: CreateTableCommandInput[] = [
             { AttributeName: 'slug', AttributeType: 'S' },
             { AttributeName: 'GSI1PK', AttributeType: 'S' },
             { AttributeName: 'GSI1SK', AttributeType: 'S' },
-            { AttributeName: 'GSI2PK', AttributeType: 'S' },
-            { AttributeName: 'GSI2SK', AttributeType: 'S' },
         ],
         KeySchema: [
             { AttributeName: 'tmdbId', KeyType: 'HASH' },
@@ -53,14 +51,6 @@ const tableDefinitions: CreateTableCommandInput[] = [
                 KeySchema: [
                     { AttributeName: 'GSI1PK', KeyType: 'HASH' },
                     { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
-                ],
-                Projection: { ProjectionType: 'ALL' },
-            },
-            {
-                IndexName: 'GSI2',
-                KeySchema: [
-                    { AttributeName: 'GSI2PK', KeyType: 'HASH' },
-                    { AttributeName: 'GSI2SK', KeyType: 'RANGE' },
                 ],
                 Projection: { ProjectionType: 'ALL' },
             },
@@ -81,22 +71,8 @@ const tableDefinitions: CreateTableCommandInput[] = [
     {
         TableName: tableNames.collections,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [
-            { AttributeName: 'collectionId', AttributeType: 'S' },
-            { AttributeName: 'GSI1PK', AttributeType: 'S' },
-            { AttributeName: 'GSI1SK', AttributeType: 'S' },
-        ],
+        AttributeDefinitions: [{ AttributeName: 'collectionId', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
-        GlobalSecondaryIndexes: [
-            {
-                IndexName: 'GSI1',
-                KeySchema: [
-                    { AttributeName: 'GSI1PK', KeyType: 'HASH' },
-                    { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
-                ],
-                Projection: { ProjectionType: 'ALL' },
-            },
-        ],
     },
 ];
 

@@ -6,7 +6,6 @@ import {
     DynamoDBDocumentClient,
     GetCommand,
     QueryCommand,
-    type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
 import type { MovieCollectionRecord, MovieRecord } from './interfaces';
@@ -19,84 +18,37 @@ const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const MOVIE_TABLE_NAME = process.env.TABLE_NAME ?? '';
 const COLLECTIONS_TABLE_NAME = process.env.COLLECTIONS_TABLE_NAME ?? '';
 
+async function getMovie(tmdbId: string): Promise<MovieRecord | undefined> {
+    const result = await docClient.send(
+        new QueryCommand({
+            TableName: MOVIE_TABLE_NAME,
+            KeyConditionExpression: 'tmdbId = :tmdbId',
+            ExpressionAttributeValues: { ':tmdbId': tmdbId },
+            Limit: 2,
+            ConsistentRead: true,
+        })
+    );
+    const items = result.Items ?? [];
+    if (items.length > 1) {
+        throw new Error(`Multiple movie records match TMDB ID ${tmdbId}.`);
+    }
+    const item = items[0];
+    if (item && !isMovieRecord(item)) {
+        throw new Error(`DynamoDB returned an invalid movie record for ${tmdbId}.`);
+    }
+    return item;
+}
+
 function collectionResponse(record: MovieCollectionRecord) {
     return {
         collectionId: record.collectionId,
         name: record.name,
-        overview: record.overview,
-        poster: record.poster,
-        backdrop: record.backdrop,
-        ...(record.parentCollectionId && {
-            parentCollectionId: record.parentCollectionId,
-        }),
-        sortOrder: record.sortOrder ?? 0,
+        description: record.description,
+        posterUrl: record.posterUrl,
+        backdropUrl: record.backdropUrl,
+        movieIds: record.movieIds,
+        ...(record.lastUpdated && { lastUpdated: record.lastUpdated }),
     };
-}
-
-async function queryPages<T>(
-    query: (exclusiveStartKey?: Record<string, NativeAttributeValue>) => Promise<{
-        Items?: Record<string, NativeAttributeValue>[];
-        LastEvaluatedKey?: Record<string, NativeAttributeValue>;
-    }>,
-    isValid: (item: unknown) => item is T,
-    invalidMessage: string
-): Promise<T[]> {
-    const items: T[] = [];
-    let exclusiveStartKey: Record<string, NativeAttributeValue> | undefined;
-
-    do {
-        const result = await query(exclusiveStartKey);
-        for (const item of result.Items ?? []) {
-            if (!isValid(item)) throw new Error(invalidMessage);
-            items.push(item);
-        }
-        exclusiveStartKey = result.LastEvaluatedKey;
-    } while (exclusiveStartKey);
-
-    return items;
-}
-
-async function getChildCollections(parentCollectionId: string): Promise<MovieCollectionRecord[]> {
-    const children = await queryPages(
-        (ExclusiveStartKey) => docClient.send(
-            new QueryCommand({
-                TableName: COLLECTIONS_TABLE_NAME,
-                IndexName: 'GSI1',
-                KeyConditionExpression: 'GSI1PK = :parent',
-                ExpressionAttributeValues: {
-                    ':parent': `PARENT#${parentCollectionId}`,
-                },
-                ScanIndexForward: true,
-                ExclusiveStartKey,
-            })
-        ),
-        isMovieCollectionRecord,
-        'DynamoDB returned an invalid movie collection record.'
-    );
-    return children;
-}
-
-async function getCollectionMovies(collectionId: string): Promise<MovieRecord[]> {
-    const movies = await queryPages(
-        (ExclusiveStartKey) => docClient.send(
-            new QueryCommand({
-                TableName: MOVIE_TABLE_NAME,
-                IndexName: 'GSI2',
-                KeyConditionExpression: 'GSI2PK = :collection',
-                ExpressionAttributeValues: {
-                    ':collection': `COLLECTION#${collectionId}`,
-                },
-                ScanIndexForward: true,
-                ExclusiveStartKey,
-            })
-        ),
-        isMovieRecord,
-        'DynamoDB returned an invalid movie record.'
-    );
-    if (movies.some((movie) => movie.collectionId !== collectionId)) {
-        throw new Error('DynamoDB returned a movie assigned to the wrong collection.');
-    }
-    return movies;
 }
 
 export const handler = async (
@@ -111,7 +63,7 @@ export const handler = async (
             movieTableConfigured: Boolean(MOVIE_TABLE_NAME),
             collectionsTableConfigured: Boolean(COLLECTIONS_TABLE_NAME),
         });
-        return json(500, { message: 'Movie collection data is not configured.' });
+        return json(500, { message: 'Collection data is not configured.' });
     }
     if (!collectionId || !/^\d+$/.test(collectionId)) {
         return json(400, { message: 'A numeric collection ID is required.' });
@@ -122,41 +74,25 @@ export const handler = async (
             new GetCommand({
                 TableName: COLLECTIONS_TABLE_NAME,
                 Key: { collectionId },
+                ConsistentRead: true,
             })
         );
-        if (!result.Item) {
-            return json(404, { message: 'Movie collection not found.' });
+        if (!result.Item || !isMovieCollectionRecord(result.Item)) {
+            return json(404, { message: 'TMDB list collection not found.' });
         }
-        if (!isMovieCollectionRecord(result.Item)) {
-            throw new Error('DynamoDB returned an invalid movie collection record.');
-        }
-        const root = result.Item;
-        const collections = [root];
-        const visited = new Set([root.collectionId]);
 
-        async function collectDescendants(parentId: string): Promise<void> {
-            const children = await getChildCollections(parentId);
-            for (const child of children) {
-                if (visited.has(child.collectionId)) {
-                    throw new Error('Collection hierarchy contains a cycle.');
-                }
-                visited.add(child.collectionId);
-                collections.push(child);
-                await collectDescendants(child.collectionId);
-            }
-        }
-        await collectDescendants(root.collectionId);
-
-        const moviesByCollection = await mapWithConcurrency(
-            collections,
+        const collection = result.Item;
+        const movies = await mapWithConcurrency(
+            collection.movieIds,
             5,
-            (collection) => getCollectionMovies(collection.collectionId)
+            getMovie
         );
 
         return json(200, {
-            collection: collectionResponse(root),
-            childCollections: collections.slice(1).map(collectionResponse),
-            movies: moviesByCollection.flat().map(projectMovieSummary),
+            collection: collectionResponse(collection),
+            movies: movies
+                .filter((movie): movie is MovieRecord => movie !== undefined)
+                .map(projectMovieSummary),
         });
     } catch (error: unknown) {
         log('ERROR', 'Failed to retrieve movie collection', {

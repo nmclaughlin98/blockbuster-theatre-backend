@@ -31,7 +31,7 @@ export class LambdaConstruct extends Construct {
     public readonly upsertBookingOffersFunction: lambdaNodejs.NodejsFunction;
     public readonly upsertTicketPricingFunction: lambdaNodejs.NodejsFunction;
     public readonly getMovieCollectionFunction: lambdaNodejs.NodejsFunction;
-    public readonly upsertMovieCollectionsFunction: lambdaNodejs.NodejsFunction;
+    public readonly refreshMovieCollectionFunction: lambdaNodejs.NodejsFunction;
 
     /**
      * Creates the movie import, update, list, and detail Lambda functions with table permissions.
@@ -55,7 +55,6 @@ export class LambdaConstruct extends Construct {
             }),
             environment: {
                 TABLE_NAME: props.table.tableName,
-                COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
                 TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',
                 MAX_BATCH: String(lambdaConfig.maxBatch),
                 TMDB_CONCURRENCY: String(lambdaConfig.tmdbConcurrency),
@@ -65,7 +64,6 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadWriteData(this.addMoviesFunction);
-        props.collectionsTable.grantReadWriteData(this.addMoviesFunction);
 
         this.updateMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'UpdateMoviesHandler', {
             functionName: 'blockbuster-theatre-update-movies-handler',
@@ -259,22 +257,25 @@ export class LambdaConstruct extends Construct {
 
         props.pricingTable.grantReadWriteData(this.upsertTicketPricingFunction);
 
-        this.upsertMovieCollectionsFunction = new lambdaNodejs.NodejsFunction(
+        this.refreshMovieCollectionFunction = new lambdaNodejs.NodejsFunction(
             this,
-            'UpsertMovieCollectionsHandler',
+            'RefreshMovieCollectionHandler',
             {
-                functionName: 'blockbuster-theatre-upsert-movie-collections-handler',
+                functionName: 'blockbuster-theatre-refresh-movie-collection-handler',
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/upsert-movie-collections-handler.ts'),
+                entry: path.join(__dirname, './handlers/refresh-movie-collection-handler.ts'),
                 handler: 'handler',
-                memorySize: lambdaSettings.collectionUpsert.memorySize,
-                timeout: cdk.Duration.seconds(lambdaSettings.collectionUpsert.timeoutSeconds),
+                memorySize: lambdaSettings.collectionRefresh.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.collectionRefresh.timeoutSeconds),
                 environment: {
                     COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
+                    TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',
+                    TMDB_TIMEOUT_MS: String(lambdaConfig.tmdbTimeoutMs),
+                    TMDB_RETRIES: String(lambdaConfig.tmdbRetries),
                 },
             }
         );
 
-        props.collectionsTable.grantReadWriteData(this.upsertMovieCollectionsFunction);
+        props.collectionsTable.grantReadWriteData(this.refreshMovieCollectionFunction);
     }
 }

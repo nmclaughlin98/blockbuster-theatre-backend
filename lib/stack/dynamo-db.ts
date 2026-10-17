@@ -42,13 +42,6 @@ export class DatabaseConstruct extends Construct {
             projectionType: dynamodb.ProjectionType.ALL,
         });
 
-        this.table.addGlobalSecondaryIndex({
-            indexName: 'GSI2',
-            partitionKey: { name: 'GSI2PK', type: dynamodb.AttributeType.STRING },
-            sortKey: { name: 'GSI2SK', type: dynamodb.AttributeType.STRING },
-            projectionType: dynamodb.ProjectionType.ALL,
-        });
-
         this.collectionsTable = new dynamodb.Table(this, 'BlockbusterTheatreMovieCollections', {
             tableName: 'blockbuster-theatre-movie-collections',
             partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },
@@ -56,11 +49,5 @@ export class DatabaseConstruct extends Construct {
             removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
-        this.collectionsTable.addGlobalSecondaryIndex({
-            indexName: 'GSI1',
-            partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
-            sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
-            projectionType: dynamodb.ProjectionType.ALL,
-        });
     }
 }

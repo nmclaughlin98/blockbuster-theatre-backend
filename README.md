@@ -35,11 +35,11 @@ npm run synth
 The API supports:
 
 - `GET /movies` and `GET /movies/{id}` for the movie catalogue. The list endpoint is paginated.
-- `GET /collections/{id}` for a collection and its descendants, including each movie once.
+- `GET /collections/{id}` for a TMDB list and its movies currently in the catalogue.
 - `GET /film-selections` for active movie and offer booking selections.
 - `GET /ticket-pricing` for pricing resolved by movie or offer, weekday, and showtime.
 - `POST /checkout/validate` to validate booking selections and calculate authoritative totals.
-- Admin operations for movie, collection, pricing, and offer data. Protected admin routes require the configured API Gateway JWT authorizer.
+- `POST /collections/{id}/refresh` to refresh all pages of a TMDB list. Protected admin routes require the configured API Gateway JWT authorizer.
 
 See [API_GUIDE.md](./API_GUIDE.md) for booking data examples and local API instructions.
 

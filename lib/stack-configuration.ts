@@ -39,7 +39,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             upsertBookingOffersFunction: lambdaServices.upsertBookingOffersFunction,
             upsertTicketPricingFunction: lambdaServices.upsertTicketPricingFunction,
             getMovieCollectionFunction: lambdaServices.getMovieCollectionFunction,
-            upsertMovieCollectionsFunction: lambdaServices.upsertMovieCollectionsFunction,
+            refreshMovieCollectionFunction: lambdaServices.refreshMovieCollectionFunction,
             jwtAuthorizer: authentication.jwtAuthorizer,
         });
 

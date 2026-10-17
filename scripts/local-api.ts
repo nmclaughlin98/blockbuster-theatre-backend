@@ -75,7 +75,7 @@ const handlers = {
     upsertTicketPricing: loadHandler('../src/main/lambda/handlers/upsert-ticket-pricing-handler'),
     upsertBookingOffers: loadHandler('../src/main/lambda/handlers/upsert-booking-offers-handler'),
     getMovieCollection: loadHandler('../src/main/lambda/handlers/get-movie-collection-handler'),
-    upsertMovieCollections: loadHandler('../src/main/lambda/handlers/upsert-movie-collections-handler'),
+    refreshMovieCollection: loadHandler('../src/main/lambda/handlers/refresh-movie-collection-handler'),
 };
 
 function corsHeaders(origin: string | undefined): Record<string, string> {
@@ -147,9 +147,6 @@ function routeRequest(
     if (method === 'POST' && pathname === '/booking-offers') {
         return { handler: handlers.upsertBookingOffers, requiresLocalToken: true };
     }
-    if (method === 'POST' && pathname === '/collections') {
-        return { handler: handlers.upsertMovieCollections, requiresLocalToken: true };
-    }
     if (method === 'POST' && pathname === '/checkout/validate') {
         return { handler: handlers.validateCheckout };
     }
@@ -159,6 +156,16 @@ function routeRequest(
         return {
             handler: handlers.getMovie,
             pathParameters: { id: movieMatch[1] },
+        };
+    }
+    const collectionRefreshMatch = method === 'POST'
+        ? /^\/collections\/(\d+)\/refresh$/.exec(pathname)
+        : null;
+    if (collectionRefreshMatch) {
+        return {
+            handler: handlers.refreshMovieCollection,
+            pathParameters: { id: collectionRefreshMatch[1] },
+            requiresLocalToken: true,
         };
     }
     const collectionMatch = method === 'GET' ? /^\/collections\/(\d+)$/.exec(pathname) : null;

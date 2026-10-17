@@ -85,7 +85,6 @@ describe('add movies utilities', () => {
             const movie = projectTmdb({
                 id: 42,
                 title: 'A Movie!',
-                collectionId: '99',
                 genres: [{ name: 'Drama' }],
                 vote_average: 8.25,
                 runtime: 120,
@@ -93,12 +92,6 @@ describe('add movies utilities', () => {
                 overview: 'A synopsis',
                 poster_path: '/poster.jpg',
                 backdrop_path: '/backdrop.jpg',
-                belongs_to_collection: {
-                    id: 99,
-                    name: 'A Movie Collection',
-                    poster_path: '/collection-poster.jpg',
-                    backdrop_path: '/collection-backdrop.jpg',
-                },
                 credits: {
                     cast: [{ name: 'Actor One' }],
                     crew: [{ name: 'Director One', job: 'Director' }],

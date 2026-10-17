@@ -11,7 +11,6 @@ import {
 import { mockClient } from 'aws-sdk-client-mock';
 
 process.env.TABLE_NAME = 'test-table';
-process.env.COLLECTIONS_TABLE_NAME = 'test-collections';
 process.env.TMDB_API_KEY = 'test-token';
 process.env.MAX_BATCH = '25';
 process.env.TMDB_CONCURRENCY = '2';
@@ -216,29 +215,8 @@ describe('Add movies Lambda handler', () => {
         });
     });
 
-    it('imports collection metadata and indexes each movie under its TMDB collection', async () => {
-        fetchMock.mockImplementation(async (input) => {
-            const url = new URL(String(input));
-            if (url.pathname === '/3/collection/900') {
-                return tmdbResponse({
-                    id: 900,
-                    name: 'Test Collection',
-                    overview: 'Collection overview',
-                    poster_path: '/collection-poster.jpg',
-                    backdrop_path: '/collection-backdrop.jpg',
-                    parts: [{ id: 123, title: 'Movie 123' }],
-                });
-            }
-            return tmdbResponse({
-                ...tmdbMovie(123),
-                belongs_to_collection: {
-                    id: 900,
-                    name: 'Test Collection',
-                    poster_path: '/collection-poster.jpg',
-                    backdrop_path: '/collection-backdrop.jpg',
-                },
-            });
-        });
+    it('imports movie records without collection metadata or collection index attributes', async () => {
+        fetchMock.mockResolvedValue(tmdbResponse(tmdbMovie(123)));
         ddbMock.on(UpdateCommand).resolves({});
 
         const result = await invoke(JSON.stringify({ movieIds: [123] }));
@@ -247,28 +225,11 @@ describe('Add movies Lambda handler', () => {
         expect(responseBody(result).successful).toEqual([
             { id: '123', status: 'SUCCESS', title: 'Movie 123' },
         ]);
-        expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(2);
-        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
-            TableName: 'test-collections',
-            Key: { collectionId: '900' },
-            ExpressionAttributeValues: {
-                ':name': 'Test Collection',
-                ':overview': 'Collection overview',
-                ':poster': 'https://image.tmdb.org/t/p/w500/collection-poster.jpg',
-                ':backdrop': 'https://image.tmdb.org/t/p/w1280/collection-backdrop.jpg',
-                ':sortOrder': 0,
-            },
-            UpdateExpression: expect.stringContaining(
-                'sortOrder = if_not_exists(sortOrder, :sortOrder)'
-            ),
-        });
-        expect(ddbMock.commandCalls(UpdateCommand)[1].args[0].input.ExpressionAttributeValues)
-            .toMatchObject({
-                ':collectionId': '900',
-                ':gsi2pk': 'COLLECTION#900',
-                ':gsi2sk': 'movie 123#123',
-            });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
+        const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+        expect(input.UpdateExpression).toContain('REMOVE collectionId, GSI2PK, GSI2SK');
+        expect(input.ExpressionAttributeValues).not.toHaveProperty(':collectionId');
     });
 
     it('moves an existing record atomically when an import changes its slug', async () => {
@@ -474,14 +435,5 @@ describe('Add movies Lambda handler', () => {
             message: 'TMDB_API_KEY is not configured.',
         });
 
-        const missingCollectionsHandler = loadHandlerWithEnvironment({
-            COLLECTIONS_TABLE_NAME: undefined,
-        });
-        const missingCollections = structuredResult(
-            await missingCollectionsHandler(createEvent('{}'))
-        );
-        expect(responseBody(missingCollections)).toEqual({
-            message: 'COLLECTIONS_TABLE_NAME is not configured.',
-        });
     });
 });

@@ -6,29 +6,35 @@ The bulk upsert endpoints use the same JWT authorizer as the existing movie admi
 
 ## Movie collections
 
-Movie imports use TMDB's optional `belongs_to_collection` relationship. The import also fetches that collection's metadata and stores it in the separate movie collections table. The movie itself stores only its `collectionId`; its poster, synopsis, showtimes, and other movie data remain in the movie table.
+TMDB lists are the source of truth for collections. Each collection record stores the TMDB list name, description, poster URL, backdrop URL, and every movie ID in the list. The IDs are stored even if those movies have not been imported into the movie catalogue yet. Movie records do not store collection membership.
 
-Each movie belongs to at most one collection. Collections can have a `parentCollectionId`, so a collection with its own TMDB ID (for example, a Rogue One collection) can be placed under a broader Star Wars collection. `GET /collections/{id}` returns the requested collection, its descendants, and the movies from all those collections. Each movie is stored and returned once.
+The TMDB list ID is used as `collectionId`; movie IDs are stored as strings in the list's order. Non-movie list entries are excluded.
 
-Use `POST /collections` to upsert collection metadata and hierarchy. Lower `sortOrder` values appear first among sibling collections; movies within each collection are ordered by their `sortTitle`.
+Refresh a collection from TMDB with the authenticated admin endpoint:
+
+`POST /collections/{id}/refresh`
+
+For example, refresh list `8706524` with `POST /collections/8706524/refresh`. No request body is needed. The Lambda uses the configured `TMDB_API_KEY`, retrieves every page from `/3/list/{id}?language=en-US&page={page}`, and replaces the stored list data only after all pages have been fetched successfully. List poster and backdrop paths are converted to TMDB `w500` and `w1280` URLs; when TMDB has no path, the URL is an empty string.
+
+Set `TMDB_API_KEY` in the environment used to synthesize/deploy the stack. For local API testing, set that same environment variable before starting the local API; the local refresh route also requires the local admin token.
+
+`GET /collections/{id}` returns the list metadata, the complete `movieIds` array, and movie summaries for IDs that currently exist in the catalogue. When a missing movie is later added through `POST /movies`, it appears in this response automatically because membership is resolved from the list's IDs at read time.
+
+Example collection portion of the response:
 
 ```json
 {
-  "collections": [
-    {
-      "collectionId": "99901",
-      "name": "Rogue One Collection",
-      "overview": "Collection overview",
-      "poster": "https://image.tmdb.org/t/p/w500/poster.jpg",
-      "backdrop": "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
-      "parentCollectionId": "10",
-      "sortOrder": 1
-    }
-  ]
+  "collection": {
+    "collectionId": "8706524",
+    "name": "Marvel Cinematic Universe",
+    "description": "An interconnected film series.",
+    "posterUrl": "",
+    "backdropUrl": "",
+    "movieIds": ["1726", "1724", "999"]
+  },
+  "movies": []
 }
 ```
-
-Collection IDs are numeric TMDB IDs represented as strings. When a parent is provided it must already exist or be included in the same request; circular parent relationships are rejected. The complete submitted records replace their stored versions, so include `parentCollectionId` and `sortOrder` when retaining or changing the hierarchy. Omit `parentCollectionId` to make a collection a root.
 
 ## Upsert ticket pricing
 
@@ -145,4 +151,4 @@ $env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections
 npm run local:cloud
 ```
 
-The profile must have DynamoDB permissions for those tables. The tables must already exist with the same keys and movie-table `GSI1`/`GSI2` and collection-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.
+The profile must have DynamoDB permissions for those tables. The tables must already exist with the same keys and movie-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections/{id}/refresh` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.

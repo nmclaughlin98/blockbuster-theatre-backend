@@ -104,6 +104,11 @@ describe('LambdaConstruct', () => {
             Timeout: 25,
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-refresh-movie-collection-handler',
+            MemorySize: 512,
+            Timeout: 25,
+        });
+        template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-export-movies-handler',
             MemorySize: 512,
             Timeout: 25,
@@ -122,9 +127,23 @@ describe('LambdaConstruct', () => {
             Environment: {
                 Variables: Match.objectLike({
                     TABLE_NAME: Match.anyValue(),
-                    COLLECTIONS_TABLE_NAME: Match.anyValue(),
                     MAX_BATCH: String(cfg.maxBatch),
                     TMDB_CONCURRENCY: '5',
+                    TMDB_TIMEOUT_MS: '4000',
+                    TMDB_RETRIES: '3',
+                }),
+            },
+        });
+    });
+
+    it('should configure the TMDB collection refresh function', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-refresh-movie-collection-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    COLLECTIONS_TABLE_NAME: Match.anyValue(),
+                    TMDB_API_KEY: Match.anyValue(),
                     TMDB_TIMEOUT_MS: '4000',
                     TMDB_RETRIES: '3',
                 }),
@@ -213,7 +232,7 @@ describe('LambdaConstruct', () => {
 
     it('should export collection functions', () => {
         expect(construct.getMovieCollectionFunction).toBeDefined();
-        expect(construct.upsertMovieCollectionsFunction).toBeDefined();
+        expect(construct.refreshMovieCollectionFunction).toBeDefined();
     });
 
     it('should grant read/write permissions to DynamoDB', () => {

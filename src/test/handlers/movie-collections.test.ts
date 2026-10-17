@@ -5,17 +5,20 @@ import type {
 import {
     DynamoDBDocumentClient,
     GetCommand,
+    PutCommand,
     QueryCommand,
-    TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 process.env.TABLE_NAME = 'test-movies';
 process.env.COLLECTIONS_TABLE_NAME = 'test-collections';
+process.env.TMDB_API_KEY = 'test-token';
+process.env.TMDB_TIMEOUT_MS = '1000';
+process.env.TMDB_RETRIES = '2';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler: upsertCollections } = require(
-    '../../main/lambda/handlers/upsert-movie-collections-handler'
+const { handler: refreshCollection } = require(
+    '../../main/lambda/handlers/refresh-movie-collection-handler'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
@@ -25,9 +28,11 @@ const { handler: getCollection } = require(
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 
-function createEvent(body?: string, id?: string): APIGatewayProxyEventV2 {
+const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
+global.fetch = fetchMock;
+
+function createEvent(id?: string): APIGatewayProxyEventV2 {
     return {
-        body,
         pathParameters: id ? { id } : undefined,
         requestContext: { requestId: 'movie-collections-test-request' },
     } as unknown as APIGatewayProxyEventV2;
@@ -40,33 +45,17 @@ function responseBody(result: APIGatewayProxyResultV2): Record<string, any> {
     return JSON.parse(result.body as string);
 }
 
-const rootCollection = {
-    collectionId: '10',
-    name: 'Star Wars Collection',
-    overview: 'The Star Wars films',
-    poster: 'https://example.com/star-wars.jpg',
-    backdrop: 'https://example.com/star-wars-backdrop.jpg',
-    sortOrder: 0,
-};
+function tmdbResponse(payload: unknown, status = 200): Response {
+    return new Response(JSON.stringify(payload), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
 
-const childCollection = {
-    collectionId: '20',
-    name: 'Rogue One Collection',
-    overview: 'Rogue One stories',
-    poster: 'https://example.com/rogue-one.jpg',
-    backdrop: 'https://example.com/rogue-one-backdrop.jpg',
-    parentCollectionId: '10',
-    sortOrder: 2,
-    GSI1PK: 'PARENT#10',
-    GSI1SK: `${String(2).padStart(16, '0')}#20`,
-};
-
-function movie(tmdbId: string, collectionId: string, sortTitle: string) {
+function movie(tmdbId: string) {
     return {
         tmdbId,
         slug: `movie-${tmdbId}`,
-        collectionId,
-        sortTitle,
         title: `Movie ${tmdbId}`,
         visible: true,
         isComingSoon: false,
@@ -90,12 +79,13 @@ function movie(tmdbId: string, collectionId: string, sortTitle: string) {
     };
 }
 
-describe('Movie collection handlers', () => {
+describe('TMDB list-backed movie collections', () => {
     beforeEach(() => {
         ddbMock.reset();
         ddbMock.on(GetCommand).resolves({});
         ddbMock.on(QueryCommand).resolves({ Items: [] });
-        ddbMock.on(TransactWriteCommand).resolves({});
+        ddbMock.on(PutCommand).resolves({});
+        fetchMock.mockReset();
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -105,124 +95,119 @@ describe('Movie collection handlers', () => {
         jest.restoreAllMocks();
     });
 
-    it('upserts child collections with an ordered parent index', async () => {
-        const result = await upsertCollections(createEvent(JSON.stringify({
-            collections: [
-                { ...rootCollection, sortOrder: 0 },
-                { ...childCollection, GSI1PK: undefined, GSI1SK: undefined },
-            ],
-        })));
+    it('refreshes all TMDB pages and stores movie IDs even when catalogue records are absent', async () => {
+        fetchMock.mockImplementation(async (input) => {
+            const url = new URL(String(input));
+            if (url.searchParams.get('page') === '1') {
+                return tmdbResponse({
+                    id: 8706524,
+                    name: 'Marvel Cinematic Universe',
+                    description: 'An interconnected film series.',
+                    poster_path: null,
+                    backdrop_path: null,
+                    page: 1,
+                    total_pages: 2,
+                    items: [
+                        { id: 1726, media_type: 'movie' },
+                        { id: 1724, media_type: 'movie' },
+                    ],
+                });
+            }
+            return tmdbResponse({
+                id: 8706524,
+                name: 'Marvel Cinematic Universe',
+                description: 'An interconnected film series.',
+                poster_path: null,
+                backdrop_path: null,
+                page: 2,
+                total_pages: 2,
+                items: [
+                    { id: 999, media_type: 'movie' },
+                    { id: 500, media_type: 'tv' },
+                ],
+            });
+        });
+
+        const result = await refreshCollection(createEvent('8706524'));
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result)).toMatchObject({
-            count: 2,
-            ids: ['10', '20'],
-        });
-        expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
-        const items = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems;
-        expect(items?.[1]).toMatchObject({
-            Put: {
-                TableName: 'test-collections',
-                Item: {
-                    collectionId: '20',
-                    parentCollectionId: '10',
-                    sortOrder: 2,
-                    GSI1PK: 'PARENT#10',
-                    GSI1SK: `${String(2).padStart(16, '0')}#20`,
-                },
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(new URL(String(fetchMock.mock.calls[0][0])).toString()).toContain(
+            '/3/list/8706524?language=en-US&page=1'
+        );
+        expect(ddbMock.commandCalls(PutCommand)[0].args[0].input).toMatchObject({
+            TableName: 'test-collections',
+            Item: {
+                collectionId: '8706524',
+                name: 'Marvel Cinematic Universe',
+                description: 'An interconnected film series.',
+                posterUrl: '',
+                backdropUrl: '',
+                movieIds: ['1726', '1724', '999'],
             },
         });
     });
 
-    it('rejects missing parents and circular hierarchies before writing', async () => {
-        const missingParent = await upsertCollections(createEvent(JSON.stringify({
-            collections: [{ ...rootCollection, parentCollectionId: '404' }],
-        })));
-        expect(missingParent).toMatchObject({ statusCode: 400 });
-        expect(responseBody(missingParent)).toMatchObject({
-            message: 'Parent collection does not exist.',
-            parentCollectionId: '404',
-        });
+    it('rejects invalid list IDs and leaves stored data untouched for missing lists', async () => {
+        const invalidId = await refreshCollection(createEvent('abc'));
+        expect(invalidId).toMatchObject({ statusCode: 400 });
 
-        const cycle = await upsertCollections(createEvent(JSON.stringify({
-            collections: [
-                { ...rootCollection, parentCollectionId: '20' },
-                { ...childCollection, parentCollectionId: '10' },
-            ],
-        })));
-        expect(cycle).toMatchObject({ statusCode: 400 });
-        expect(responseBody(cycle).message).toBe('Collection hierarchy cannot contain a cycle.');
-        expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+        fetchMock.mockResolvedValue(tmdbResponse({ status_message: 'not found' }, 404));
+        const missing = await refreshCollection(createEvent('404'));
+        expect(missing).toMatchObject({ statusCode: 404 });
+        expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
     });
 
-    it('accepts older imported parent records without a sortOrder', async () => {
+    it('converts TMDB image paths to full poster and backdrop URLs', async () => {
+        fetchMock.mockResolvedValue(tmdbResponse({
+            id: 8706524,
+            name: 'Marvel Cinematic Universe',
+            description: 'Description.',
+            poster_path: '/poster.jpg',
+            backdrop_path: '/backdrop.jpg',
+            page: 1,
+            total_pages: 1,
+            items: [{ id: 1726, media_type: 'movie' }],
+        }));
+
+        await refreshCollection(createEvent('8706524'));
+
+        expect(ddbMock.commandCalls(PutCommand)[0].args[0].input.Item).toMatchObject({
+            posterUrl: 'https://image.tmdb.org/t/p/w500/poster.jpg',
+            backdropUrl: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+        });
+    });
+
+    it('returns all master IDs and only enriches IDs present in the movie catalogue', async () => {
         ddbMock.on(GetCommand).resolves({
             Item: {
-                collectionId: rootCollection.collectionId,
-                name: rootCollection.name,
-                overview: rootCollection.overview,
-                poster: rootCollection.poster,
-                backdrop: rootCollection.backdrop,
+                collectionId: '8706524',
+                name: 'Marvel Cinematic Universe',
+                description: 'An interconnected film series.',
+                posterUrl: '',
+                backdropUrl: '',
+                movieIds: ['1726', '999'],
             },
         });
+        ddbMock.on(QueryCommand).callsFake((input) => (
+            input.ExpressionAttributeValues?.[':tmdbId'] === '1726'
+                ? { Items: [movie('1726')] }
+                : { Items: [] }
+        ));
 
-        const result = await upsertCollections(createEvent(JSON.stringify({
-            collections: [{
-                ...childCollection,
-                GSI1PK: undefined,
-                GSI1SK: undefined,
-            }],
-        })));
-
-        expect(result).toMatchObject({ statusCode: 200 });
-        expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(1);
-    });
-
-    it('returns a parent collection, ordered descendants, and each movie once', async () => {
-        ddbMock.on(GetCommand).resolves({ Item: rootCollection });
-        ddbMock.on(QueryCommand).callsFake((input) => {
-            const values = input.ExpressionAttributeValues as Record<string, string>;
-            if (input.IndexName === 'GSI1' && values[':parent'] === 'PARENT#10') {
-                return { Items: [childCollection] };
-            }
-            if (input.IndexName === 'GSI2' && values[':collection'] === 'COLLECTION#10') {
-                return { Items: [movie('100', '10', 'Star Wars 01')] };
-            }
-            if (input.IndexName === 'GSI2' && values[':collection'] === 'COLLECTION#20') {
-                return { Items: [movie('200', '20', 'Star Wars 03.5')] };
-            }
-            return { Items: [] };
-        });
-
-        const result = await getCollection(createEvent(undefined, '10'));
+        const result = await getCollection(createEvent('8706524'));
 
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toMatchObject({
             collection: {
-                collectionId: '10',
-                name: 'Star Wars Collection',
+                collectionId: '8706524',
+                description: 'An interconnected film series.',
+                posterUrl: '',
+                backdropUrl: '',
+                movieIds: ['1726', '999'],
             },
-            childCollections: [
-                {
-                    collectionId: '20',
-                    parentCollectionId: '10',
-                    sortOrder: 2,
-                },
-            ],
-            movies: [
-                { movieId: 100, collectionId: '10' },
-                { movieId: 200, collectionId: '20' },
-            ],
+            movies: [{ movieId: 1726, title: 'Movie 1726' }],
         });
-        expect(responseBody(result).movies).toHaveLength(2);
-    });
-
-    it('validates the collection ID and returns 404 for an unknown collection', async () => {
-        const invalidId = await getCollection(createEvent(undefined, 'abc'));
-        expect(invalidId).toMatchObject({ statusCode: 400 });
-
-        const missing = await getCollection(createEvent(undefined, '404'));
-        expect(missing).toMatchObject({ statusCode: 404 });
-        expect(responseBody(missing)).toEqual({ message: 'Movie collection not found.' });
+        expect(responseBody(result).movies).toHaveLength(1);
     });
 });

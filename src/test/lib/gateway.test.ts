@@ -34,7 +34,7 @@ describe('ApiGatewayConstruct', () => {
             upsertBookingOffersFunction: mockFunction,
             upsertTicketPricingFunction: mockFunction,
             getMovieCollectionFunction: mockFunction,
-            upsertMovieCollectionsFunction: mockFunction,
+            refreshMovieCollectionFunction: mockFunction,
             jwtAuthorizer,
         });
     });
@@ -107,7 +107,9 @@ describe('ApiGatewayConstruct', () => {
             AuthorizationType: 'NONE',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /collections',
+            RouteKey: 'POST /collections/{id}/refresh',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });

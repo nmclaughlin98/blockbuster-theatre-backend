@@ -105,7 +105,7 @@ describe('Update movies Lambda handler', () => {
         expect(commands).toHaveLength(2);
         expect(commands[0].args[0].input).toMatchObject({
             Key: { tmdbId: '123', slug: 'a-movie' },
-            UpdateExpression: 'SET #field0 = :value0',
+            UpdateExpression: 'SET #field0 = :value0 REMOVE collectionId, GSI2PK, GSI2SK',
             ConditionExpression: 'attribute_exists(tmdbId) AND attribute_exists(slug)',
             ExpressionAttributeNames: { '#field0': 'visible' },
             ExpressionAttributeValues: { ':value0': false },
@@ -121,7 +121,7 @@ describe('Update movies Lambda handler', () => {
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             Key: { tmdbId: '123', slug: 'a-movie' },
-            UpdateExpression: 'SET #field0 = :value0, #field1 = :value1, #field2 = :value2',
+            UpdateExpression: 'SET #field0 = :value0, #field1 = :value1, #field2 = :value2 REMOVE collectionId, GSI2PK, GSI2SK',
             ExpressionAttributeNames: {
                 '#field0': 'title',
                 '#field1': 'genres',
@@ -144,7 +144,7 @@ describe('Update movies Lambda handler', () => {
 
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
-            UpdateExpression: 'SET #field0 = :value0',
+            UpdateExpression: 'SET #field0 = :value0 REMOVE collectionId, GSI2PK, GSI2SK',
             ExpressionAttributeNames: { '#field0': 'sortTitle' },
             ExpressionAttributeValues: { ':value0': 'Saga 01 - First Film' },
         });
@@ -157,7 +157,7 @@ describe('Update movies Lambda handler', () => {
 
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             Key: { tmdbId: '123', slug: 'a-movie' },
-            UpdateExpression: 'SET #field0 = :value0, #gsi1sk = :gsi1sk',
+            UpdateExpression: 'SET #field0 = :value0, #gsi1sk = :gsi1sk REMOVE collectionId, GSI2PK, GSI2SK',
             ExpressionAttributeNames: {
                 '#field0': 'releaseDate',
                 '#gsi1sk': 'GSI1SK',
