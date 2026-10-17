@@ -8,6 +8,27 @@ The bulk upsert endpoints use the same JWT authorizer as the existing movie admi
 
 TMDB lists are the source of truth for collections. Each collection record stores the TMDB list name, description, poster URL, backdrop URL, and every movie ID in the list. The IDs are stored even if those movies have not been imported into the movie catalogue yet. Movie records do not store collection membership.
 
+List all stored collections with the public endpoint:
+
+`GET /collections`
+
+The response contains collection summaries sorted by name. Each summary includes `collectionId`, `name`, `description`, `posterUrl`, `backdropUrl`, `movieCount`, and `lastUpdated` when available. Movie IDs are omitted; request a collection by ID to retrieve its full details.
+
+```json
+{
+  "collections": [
+    {
+      "collectionId": "8706524",
+      "name": "Marvel Cinematic Universe",
+      "description": "An interconnected film series.",
+      "posterUrl": "",
+      "backdropUrl": "",
+      "movieCount": 3
+    }
+  ]
+}
+```
+
 The TMDB list ID is used as `collectionId`; movie IDs are stored as strings in the list's order. Non-movie list entries are excluded.
 
 Refresh a collection from TMDB with the authenticated admin endpoint:

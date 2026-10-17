@@ -30,6 +30,7 @@ export class LambdaConstruct extends Construct {
     public readonly validateCheckoutFunction: lambdaNodejs.NodejsFunction;
     public readonly upsertBookingOffersFunction: lambdaNodejs.NodejsFunction;
     public readonly upsertTicketPricingFunction: lambdaNodejs.NodejsFunction;
+    public readonly listMovieCollectionsFunction: lambdaNodejs.NodejsFunction;
     public readonly getMovieCollectionFunction: lambdaNodejs.NodejsFunction;
     public readonly refreshMovieCollectionFunction: lambdaNodejs.NodejsFunction;
 
@@ -108,6 +109,24 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadData(this.getMovieFunction);
+
+        this.listMovieCollectionsFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'ListMovieCollectionsHandler',
+            {
+                functionName: 'blockbuster-theatre-list-movie-collections-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/list-movie-collections-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+                environment: {
+                    COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
+                },
+            }
+        );
+
+        props.collectionsTable.grantReadData(this.listMovieCollectionsFunction);
 
         this.getMovieCollectionFunction = new lambdaNodejs.NodejsFunction(
             this,

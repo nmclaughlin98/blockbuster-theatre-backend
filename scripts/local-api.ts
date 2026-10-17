@@ -74,6 +74,7 @@ const handlers = {
     validateCheckout: loadHandler('../src/main/lambda/handlers/validate-checkout-handler'),
     upsertTicketPricing: loadHandler('../src/main/lambda/handlers/upsert-ticket-pricing-handler'),
     upsertBookingOffers: loadHandler('../src/main/lambda/handlers/upsert-booking-offers-handler'),
+    listMovieCollections: loadHandler('../src/main/lambda/handlers/list-movie-collections-handler'),
     getMovieCollection: loadHandler('../src/main/lambda/handlers/get-movie-collection-handler'),
     refreshMovieCollection: loadHandler('../src/main/lambda/handlers/refresh-movie-collection-handler'),
 };
@@ -137,6 +138,9 @@ function routeRequest(
     }
     if (method === 'GET' && pathname === '/film-selections') {
         return { handler: handlers.listFilmSelections };
+    }
+    if (method === 'GET' && pathname === '/collections') {
+        return { handler: handlers.listMovieCollections };
     }
     if (method === 'GET' && pathname === '/ticket-pricing') {
         return { handler: handlers.getTicketPricing };

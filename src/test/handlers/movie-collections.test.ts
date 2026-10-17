@@ -7,6 +7,7 @@ import {
     GetCommand,
     PutCommand,
     QueryCommand,
+    ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
@@ -24,6 +25,11 @@ const { handler: refreshCollection } = require(
 };
 const { handler: getCollection } = require(
     '../../main/lambda/handlers/get-movie-collection-handler'
+) as {
+    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+};
+const { handler: listCollections } = require(
+    '../../main/lambda/handlers/list-movie-collections-handler'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
@@ -85,6 +91,7 @@ describe('TMDB list-backed movie collections', () => {
         ddbMock.on(GetCommand).resolves({});
         ddbMock.on(QueryCommand).resolves({ Items: [] });
         ddbMock.on(PutCommand).resolves({});
+        ddbMock.on(ScanCommand).resolves({ Items: [] });
         fetchMock.mockReset();
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -209,5 +216,111 @@ describe('TMDB list-backed movie collections', () => {
             movies: [{ movieId: 1726, title: 'Movie 1726' }],
         });
         expect(responseBody(result).movies).toHaveLength(1);
+    });
+
+    it('lists sorted collection summaries without exposing their movie ID arrays', async () => {
+        ddbMock.on(ScanCommand).resolves({
+            Items: [
+                {
+                    collectionId: '20',
+                    name: 'Zeta Collection',
+                    description: 'Second collection.',
+                    posterUrl: 'https://example.com/zeta.jpg',
+                    backdropUrl: '',
+                    movieIds: ['1', '2'],
+                    lastUpdated: '2025-01-01T00:00:00.000Z',
+                },
+                {
+                    collectionId: '10',
+                    name: 'Alpha Collection',
+                    description: 'First collection.',
+                    posterUrl: '',
+                    backdropUrl: 'https://example.com/alpha.jpg',
+                    movieIds: ['3'],
+                },
+            ],
+        });
+
+        const result = await listCollections(createEvent());
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result)).toEqual({
+            collections: [
+                {
+                    collectionId: '10',
+                    name: 'Alpha Collection',
+                    description: 'First collection.',
+                    posterUrl: '',
+                    backdropUrl: 'https://example.com/alpha.jpg',
+                    movieCount: 1,
+                },
+                {
+                    collectionId: '20',
+                    name: 'Zeta Collection',
+                    description: 'Second collection.',
+                    posterUrl: 'https://example.com/zeta.jpg',
+                    backdropUrl: '',
+                    movieCount: 2,
+                    lastUpdated: '2025-01-01T00:00:00.000Z',
+                },
+            ],
+        });
+        expect(ddbMock.commandCalls(ScanCommand)[0].args[0].input.TableName)
+            .toBe('test-collections');
+    });
+
+    it('returns an empty collection list when the table has no records', async () => {
+        const result = await listCollections(createEvent());
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result)).toEqual({ collections: [] });
+    });
+
+    it('scans every collection table page', async () => {
+        ddbMock.on(ScanCommand)
+            .resolvesOnce({
+                Items: [{
+                    collectionId: '10',
+                    name: 'Alpha Collection',
+                    description: 'First collection.',
+                    posterUrl: '',
+                    backdropUrl: '',
+                    movieIds: ['1'],
+                }],
+                LastEvaluatedKey: { collectionId: '10' },
+            })
+            .resolves({
+                Items: [{
+                    collectionId: '20',
+                    name: 'Beta Collection',
+                    description: 'Second collection.',
+                    posterUrl: '',
+                    backdropUrl: '',
+                    movieIds: ['2'],
+                }],
+            });
+
+        const result = await listCollections(createEvent());
+        const calls = ddbMock.commandCalls(ScanCommand);
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result).collections).toHaveLength(2);
+        expect(calls).toHaveLength(2);
+        expect(calls[1].args[0].input.ExclusiveStartKey).toEqual({
+            collectionId: '10',
+        });
+    });
+
+    it('returns an error when the collection table contains an invalid record', async () => {
+        ddbMock.on(ScanCommand).resolves({
+            Items: [{ collectionId: 'invalid' }],
+        });
+
+        const result = await listCollections(createEvent());
+
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toMatchObject({
+            message: 'Unable to retrieve movie collections.',
+        });
     });
 });
