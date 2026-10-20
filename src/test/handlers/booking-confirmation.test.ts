@@ -15,7 +15,7 @@ const booking = {
         email: 'niallmclaughlin1998@gmail.com',
         phone: '',
     },
-    movieTitle: 'A Movie',
+    movieTitle: '<Movie & More>',
     date: 'Tue 20 Oct 2026',
     time: '19:00',
     screen: '2',
@@ -76,6 +76,21 @@ describe('booking confirmation email handler', () => {
         expect(sent.Content?.Simple?.Subject?.Data).toContain(booking.bookingRef);
         expect(sent.Content?.Simple?.Body?.Text?.Data).toContain(
             'No payment was taken and this email is not a valid cinema ticket.'
+        );
+        const html = sent.Content?.Simple?.Body?.Html?.Data ?? '';
+        expect(html).toContain('background-color:#0c0d12');
+        expect(html).toContain('#ff334b');
+        expect(html).toContain('&lt;Movie &amp; More&gt;');
+        expect(html).toContain('src="cid:booking-reference-qr"');
+        const qrCode = sent.Content?.Simple?.Attachments?.[0];
+        expect(qrCode).toMatchObject({
+            ContentType: 'image/png',
+            ContentDisposition: 'INLINE',
+            ContentId: 'booking-reference-qr',
+            FileName: 'booking-reference.png',
+        });
+        expect(Buffer.from(qrCode?.RawContent ?? []).subarray(0, 8)).toEqual(
+            Buffer.from('89504e470d0a1a0a', 'hex')
         );
     });
 

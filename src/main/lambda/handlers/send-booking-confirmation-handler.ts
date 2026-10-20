@@ -1,25 +1,14 @@
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import QRCode = require('qrcode');
+import {
+    formatBookingConfirmationEmailBody,
+    formatBookingConfirmationEmailHtml,
+    type BookingConfirmationEmail,
+} from './utils/booking-confirmation-email';
 import { json, log } from './utils/common';
 
 const sesClient = new SESv2Client({});
-
-interface BookingConfirmation {
-    bookingRef: string;
-    customer: {
-        firstName: string;
-        surname: string;
-        email: string;
-        phone?: string;
-    };
-    movieTitle: string;
-    date: string;
-    time: string;
-    screen: string;
-    seats: string[];
-    tickets: number;
-    totalPrice: number;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -46,7 +35,7 @@ function parseSeats(value: unknown): string[] | undefined {
     return seats;
 }
 
-function parseConfirmation(value: unknown): BookingConfirmation | undefined {
+function parseConfirmation(value: unknown): BookingConfirmationEmail | undefined {
     if (!isRecord(value) || !isRecord(value.customer)) return undefined;
 
     const bookingRef = value.bookingRef;
@@ -108,25 +97,6 @@ function parseConfirmation(value: unknown): BookingConfirmation | undefined {
     };
 }
 
-function createEmailBody(booking: BookingConfirmation): string {
-    return [
-        'DEMO BOOKING CONFIRMATION - NO PAYMENT WAS PROCESSED',
-        '',
-        `Booking reference: ${booking.bookingRef}`,
-        `Name: ${booking.customer.firstName} ${booking.customer.surname}`,
-        `Movie: ${booking.movieTitle}`,
-        `Date: ${booking.date}`,
-        `Time: ${booking.time}`,
-        `Screen: ${booking.screen}`,
-        `Seats: ${booking.seats.join(', ')}`,
-        `Tickets: ${booking.tickets}`,
-        `Demo total: GBP ${booking.totalPrice.toFixed(2)}`,
-        ...(booking.customer.phone ? [`Phone: ${booking.customer.phone}`] : []),
-        '',
-        'This is a demo booking only. No payment was taken and this email is not a valid cinema ticket.',
-    ].join('\n');
-}
-
 export const handler = async (
     event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
@@ -155,13 +125,36 @@ export const handler = async (
     }
 
     try {
+        const qrCode = await QRCode.toBuffer(confirmation.bookingRef, {
+            errorCorrectionLevel: 'M',
+            margin: 4,
+            width: 240,
+            color: {
+                dark: '#0c0d12',
+                light: '#ffffff',
+            },
+        });
         await sesClient.send(new SendEmailCommand({
             FromEmailAddress: source,
             Destination: { ToAddresses: [confirmation.customer.email] },
             Content: {
                 Simple: {
                     Subject: { Data: `Demo booking confirmation - ${confirmation.bookingRef}` },
-                    Body: { Text: { Data: createEmailBody(confirmation) } },
+                    Body: {
+                        Text: { Data: formatBookingConfirmationEmailBody(confirmation) },
+                        Html: {
+                            Data: formatBookingConfirmationEmailHtml(confirmation),
+                            Charset: 'UTF-8',
+                        },
+                    },
+                    Attachments: [{
+                        RawContent: qrCode,
+                        ContentType: 'image/png',
+                        ContentDisposition: 'INLINE',
+                        ContentId: 'booking-reference-qr',
+                        ContentTransferEncoding: 'BASE64',
+                        FileName: 'booking-reference.png',
+                    }],
                 },
             },
         }));
@@ -170,7 +163,7 @@ export const handler = async (
             bookingRef: confirmation.bookingRef,
         });
     } catch (error: unknown) {
-        log('ERROR', 'Failed to send booking confirmation email', {
+        log('ERROR', 'Failed to create or send booking confirmation email', {
             requestId,
             error: error instanceof Error ? error.name : 'Unknown error',
         });
