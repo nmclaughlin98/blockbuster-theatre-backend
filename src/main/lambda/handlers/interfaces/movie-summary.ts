@@ -1,3 +1,5 @@
+import type { MovieShowtimes } from './showtime';
+
 export interface MovieSummary {
     slug: string;
     sortTitle: string;
@@ -17,5 +19,5 @@ export interface MovieSummary {
     mainGenre: string;
     releaseDate: string;
     score: number;
-    showtimes: Record<string, string[]>;
+    showtimes: MovieShowtimes;
 }

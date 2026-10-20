@@ -1,3 +1,5 @@
+import type { MovieShowtimes } from './showtime';
+
 export interface MovieRecord {
     tmdbId: string;
     slug: string;
@@ -22,5 +24,5 @@ export interface MovieRecord {
     synopsis: string;
     tagline: string;
     trailer: string;
-    showtimes: Record<string, string[]>;
+    showtimes: MovieShowtimes;
 }

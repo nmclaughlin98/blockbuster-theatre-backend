@@ -39,7 +39,13 @@ const movie = {
     synopsis: 'A short description.',
     tagline: 'A tagline.',
     trailer: 'https://example.com/trailer',
-    showtimes: { Monday: ['11:00', '19:00'], Tuesday: ['11:00'] },
+    showtimes: {
+        Monday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+        Tuesday: [{ screen: '1', time: '11:00' }],
+    },
     GSI1PK: 'MOVIE',
     GSI1SK: '2026-09-25#456',
 };
@@ -60,7 +66,7 @@ const kidsClubOffer = {
     featuredMovieId: '456',
     pricingId: 'KIDS_CLUB_RATES',
     isActive: true,
-    overrideShowtimes: { Tuesday: ['11:00'] },
+    overrideShowtimes: { Tuesday: [{ screen: '1', time: '11:00' }] },
     displayLabel: 'OFFER - A Movie - Matinee',
 };
 const secondOfferForSameMovie = {
@@ -68,7 +74,7 @@ const secondOfferForSameMovie = {
     offerId: 'kids-club-evening',
     title: 'Kids Club Evening',
     pricingId: 'CRAZY_TUESDAY_RATES',
-    overrideShowtimes: { Tuesday: ['19:00'] },
+    overrideShowtimes: { Tuesday: [{ screen: '3', time: '19:00' }] },
 };
 
 const offPeakPricing = {
@@ -163,7 +169,7 @@ describe('Special offers and pricing handlers', () => {
                 displayLabel: 'OFFER - A Movie - Matinee',
                 featuredMovieId: '456',
                 pricingId: 'KIDS_CLUB_RATES',
-                overrideShowtimes: { Tuesday: ['11:00'] },
+                overrideShowtimes: { Tuesday: [{ screen: '1', time: '11:00' }] },
             },
             {
                 type: 'offer',
@@ -177,7 +183,7 @@ describe('Special offers and pricing handlers', () => {
                 displayLabel: 'OFFER - A Movie - Matinee',
                 featuredMovieId: '456',
                 pricingId: 'CRAZY_TUESDAY_RATES',
-                overrideShowtimes: { Tuesday: ['19:00'] },
+                overrideShowtimes: { Tuesday: [{ screen: '3', time: '19:00' }] },
             },
         ]);
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input.IndexName).toBe('GSI1');
@@ -227,11 +233,44 @@ describe('Special offers and pricing handlers', () => {
         });
     });
 
+    it('resolves pricing for a screened movie showtime', async () => {
+        ddbMock.on(QueryCommand).resolves({
+            Items: [{
+                ...movie,
+                showtimes: {
+                    Monday: [{ screen: '3', time: '13:00' }],
+                },
+            }],
+        });
+        ddbMock.on(GetCommand).resolves({ Item: offPeakPricing });
+
+        const result = await getTicketPricing(
+            createEvent({
+                queryStringParameters: {
+                    movieId: '456',
+                    day: 'Monday',
+                    time: '13:00',
+                },
+            })
+        );
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result).pricing).toMatchObject({
+            pricingId: 'OFF_PEAK_RATES',
+        });
+    });
+
     it('uses the single Crazy Tuesday tier for Tuesday movie showings at any time', async () => {
         ddbMock.on(QueryCommand).resolves({
             Items: [{
                 ...movie,
-                showtimes: { Monday: ['11:00'], Tuesday: ['11:00', '19:00'] },
+                showtimes: {
+                    Monday: [{ screen: '1', time: '11:00' }],
+                    Tuesday: [
+                        { screen: '1', time: '11:00' },
+                        { screen: '3', time: '19:00' },
+                    ],
+                },
             }],
         });
         ddbMock.on(GetCommand).resolves({ Item: crazyTuesdayPricing });

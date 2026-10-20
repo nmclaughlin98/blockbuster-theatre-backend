@@ -26,7 +26,12 @@ const movieRecord = {
     director: 'Director Name',
     synopsis: 'A short description.',
     trailer: 'https://www.youtube-nocookie.com/embed/example',
-    showtimes: { Monday: ['11:00', '19:00'] },
+    showtimes: {
+        Monday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+    },
 };
 
 function createEvent(

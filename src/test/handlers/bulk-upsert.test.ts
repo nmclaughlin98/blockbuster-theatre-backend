@@ -28,7 +28,7 @@ const offer = {
     featuredMovieId: '456',
     pricingId: 'KIDS_CLUB_RATES',
     isActive: true,
-    overrideShowtimes: { Tuesday: ['11:00'] },
+    overrideShowtimes: { Tuesday: [{ screen: '1', time: '11:00' }] },
 };
 
 const pricing = {
@@ -122,6 +122,20 @@ describe('Bulk booking data upsert handlers', () => {
             message: 'One or more booking offers records are invalid.',
             invalidIndexes: [0],
         });
+        expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    });
+
+    it('rejects legacy string showtimes in offer overrides', async () => {
+        const result = await upsertOffers(
+            createEvent(JSON.stringify({
+                offers: [{
+                    ...offer,
+                    overrideShowtimes: { Tuesday: ['11:00'] },
+                }],
+            }))
+        );
+
+        expect(result).toMatchObject({ statusCode: 400 });
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
 

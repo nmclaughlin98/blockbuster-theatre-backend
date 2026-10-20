@@ -6,8 +6,14 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
-import type { MovieRecord, OfferRecord, PricingRecord, PricingTier } from './interfaces';
-import { isMovieRecord } from './utils/movie-validation';
+import type {
+    MovieRecord,
+    OfferRecord,
+    MovieShowtimes,
+    PricingRecord,
+    PricingTier,
+} from './interfaces';
+import { isMovieRecord, isMovieShowtimes } from './utils/movie-validation';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -48,19 +54,10 @@ function isRecord(value: unknown): value is UnknownRecord {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isStringArray(value: unknown): value is string[] {
-    return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
-}
-
-function isShowtimes(value: unknown): value is Record<string, string[]> {
+function isShowtimes(value: unknown): value is MovieShowtimes {
     return (
-        isRecord(value) &&
-        Object.entries(value).every(
-            ([day, times]) =>
-                DAYS.includes(day) &&
-                isStringArray(times) &&
-                times.every((time) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time))
-        )
+        isMovieShowtimes(value) &&
+        Object.keys(value).every((day) => DAYS.includes(day))
     );
 }
 
@@ -249,7 +246,10 @@ function validateScheduledTime(
     showtime: ShowtimeSelection
 ): void {
     const schedule = offer?.overrideShowtimes ?? movie.showtimes;
-    if (!schedule[showtime.day]?.includes(showtime.time)) {
+    const isScheduled = schedule[showtime.day]?.some(
+        (entry) => entry.time === showtime.time
+    );
+    if (!isScheduled) {
         throw new PricingServiceError(400, 'The selected showtime is not available.');
     }
 }
@@ -397,7 +397,7 @@ export type FilmSelection =
           displayLabel?: string;
           featuredMovieId: string;
           pricingId: string;
-          overrideShowtimes: Record<string, string[]>;
+          overrideShowtimes: MovieShowtimes;
       };
 
 export async function listFilmSelections(): Promise<FilmSelection[]> {

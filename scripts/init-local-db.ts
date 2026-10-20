@@ -185,13 +185,34 @@ const demoMovie: MovieRecord & {
     tagline: 'Local development fixture.',
     trailer: '',
     showtimes: {
-        Monday: ['11:00', '19:00'],
-        Tuesday: ['11:00', '19:00'],
-        Wednesday: ['11:00', '19:00'],
-        Thursday: ['11:00', '19:00'],
-        Friday: ['11:00', '19:00'],
-        Saturday: ['11:00', '19:00'],
-        Sunday: ['11:00', '19:00'],
+        Monday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+        Tuesday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+        Wednesday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+        Thursday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+        Friday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+        Saturday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+        Sunday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
     },
     entityType: 'Movie',
     GSI1PK: 'MOVIE',

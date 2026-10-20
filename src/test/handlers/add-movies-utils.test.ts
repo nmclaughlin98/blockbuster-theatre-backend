@@ -90,7 +90,7 @@ describe('add movies utilities', () => {
                 genres: [{ name: 'Drama' }],
                 vote_average: 8.25,
                 runtime: 120,
-                release_date: '2025-01-02',
+                release_date: new Date().toISOString().slice(0, 10),
                 overview: 'A synopsis',
                 poster_path: '/poster.jpg',
                 backdrop_path: '/backdrop.jpg',
@@ -114,7 +114,19 @@ describe('add movies utilities', () => {
                 poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
                 still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
             });
-            expect(Object.keys(movie.showtimes)).toHaveLength(7);
+            expect(Object.keys(movie.showtimes).length).toBeGreaterThan(0);
+            expect(Object.keys(movie.showtimes).length).toBeLessThanOrEqual(7);
+            for (const showings of Object.values(movie.showtimes)) {
+                expect(showings.length).toBeGreaterThanOrEqual(2);
+                expect(showings.length).toBeLessThanOrEqual(4);
+                expect(
+                    showings.every(
+                        ({ screen, time }) =>
+                            ['1', '2', '3', '4', '5'].includes(screen) &&
+                            /^\d{2}:\d{2}$/.test(time)
+                    )
+                ).toBe(true);
+            }
         });
 
         it('applies metadata overrides by TMDB ID', () => {
