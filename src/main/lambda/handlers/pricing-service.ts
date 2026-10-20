@@ -391,6 +391,10 @@ export type FilmSelection =
           offerId: string;
           title: string;
           label: string;
+          tagline: string;
+          priceDescription: string;
+          ctaLabel: string;
+          displayLabel?: string;
           featuredMovieId: string;
           pricingId: string;
           overrideShowtimes: Record<string, string[]>;
@@ -453,6 +457,10 @@ export async function listFilmSelections(): Promise<FilmSelection[]> {
             offerId: offer.offerId,
             title: offer.title,
             label: offer.displayLabel ?? `OFFER ${offer.title}`,
+            tagline: offer.tagline,
+            priceDescription: offer.priceDescription,
+            ctaLabel: offer.ctaLabel,
+            ...(offer.displayLabel !== undefined && { displayLabel: offer.displayLabel }),
             featuredMovieId: offer.featuredMovieId,
             pricingId: offer.pricingId,
             overrideShowtimes: offer.overrideShowtimes ?? {},

@@ -150,6 +150,29 @@ The Crazy Tuesday package is configured as one £4 ticket tier:
 }
 ```
 
+## Film selections
+
+`GET /film-selections` returns visible movies and active offers for booking. Offer entries retain the DynamoDB display attributes used by the website:
+
+```json
+{
+  "type": "offer",
+  "id": "halloween-spooktacular",
+  "offerId": "halloween-spooktacular",
+  "title": "Halloween Spooktacular",
+  "label": "Halloween Spooktacular",
+  "displayLabel": "Halloween Spooktacular",
+  "tagline": "Through the month of October",
+  "priceDescription": "£2.50 with valid Student ID",
+  "ctaLabel": "Claim Offer",
+  "featuredMovieId": "27850",
+  "pricingId": "STANDARD_RATES",
+  "overrideShowtimes": {}
+}
+```
+
+`id` and `label` are selection fields used by the booking flow; offer display attributes keep their DynamoDB names.
+
 ## Upsert booking offers
 
 `POST /booking-offers`
