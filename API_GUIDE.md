@@ -1,5 +1,32 @@
 # Booking Data API
 
+## Demo booking confirmation email
+
+`POST /booking/confirmation` sends the guest a plain-text demo confirmation through Amazon SES. It does not process payment, create a reservation, or issue a valid cinema ticket. The email states this clearly.
+
+```json
+{
+  "bookingRef": "BBT-123456",
+  "customer": {
+    "firstName": "Niall",
+    "surname": "McLaughlin",
+    "email": "guest@example.com",
+    "phone": ""
+  },
+  "movieTitle": "A Movie",
+  "date": "Tue 20 Oct 2026",
+  "time": "19:00",
+  "screen": "2",
+  "seats": ["A1", "A2"],
+  "tickets": 2,
+  "totalPrice": 15.2
+}
+```
+
+The stack creates an SES email identity for `niallmclaughlin1998@gmail.com`. After deployment, open the SES verification message sent to that mailbox and confirm the identity before sending. New SES accounts are commonly in the sandbox: recipients must also be verified until SES production access is granted in `eu-west-2`.
+
+The endpoint is intended for the deployed demo booking flow and is not available through the local API adapter. It accepts the client-provided booking summary and does not persist or independently verify a booking or price. Do not treat the email as proof of payment or a confirmed seat reservation.
+
 Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
 
 Movie records store TMDB `poster` and `still` URLs at original resolution. To backfill existing movie records, set `MOVIE_TABLE_NAME` and AWS credentials/region, then run `npm run migrate:movie-image-urls` to preview changes. The script scans every page and updates only those two URL attributes while preserving the rest of each record. Add `-- --apply` to write the changes after reviewing the dry-run output:

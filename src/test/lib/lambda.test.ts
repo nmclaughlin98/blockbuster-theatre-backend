@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { LambdaConstruct } from '../../../lib/stack';
 import {
@@ -13,6 +14,7 @@ describe('LambdaConstruct', () => {
     let pricingTable: dynamodb.Table;
     let offersTable: dynamodb.Table;
     let collectionsTable: dynamodb.Table;
+    let bookingEmailIdentity: ses.EmailIdentity;
     let construct: LambdaConstruct;
 
     beforeEach(() => {
@@ -33,11 +35,15 @@ describe('LambdaConstruct', () => {
             partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+        bookingEmailIdentity = new ses.EmailIdentity(stack, 'TestBookingEmailIdentity', {
+            identity: ses.Identity.email('booking@example.com'),
+        });
         construct = new LambdaConstruct(stack, 'TestLambda', {
             table,
             pricingTable,
             offersTable,
             collectionsTable,
+            bookingEmailIdentity,
         });
     });
 
@@ -154,7 +160,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(14);
+        expect(Object.values(functions)).toHaveLength(15);
         expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
@@ -180,12 +186,18 @@ describe('LambdaConstruct', () => {
                 billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             }
         );
+        const configuredBookingEmailIdentity = new ses.EmailIdentity(
+            configuredStack,
+            'ConfiguredBookingEmailIdentity',
+            { identity: ses.Identity.email('booking@example.com') }
+        );
 
         new LambdaConstruct(configuredStack, 'ConfiguredLambda', {
             table: configuredTable,
             pricingTable: configuredPricingTable,
             offersTable: configuredOffersTable,
             collectionsTable: configuredCollectionsTable,
+            bookingEmailIdentity: configuredBookingEmailIdentity,
             lambdaConfig: {
                 ...cfg,
                 reservedConcurrentExecutions: 3,
@@ -226,6 +238,7 @@ describe('LambdaConstruct', () => {
         expect(construct.listFilmSelectionsFunction).toBeDefined();
         expect(construct.getTicketPricingFunction).toBeDefined();
         expect(construct.validateCheckoutFunction).toBeDefined();
+        expect(construct.sendBookingConfirmationFunction).toBeDefined();
         expect(construct.upsertBookingOffersFunction).toBeDefined();
         expect(construct.upsertTicketPricingFunction).toBeDefined();
     });

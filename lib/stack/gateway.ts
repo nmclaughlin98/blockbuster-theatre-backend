@@ -14,6 +14,7 @@ interface ApiGatewayConstructProps {
     listFilmSelectionsFunction: lambda.IFunction;
     getTicketPricingFunction: lambda.IFunction;
     validateCheckoutFunction: lambda.IFunction;
+    sendBookingConfirmationFunction: lambda.IFunction;
     upsertBookingOffersFunction: lambda.IFunction;
     upsertTicketPricingFunction: lambda.IFunction;
     listMovieCollectionsFunction: lambda.IFunction;
@@ -78,6 +79,10 @@ export class ApiGatewayConstruct extends Construct {
             'ValidateCheckoutIntegration',
             props.validateCheckoutFunction
         );
+        const sendBookingConfirmationIntegration = new integrations.HttpLambdaIntegration(
+            'SendBookingConfirmationIntegration',
+            props.sendBookingConfirmationFunction
+        );
         const upsertBookingOffersIntegration = new integrations.HttpLambdaIntegration(
             'UpsertBookingOffersIntegration',
             props.upsertBookingOffersFunction
@@ -129,6 +134,12 @@ export class ApiGatewayConstruct extends Construct {
             path: '/checkout/validate',
             methods: [apigw2.HttpMethod.POST],
             integration: validateCheckoutIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/booking/confirmation',
+            methods: [apigw2.HttpMethod.POST],
+            integration: sendBookingConfirmationIntegration,
         });
 
         this.httpApi.addRoutes({

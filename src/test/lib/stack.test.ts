@@ -94,7 +94,7 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 14);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 15);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies',
         });
@@ -106,6 +106,9 @@ describe('BackendStack', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /checkout/validate',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /booking/confirmation',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/export',
@@ -142,7 +145,28 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 14);
+        template.resourceCountIs('AWS::IAM::Policy', 15);
+        template.hasResourceProperties('AWS::SES::EmailIdentity', {
+            EmailIdentity: 'niallmclaughlin1998@gmail.com',
+        });
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-booking-confirmation-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    BOOKING_EMAIL_FROM: Match.anyValue(),
+                }),
+            },
+        });
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: Match.arrayWith(['ses:SendEmail']),
+                        Resource: Match.anyValue(),
+                    }),
+                ]),
+            }),
+        });
     });
 
     it('should have correct resource order (DB -> Lambda -> API)', () => {

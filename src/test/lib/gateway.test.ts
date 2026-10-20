@@ -31,6 +31,7 @@ describe('ApiGatewayConstruct', () => {
             listFilmSelectionsFunction: mockFunction,
             getTicketPricingFunction: mockFunction,
             validateCheckoutFunction: mockFunction,
+            sendBookingConfirmationFunction: mockFunction,
             upsertBookingOffersFunction: mockFunction,
             upsertTicketPricingFunction: mockFunction,
             listMovieCollectionsFunction: mockFunction,
@@ -50,7 +51,7 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 14);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 15);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/export',
             AuthorizationType: 'JWT',
@@ -120,6 +121,10 @@ describe('ApiGatewayConstruct', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /checkout/validate',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /booking/confirmation',
             AuthorizationType: 'NONE',
         });
     });
