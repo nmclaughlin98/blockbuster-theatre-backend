@@ -1,6 +1,9 @@
 export interface MovieRecord {
     tmdbId: string;
     slug: string;
+    collectionId?: string;
+    GSI2PK?: string;
+    GSI2SK?: string;
     sortTitle?: string;
     title: string;
     visible: boolean;
@@ -13,9 +16,7 @@ export interface MovieRecord {
     runtime: number;
     releaseDate: string;
     poster: string;
-    largePoster: string;
     still: string;
-    largeStill: string;
     starring: string[];
     director: string;
     synopsis: string;

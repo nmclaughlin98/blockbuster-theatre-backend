@@ -28,6 +28,13 @@ function checkIsComingSoon(releaseDateString: string): boolean {
     return dateToday < releaseDate;
 }
 
+export function originalTmdbImageUrl(url: string): string {
+    return url.replace(
+        /^(https:\/\/image\.tmdb\.org\/t\/p\/)[^/]+(?=\/)/,
+        '$1original'
+    );
+}
+
 /**
  * Projects a stored movie into the compact now-showing list shape.
  * @param movie Stored movie record.
@@ -45,9 +52,8 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
         trailer: movie.trailer,
         synopsis: movie.synopsis,
         tagline: movie.tagline,
-        still: movie.still,
-        largeStill: movie.largeStill,
-        poster: movie.poster,
+        still: originalTmdbImageUrl(movie.still),
+        poster: originalTmdbImageUrl(movie.poster),
         rating: movie.rating,
         runtime: movie.runtime,
         genres: movie.genres,
@@ -77,10 +83,8 @@ export function projectMovieDetail(movie: MovieRecord): MovieDetail {
         score: movie.score,
         runtime: movie.runtime,
         releaseDate: movie.releaseDate,
-        poster: movie.poster,
-        largePoster: movie.largePoster,
-        largeStill: movie.largeStill,
-        still: movie.still,
+        poster: originalTmdbImageUrl(movie.poster),
+        still: originalTmdbImageUrl(movie.still),
         starring: movie.starring,
         director: movie.director,
         synopsis: movie.synopsis,
@@ -153,18 +157,12 @@ export function projectTmdb(
         synopsis: raw.overview || '',
         tagline: raw.tagline || '',
         still: raw.backdrop_path
-            ? `https://image.tmdb.org/t/p/w1280${raw.backdrop_path}`
-            : '',
-        largeStill: raw.backdrop_path
             ? `https://image.tmdb.org/t/p/original${raw.backdrop_path}`
             : '',
         trailer: trailerKey
             ? `https://www.youtube-nocookie.com/embed/${trailerKey}?rel=0`
             : '',
         poster: raw.poster_path
-            ? `https://image.tmdb.org/t/p/w500${raw.poster_path}`
-            : '',
-        largePoster: raw.poster_path
             ? `https://image.tmdb.org/t/p/original${raw.poster_path}`
             : '',
         showtimes,

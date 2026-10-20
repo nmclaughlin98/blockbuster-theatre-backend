@@ -6,6 +6,8 @@ import {
     normalizeMovieIds,
 } from '../../main/lambda/handlers/utils/common';
 import {
+    projectMovieDetail,
+    projectMovieSummary,
     projectTmdb,
 } from '../../main/lambda/handlers/utils/movie-projection';
 
@@ -109,8 +111,8 @@ describe('add movies utilities', () => {
                 starring: ['Actor One'],
                 director: 'Director One',
                 synopsis: 'A synopsis',
-                poster: 'https://image.tmdb.org/t/p/w500/poster.jpg',
-                still: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+                poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
+                still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
             });
             expect(Object.keys(movie.showtimes)).toHaveLength(7);
         });
@@ -185,6 +187,30 @@ describe('add movies utilities', () => {
                 synopsis: '',
                 still: '',
                 poster: '',
+            });
+        });
+
+        describe('movie image projections', () => {
+            it('returns TMDB poster and still URLs at original resolution', () => {
+                const { movieId, ...movieData } = projectTmdb({
+                    id: 42,
+                    title: 'A Movie',
+                });
+                const movie = {
+                    ...movieData,
+                    tmdbId: String(movieId),
+                    poster: 'https://image.tmdb.org/t/p/w500/poster.jpg',
+                    still: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+                };
+
+                expect(projectMovieSummary(movie)).toMatchObject({
+                    poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
+                    still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
+                });
+                expect(projectMovieDetail(movie)).toMatchObject({
+                    poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
+                    still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
+                });
             });
         });
     });

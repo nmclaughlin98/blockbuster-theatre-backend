@@ -11,6 +11,8 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
+        cdk.Tags.of(this).add('Project', 'blockbuster-theatre');
+
         // 1. Instantiate DynamoDB
         const database = new DatabaseConstruct(this, 'MoviesDatabase');
         const authentication = new AuthenticationConstruct(this, 'Authentication');
@@ -20,6 +22,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             table: database.table,
             pricingTable: database.pricingTable,
             offersTable: database.offersTable,
+            collectionsTable: database.collectionsTable,
         });
 
         // 3. Instantiate API Gateway & pass Lambda handler
@@ -35,6 +38,9 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             validateCheckoutFunction: lambdaServices.validateCheckoutFunction,
             upsertBookingOffersFunction: lambdaServices.upsertBookingOffersFunction,
             upsertTicketPricingFunction: lambdaServices.upsertTicketPricingFunction,
+            listMovieCollectionsFunction: lambdaServices.listMovieCollectionsFunction,
+            getMovieCollectionFunction: lambdaServices.getMovieCollectionFunction,
+            refreshMovieCollectionFunction: lambdaServices.refreshMovieCollectionFunction,
             jwtAuthorizer: authentication.jwtAuthorizer,
         });
 

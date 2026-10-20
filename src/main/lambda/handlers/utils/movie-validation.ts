@@ -128,6 +128,10 @@ export function isMovieRecord(value: unknown): value is MovieRecord {
         /^\d+$/.test(value.tmdbId) &&
         typeof value.slug === 'string' &&
         (
+            value.collectionId === undefined ||
+            (typeof value.collectionId === 'string' && /^\d+$/.test(value.collectionId))
+        ) &&
+        (
             value.sortTitle === undefined ||
             (typeof value.sortTitle === 'string' && Boolean(value.sortTitle.trim()))
         ) &&

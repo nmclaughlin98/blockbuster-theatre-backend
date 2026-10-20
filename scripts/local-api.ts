@@ -46,12 +46,16 @@ if (cloudDatabaseMode) {
     process.env.OFFERS_TABLE_NAME = requireCloudTestTable(
         'LOCAL_CLOUD_OFFERS_TABLE_NAME'
     );
+    process.env.COLLECTIONS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_COLLECTIONS_TABLE_NAME'
+    );
 } else {
     process.env.LOCAL_API_DATABASE = 'local';
     process.env.DYNAMODB_ENDPOINT = localEndpoint;
     process.env.TABLE_NAME = 'blockbuster-theatre-movie-catalogue-local';
     process.env.PRICING_TABLE_NAME = 'blockbuster-theatre-ticket-pricing-local';
     process.env.OFFERS_TABLE_NAME = 'blockbuster-theatre-booking-offers-local';
+    process.env.COLLECTIONS_TABLE_NAME = 'blockbuster-theatre-movie-collections-local';
 }
 
 type LocalHandler = (
@@ -70,6 +74,9 @@ const handlers = {
     validateCheckout: loadHandler('../src/main/lambda/handlers/validate-checkout-handler'),
     upsertTicketPricing: loadHandler('../src/main/lambda/handlers/upsert-ticket-pricing-handler'),
     upsertBookingOffers: loadHandler('../src/main/lambda/handlers/upsert-booking-offers-handler'),
+    listMovieCollections: loadHandler('../src/main/lambda/handlers/list-movie-collections-handler'),
+    getMovieCollection: loadHandler('../src/main/lambda/handlers/get-movie-collection-handler'),
+    refreshMovieCollection: loadHandler('../src/main/lambda/handlers/refresh-movie-collection-handler'),
 };
 
 function corsHeaders(origin: string | undefined): Record<string, string> {
@@ -132,6 +139,9 @@ function routeRequest(
     if (method === 'GET' && pathname === '/film-selections') {
         return { handler: handlers.listFilmSelections };
     }
+    if (method === 'GET' && pathname === '/collections') {
+        return { handler: handlers.listMovieCollections };
+    }
     if (method === 'GET' && pathname === '/ticket-pricing') {
         return { handler: handlers.getTicketPricing };
     }
@@ -150,6 +160,19 @@ function routeRequest(
         return {
             handler: handlers.getMovie,
             pathParameters: { id: movieMatch[1] },
+        };
+    }
+    if (method === 'POST' && pathname === '/collections/refresh') {
+        return {
+            handler: handlers.refreshMovieCollection,
+            requiresLocalToken: true,
+        };
+    }
+    const collectionMatch = method === 'GET' ? /^\/collections\/(\d+)$/.exec(pathname) : null;
+    if (collectionMatch) {
+        return {
+            handler: handlers.getMovieCollection,
+            pathParameters: { id: collectionMatch[1] },
         };
     }
     return undefined;
@@ -267,7 +290,7 @@ server.listen(port, '127.0.0.1', () => {
     console.log(`Local API listening at http://127.0.0.1:${port}`);
     if (cloudDatabaseMode) {
         console.log(`AWS region: ${process.env.AWS_REGION}`);
-        console.log(`Cloud dev/test tables: ${process.env.TABLE_NAME}, ${process.env.PRICING_TABLE_NAME}, ${process.env.OFFERS_TABLE_NAME}`);
+        console.log(`Cloud dev/test tables: ${process.env.TABLE_NAME}, ${process.env.PRICING_TABLE_NAME}, ${process.env.OFFERS_TABLE_NAME}, ${process.env.COLLECTIONS_TABLE_NAME}`);
     } else {
         console.log(`DynamoDB Local endpoint: ${localEndpoint}`);
     }

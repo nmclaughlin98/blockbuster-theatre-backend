@@ -33,9 +33,7 @@ const movie = {
     runtime: 110,
     releaseDate: '2026-09-25T00:00:00.000Z',
     poster: 'https://example.com/poster.jpg',
-    largePoster: 'https://example.com/large-poster.jpg',
     still: 'https://example.com/still.jpg',
-    largeStill: 'https://example.com/large-still.jpg',
     starring: ['Actor One'],
     director: 'Director Name',
     synopsis: 'A short description.',
@@ -44,6 +42,13 @@ const movie = {
     showtimes: { Monday: ['11:00', '19:00'], Tuesday: ['11:00'] },
     GSI1PK: 'MOVIE',
     GSI1SK: '2026-09-25#456',
+};
+const comingSoonMovie = {
+    ...movie,
+    tmdbId: '789',
+    slug: 'coming-soon',
+    title: 'Coming Soon',
+    isComingSoon: true,
 };
 
 const kidsClubOffer = {
@@ -129,8 +134,8 @@ describe('Special offers and pricing handlers', () => {
         jest.restoreAllMocks();
     });
 
-    it('combines visible movies and active offers for film selection', async () => {
-        ddbMock.on(QueryCommand).resolves({ Items: [movie] });
+    it('combines visible, non-coming-soon movies and active offers for film selection', async () => {
+        ddbMock.on(QueryCommand).resolves({ Items: [movie, comingSoonMovie] });
         ddbMock.on(ScanCommand).resolves({
             Items: [kidsClubOffer, secondOfferForSameMovie, { ...kidsClubOffer, isActive: false }],
         });
@@ -152,6 +157,10 @@ describe('Special offers and pricing handlers', () => {
                 offerId: 'kids-club',
                 title: 'Kids Club',
                 label: 'OFFER - A Movie - Matinee',
+                tagline: 'Every Tuesday',
+                priceDescription: 'Tickets from £2.50',
+                ctaLabel: 'Book tickets',
+                displayLabel: 'OFFER - A Movie - Matinee',
                 featuredMovieId: '456',
                 pricingId: 'KIDS_CLUB_RATES',
                 overrideShowtimes: { Tuesday: ['11:00'] },
@@ -162,6 +171,10 @@ describe('Special offers and pricing handlers', () => {
                 offerId: 'kids-club-evening',
                 title: 'Kids Club Evening',
                 label: 'OFFER - A Movie - Matinee',
+                tagline: 'Every Tuesday',
+                priceDescription: 'Tickets from £2.50',
+                ctaLabel: 'Book tickets',
+                displayLabel: 'OFFER - A Movie - Matinee',
                 featuredMovieId: '456',
                 pricingId: 'CRAZY_TUESDAY_RATES',
                 overrideShowtimes: { Tuesday: ['19:00'] },

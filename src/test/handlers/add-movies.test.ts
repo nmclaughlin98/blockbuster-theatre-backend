@@ -215,6 +215,23 @@ describe('Add movies Lambda handler', () => {
         });
     });
 
+    it('imports movie records without collection metadata or collection index attributes', async () => {
+        fetchMock.mockResolvedValue(tmdbResponse(tmdbMovie(123)));
+        ddbMock.on(UpdateCommand).resolves({});
+
+        const result = await invoke(JSON.stringify({ movieIds: [123] }));
+
+        expect(result.statusCode).toBe(200);
+        expect(responseBody(result).successful).toEqual([
+            { id: '123', status: 'SUCCESS', title: 'Movie 123' },
+        ]);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
+        const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+        expect(input.UpdateExpression).toContain('REMOVE collectionId, GSI2PK, GSI2SK');
+        expect(input.ExpressionAttributeValues).not.toHaveProperty(':collectionId');
+    });
+
     it('moves an existing record atomically when an import changes its slug', async () => {
         fetchMock.mockResolvedValue(tmdbResponse(tmdbMovie(123)));
         ddbMock.on(QueryCommand).resolves({
@@ -417,5 +434,6 @@ describe('Add movies Lambda handler', () => {
         expect(responseBody(missingToken)).toEqual({
             message: 'TMDB_API_KEY is not configured.',
         });
+
     });
 });

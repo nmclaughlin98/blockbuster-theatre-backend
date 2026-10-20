@@ -35,9 +35,7 @@ const mutableFields = new Set([
     'runtime',
     'releaseDate',
     'poster',
-    'largePoster',
     'still',
-    'largeStill',
     'starring',
     'director',
     'synopsis',
@@ -113,6 +111,9 @@ async function updateMovie(id: string, updates: MovieUpdates): Promise<void> {
 
     if (typeof updates.slug === 'string' && updates.slug !== current.slug) {
         const updated: Record<string, unknown> = { ...current, ...updates, slug: updates.slug };
+        delete updated.collectionId;
+        delete updated.GSI2PK;
+        delete updated.GSI2SK;
         if (typeof updates.releaseDate === 'string') {
             updated.GSI1SK = `${updates.releaseDate || '0000-00-00'}#${id}`;
         }
@@ -159,7 +160,7 @@ async function updateMovie(id: string, updates: MovieUpdates): Promise<void> {
         new UpdateCommand({
             TableName: TABLE_NAME,
             Key: { tmdbId: id, slug: current.slug },
-            UpdateExpression: `SET ${updateAssignments.join(', ')}`,
+            UpdateExpression: `SET ${updateAssignments.join(', ')} REMOVE collectionId, GSI2PK, GSI2SK`,
             ConditionExpression: 'attribute_exists(tmdbId) AND attribute_exists(slug)',
             ExpressionAttributeNames: expressionAttributeNames,
             ExpressionAttributeValues: expressionAttributeValues,

@@ -16,6 +16,9 @@ interface ApiGatewayConstructProps {
     validateCheckoutFunction: lambda.IFunction;
     upsertBookingOffersFunction: lambda.IFunction;
     upsertTicketPricingFunction: lambda.IFunction;
+    listMovieCollectionsFunction: lambda.IFunction;
+    getMovieCollectionFunction: lambda.IFunction;
+    refreshMovieCollectionFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
@@ -82,6 +85,18 @@ export class ApiGatewayConstruct extends Construct {
         const upsertTicketPricingIntegration = new integrations.HttpLambdaIntegration(
             'UpsertTicketPricingIntegration',
             props.upsertTicketPricingFunction
+        );
+        const getMovieCollectionIntegration = new integrations.HttpLambdaIntegration(
+            'GetMovieCollectionIntegration',
+            props.getMovieCollectionFunction
+        );
+        const listMovieCollectionsIntegration = new integrations.HttpLambdaIntegration(
+            'ListMovieCollectionsIntegration',
+            props.listMovieCollectionsFunction
+        );
+        const refreshMovieCollectionIntegration = new integrations.HttpLambdaIntegration(
+            'RefreshMovieCollectionIntegration',
+            props.refreshMovieCollectionFunction
         );
 
         this.httpApi.addRoutes({
@@ -153,6 +168,25 @@ export class ApiGatewayConstruct extends Construct {
             path: '/movies',
             methods: [apigw2.HttpMethod.PATCH],
             integration: updateMoviesIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/collections',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listMovieCollectionsIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/collections/{id}',
+            methods: [apigw2.HttpMethod.GET],
+            integration: getMovieCollectionIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/collections/refresh',
+            methods: [apigw2.HttpMethod.POST],
+            integration: refreshMovieCollectionIntegration,
             authorizer: props.jwtAuthorizer,
         });
     }

@@ -6,7 +6,10 @@ import {
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
-import type { ProcessResult, TmdbMovieResponse } from './interfaces';
+import type {
+    ProcessResult,
+    TmdbMovieResponse,
+} from './interfaces';
 import {
     intEnv,
     json,
@@ -152,7 +155,6 @@ async function upsertMovie(
     const comingSoonUpdate = setComingSoon
         ? 'isComingSoon = :isComingSoon,'
         : 'isComingSoon = if_not_exists(isComingSoon, :isComingSoon),';
-
     const updateInput = {
         TableName: TABLE_NAME,
         Key: {
@@ -175,7 +177,6 @@ async function upsertMovie(
                 synopsis = :synopsis,
                 tagline = :tagline,
                 still = :still,
-                largeStill = :largeStill,
                 trailer = :trailer,
                 poster = :poster,
                 showtimes = :showtimes,
@@ -184,6 +185,7 @@ async function upsertMovie(
                 GSI1PK = :gsi1pk,
                 GSI1SK = :gsi1sk,
                 isCarousel = if_not_exists(isCarousel, :defaultCarousel)
+            REMOVE collectionId, GSI2PK, GSI2SK
         `,
         ExpressionAttributeValues: {
             ':title': movieData.title,
@@ -201,7 +203,6 @@ async function upsertMovie(
             ':synopsis': movieData.synopsis,
             ':tagline': movieData.tagline,
             ':still': movieData.still,
-            ':largeStill': movieData.largeStill,
             ':trailer': movieData.trailer,
             ':poster': movieData.poster,
             ':showtimes': movieData.showtimes,
@@ -215,6 +216,22 @@ async function upsertMovie(
 
     if (existing && existing.slug !== movieData.slug) {
         const { movieId, ...movieAttributes } = movieData;
+        const movedRecord = {
+            ...existing,
+            ...movieAttributes,
+            tmdbId: String(movieId),
+            entityType: 'Movie',
+            lastUpdated: new Date().toISOString(),
+            GSI1PK: 'MOVIE',
+            GSI1SK: `${movieData.releaseDate || '0000-00-00'}#${id}`,
+            isComingSoon: setComingSoon
+                ? movieData.isComingSoon
+                : existing.isComingSoon ?? movieData.isComingSoon,
+            isCarousel: existing.isCarousel ?? false,
+        };
+        delete movedRecord.collectionId;
+        delete movedRecord.GSI2PK;
+        delete movedRecord.GSI2SK;
         await docClient.send(
             new TransactWriteCommand({
                 TransactItems: [
@@ -228,19 +245,7 @@ async function upsertMovie(
                     {
                         Put: {
                             TableName: TABLE_NAME,
-                            Item: {
-                                ...existing,
-                                ...movieAttributes,
-                                tmdbId: String(movieId),
-                                entityType: 'Movie',
-                                lastUpdated: new Date().toISOString(),
-                                GSI1PK: 'MOVIE',
-                                GSI1SK: `${movieData.releaseDate || '0000-00-00'}#${id}`,
-                                isComingSoon: setComingSoon
-                                    ? movieData.isComingSoon
-                                    : existing.isComingSoon ?? movieData.isComingSoon,
-                                isCarousel: existing.isCarousel ?? false,
-                            },
+                            Item: movedRecord,
                             ConditionExpression: 'attribute_not_exists(tmdbId)',
                         },
                     },

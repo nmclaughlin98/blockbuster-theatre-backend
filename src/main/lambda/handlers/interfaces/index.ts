@@ -1,4 +1,5 @@
 export type { MovieDetail } from './movie-detail';
+export type { MovieCollectionRecord } from './movie-collection-record';
 export type { MovieData } from './movie-data';
 export type { MovieRecord } from './movie-record';
 export type { MovieSummary } from './movie-summary';
