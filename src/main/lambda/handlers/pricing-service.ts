@@ -54,10 +54,6 @@ function isRecord(value: unknown): value is UnknownRecord {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isStringArray(value: unknown): value is string[] {
-    return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
-}
-
 function isShowtimes(value: unknown): value is MovieShowtimes {
     return (
         isMovieShowtimes(value) &&

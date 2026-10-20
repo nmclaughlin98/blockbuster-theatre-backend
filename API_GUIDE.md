@@ -45,6 +45,18 @@ npm run update:movie-showtimes
 npm run update:movie-showtimes -- --apply
 ```
 
+### Migrating existing offer overrides
+
+Run this dry-run-first migration to assign a screen to each existing string-only offer override. It preserves every override day and time, skips offers without overrides, and leaves already-screened overrides unchanged. Run the preview and inspect it before applying:
+
+```bash
+export OFFERS_TABLE_NAME="blockbuster-theatre-booking-offers"
+npm run update:offer-showtimes
+npm run update:offer-showtimes -- --apply
+```
+
+Run both the movie and offer migrations before deploying the strict showtime validation. Legacy records can otherwise cause `GET /movies`, `GET /film-selections`, or `GET /ticket-pricing` to reject the affected record.
+
 ## Deprecated showtime format
 
 The former string-only schedule format is deprecated and is no longer accepted for movie schedules or offer overrides. Requests using it are rejected:
@@ -55,7 +67,7 @@ The former string-only schedule format is deprecated and is no longer accepted f
 }
 ```
 
-Use screened showtime objects instead. Existing cloud records in the old format must be migrated with `update:movie-showtimes` before endpoints that read them can validate those records.
+Use screened showtime objects instead. Existing cloud movie records must be migrated with `update:movie-showtimes`; offer overrides must be migrated with `update:offer-showtimes` before endpoints that read them can validate those records.
 
 ```json
 {

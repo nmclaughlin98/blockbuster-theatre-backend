@@ -30,6 +30,12 @@ const POSSIBLE_TIMES = [
 
 const SCREENS = ['1', '2', '3', '4', '5'] as const;
 
+export function randomScreenForShowtime(
+    seed: string
+): ScreenedShowtime['screen'] {
+    return SCREENS[Math.floor(createRandom(seed)() * SCREENS.length)];
+}
+
 function createRandom(seed: string): () => number {
     let state = 2166136261;
     for (const character of seed) {
@@ -94,16 +100,15 @@ export function generateShowtimes(
         const numberOfShowings = lowerPriority
             ? Math.floor(random() * 2) + 1
             : Math.floor(random() * 3) + 2;
-        const screenRandom = createRandom(`${movieId}:screens:${day}`);
         schedule[day] = shuffledTimes
             .slice(0, numberOfShowings)
             .sort((first, second) => first.localeCompare(second))
-            .map(
-                (time): ScreenedShowtime => ({
-                    screen: SCREENS[Math.floor(screenRandom() * SCREENS.length)],
+            .map((time, index): ScreenedShowtime => ({
+                    screen: randomScreenForShowtime(
+                        `${movieId}:screens:${day}:${index}`
+                    ),
                     time,
-                })
-            );
+                }));
     }
 
     return schedule;

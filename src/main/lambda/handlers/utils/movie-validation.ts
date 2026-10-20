@@ -114,7 +114,7 @@ function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function isScreenedShowtime(value: unknown): value is ScreenedShowtime {
+export function isScreenedShowtime(value: unknown): value is ScreenedShowtime {
     return (
         isRecord(value) &&
         Object.keys(value).length === 2 &&
