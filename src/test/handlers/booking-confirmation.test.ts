@@ -81,7 +81,17 @@ describe('booking confirmation email handler', () => {
         expect(html).toContain('background-color:#0c0d12');
         expect(html).toContain('#ff334b');
         expect(html).toContain('&lt;Movie &amp; More&gt;');
+        expect(html).toContain('DATE &amp; SHOWTIME');
+        expect(html).toContain('SCREEN / HALL');
+        expect(html).toContain('SEAT NUMBERS');
+        expect(html).toContain('DEMO TOTAL');
+        expect(html).toContain('GUEST NAME');
+        expect(html).toContain('TICKET BREAKDOWN');
         expect(html).toContain('src="cid:booking-reference-qr"');
+        expect(html).toContain('REFERENCE ONLY - NOT VALID FOR ENTRY');
+        expect(html.indexOf('src="cid:booking-reference-qr"')).toBeGreaterThan(
+            html.indexOf(`REF: ${booking.bookingRef}`)
+        );
         const qrCode = sent.Content?.Simple?.Attachments?.[0];
         expect(qrCode).toMatchObject({
             ContentType: 'image/png',

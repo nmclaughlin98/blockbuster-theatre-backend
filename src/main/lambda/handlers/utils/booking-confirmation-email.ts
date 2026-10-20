@@ -54,22 +54,29 @@ export function formatBookingConfirmationEmailHtml(
     booking: BookingConfirmationEmail
 ): string {
     const details: Array<[string, string]> = [
-        ['MOVIE', booking.movieTitle],
-        ['DATE', booking.date],
-        ['SHOWTIME', `${booking.time} - Screen ${booking.screen}`],
-        ['SEATS', booking.seats.join(', ')],
-        ['TICKETS', String(booking.tickets)],
+        ['DATE & SHOWTIME', `${booking.date} at ${booking.time}`],
+        ['SCREEN / HALL', `Screen ${booking.screen}`],
+        ['SEAT NUMBERS', booking.seats.join(', ')],
+        ['DEMO TOTAL', `GBP ${booking.totalPrice.toFixed(2)}`],
+        ['GUEST NAME', `${booking.customer.firstName} ${booking.customer.surname}`],
+        ['TICKET BREAKDOWN', `${booking.tickets} ${booking.tickets === 1 ? 'Ticket' : 'Tickets'}`],
     ];
-    const detailRows = details.map(([label, value]) => `
+    const detailCell = ([label, value]: [string, string]) => `
+        <td width="50%" valign="top" style="width:50%;padding:11px 12px 9px 0;">
+          <div style="margin:0 0 5px;color:#8ea6c8;font-family:Arial,sans-serif;font-size:10px;font-weight:bold;letter-spacing:1px;">${escapeHtml(label)}</div>
+          <div style="margin:0;color:#f8fafc;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:1.4;">${escapeHtml(value)}</div>
+        </td>`;
+    const detailRows = Array.from({ length: Math.ceil(details.length / 2) }, (_, index) => `
         <tr>
-          <td style="padding:12px 16px;color:#94a3b8;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;letter-spacing:1px;">${label}</td>
-          <td align="right" style="padding:12px 16px;color:#f8fafc;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">${escapeHtml(value)}</td>
+          ${detailCell(details[index * 2])}
+          ${detailCell(details[index * 2 + 1])}
         </tr>`).join('');
     const phoneRow = booking.customer.phone
-        ? `<tr><td style="padding:12px 16px;color:#94a3b8;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;letter-spacing:1px;">PHONE</td><td align="right" style="padding:12px 16px;color:#f8fafc;font-family:Arial,sans-serif;font-size:15px;">${escapeHtml(booking.customer.phone)}</td></tr>`
+        ? `<tr><td colspan="2" style="padding:8px 0 0;"><div style="margin:0 0 5px;color:#8ea6c8;font-family:Arial,sans-serif;font-size:10px;font-weight:bold;letter-spacing:1px;">PHONE</div><div style="margin:0;color:#f8fafc;font-family:Arial,sans-serif;font-size:14px;">${escapeHtml(booking.customer.phone)}</div></td></tr>`
         : '';
     const bookingRef = escapeHtml(booking.bookingRef);
     const guestName = escapeHtml(`${booking.customer.firstName} ${booking.customer.surname}`);
+    const movieTitle = escapeHtml(booking.movieTitle);
 
     return `<!doctype html>
 <html lang="en">
@@ -82,79 +89,66 @@ export function formatBookingConfirmationEmailHtml(
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0c0d12;">Your Blockbuster Theatre demo booking details and reference.</div>
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0c0d12">
     <tr>
-      <td align="center" style="padding:32px 12px;">
-        <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;background-color:#13151f;border:1px solid #292d3b;border-radius:16px;overflow:hidden;">
+      <td align="center" style="padding:28px 12px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" bgcolor="#343744" style="width:100%;max-width:600px;background-color:#343744;border:1px solid #454957;border-radius:16px;overflow:hidden;">
           <tr>
-            <td style="height:5px;background-color:#ff334b;font-size:0;line-height:0;">&nbsp;</td>
-          </tr>
-          <tr>
-            <td style="padding:24px 28px 18px;">
+            <td bgcolor="#ff334b" style="padding:17px 20px;background-color:#ff334b;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:21px;font-weight:bold;letter-spacing:1.5px;color:#f8fafc;">BLOCKBUSTER <span style="color:#ff334b;">THEATRE</span></td>
-                  <td align="right"><span style="display:inline-block;padding:7px 11px;border:1px solid #7b3540;border-radius:999px;color:#ff8a99;font-size:10px;font-weight:bold;letter-spacing:1.2px;">DEMO BOOKING</span></td>
+                  <td style="font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:17px;font-weight:bold;letter-spacing:1px;color:#ffffff;">BLOCKBUSTER THEATRE</td>
+                  <td align="right"><span style="display:inline-block;padding:6px 9px;border-radius:999px;background-color:#b31e35;color:#ffffff;font-size:9px;font-weight:bold;letter-spacing:0.6px;">DEMO BOOKING</span></td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:8px 28px 24px;">
-              <p style="margin:0 0 8px;color:#34d399;font-size:11px;font-weight:bold;letter-spacing:2px;">BOOKING PREVIEW</p>
-              <h1 style="margin:0;color:#f8fafc;font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:32px;font-weight:normal;letter-spacing:0.5px;line-height:1.15;">Your night at the movies</h1>
-              <p style="margin:12px 0 0;color:#94a3b8;font-size:15px;line-height:1.6;">Hi ${guestName}, here is your demo booking summary.</p>
+            <td style="padding:20px 18px 6px;">
+              <h1 style="margin:0;color:#f8fafc;font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:23px;font-weight:normal;line-height:1.25;">${movieTitle}</h1>
+              <p style="margin:6px 0 0;color:#94a3b8;font-size:12px;line-height:1.5;">A demo booking preview for ${guestName}</p>
             </td>
           </tr>
           <tr>
-            <td style="padding:0 28px 22px;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#2a1820" style="border:1px solid #71303b;border-radius:10px;">
+            <td style="padding:10px 18px 14px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#2a1820" style="background-color:#2a1820;border:1px solid #71303b;border-radius:8px;">
                 <tr>
-                  <td style="padding:14px 16px;color:#ffb2bd;font-size:12px;font-weight:bold;letter-spacing:0.6px;line-height:1.6;">DEMO ONLY - NO PAYMENT WAS PROCESSED. This is not a valid cinema ticket or seat reservation.</td>
+                  <td style="padding:9px 11px;color:#ffb2bd;font-size:10px;font-weight:bold;letter-spacing:0.4px;line-height:1.5;">DEMO ONLY - NO PAYMENT WAS PROCESSED. This is not a valid ticket or seat reservation.</td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:0 28px 22px;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1a1d2e" style="border:1px solid #303447;border-radius:12px;">
-                <tr>
-                  <td colspan="2" style="padding:16px 16px 8px;color:#94a3b8;font-size:11px;font-weight:bold;letter-spacing:1.5px;">BOOKING REFERENCE</td>
-                </tr>
-                <tr>
-                  <td style="padding:0 16px 16px;color:#f8fafc;font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:28px;letter-spacing:2px;">${bookingRef}</td>
-                  <td align="right" style="padding:0 16px 16px;color:#ff8a99;font-size:11px;font-weight:bold;letter-spacing:1px;">DEMO</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:0 28px 22px;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#1a1d2e" style="border:1px solid #303447;border-radius:12px;">
+            <td style="padding:0 18px 12px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 ${detailRows}
                 ${phoneRow}
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 0 1px;border-top:1px dashed #737887;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:12px 18px 7px;color:#b6c7e1;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;">REF: ${bookingRef}</td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:8px 18px 4px;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="background-color:#ffffff;border-radius:6px;">
                 <tr>
-                  <td style="padding:14px 16px;border-top:1px solid #3a3e4d;color:#94a3b8;font-size:12px;font-weight:bold;letter-spacing:1px;">DEMO TOTAL</td>
-                  <td align="right" style="padding:14px 16px;border-top:1px solid #3a3e4d;color:#ff8a99;font-size:18px;font-weight:bold;">GBP ${booking.totalPrice.toFixed(2)}</td>
+                  <td align="center" style="padding:10px;"><img src="cid:booking-reference-qr" width="144" height="144" alt="QR code encoding reference ${bookingRef} only" style="display:block;width:144px;height:144px;border:0;"></td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td align="center" style="padding:0 28px 28px;">
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="border-radius:12px;">
-                <tr>
-                  <td align="center" style="padding:16px 24px 8px;color:#0c0d12;font-size:12px;font-weight:bold;letter-spacing:1px;">YOUR BOOKING REFERENCE QR</td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding:4px 24px 8px;"><img src="cid:booking-reference-qr" width="192" height="192" alt="QR code containing booking reference ${bookingRef}" style="display:block;width:192px;height:192px;border:0;"></td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding:0 24px 16px;color:#475569;font-size:11px;line-height:1.5;">Encodes ${bookingRef} only. It cannot be used for cinema entry.</td>
-                </tr>
-              </table>
+            <td align="center" style="padding:3px 18px 16px;color:#94a3b8;font-size:9px;font-weight:bold;letter-spacing:1px;">REFERENCE ONLY - NOT VALID FOR ENTRY</td>
+          </tr>
+          <tr>
+            <td style="padding:0 18px 14px;color:#94a3b8;font-size:10px;line-height:1.5;text-align:center;">
+              Scan the code to read the booking reference. It does not verify or redeem a booking.
             </td>
           </tr>
           <tr>
-            <td style="padding:18px 28px;border-top:1px solid #292d3b;color:#64748b;font-size:11px;line-height:1.6;text-align:center;">This demonstration does not process payment, create a reservation, or issue a ticket.<br>Blockbuster Theatre</td>
+            <td style="padding:12px 18px;border-top:1px solid #4a4e5b;color:#94a3b8;font-size:10px;line-height:1.5;text-align:center;">No payment was taken, no reservation was created, and no valid ticket was issued.</td>
           </tr>
         </table>
       </td>
