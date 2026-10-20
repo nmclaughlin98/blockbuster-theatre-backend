@@ -1,6 +1,6 @@
 {
   "name": "blockbuster-theatre-backend",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "engines": {
     "node": ">=24.0.0"
@@ -17,6 +17,7 @@
     "test:coverage": "jest --coverage",
     "seed:pricing": "ts-node scripts/seed-pricing-offers.ts",
     "migrate:movie-image-urls": "ts-node scripts/migrate-movie-image-urls.ts",
+    "update:movie-showtimes": "ts-node scripts/update-movie-showtimes.ts",
     "local:db:start": "docker compose up -d dynamodb-local",
     "local:db:stop": "docker compose stop dynamodb-local",
     "local:init": "ts-node scripts/init-local-db.ts",

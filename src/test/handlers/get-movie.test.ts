@@ -28,8 +28,14 @@ const movieRecord = {
     synopsis: 'A short description of the movie.',
     trailer: 'https://www.youtube-nocookie.com/embed/example',
     showtimes: {
-        Monday: ['11:00', '19:00'],
-        Tuesday: ['13:00', '20:00'],
+        Monday: [
+            { screen: '1', time: '11:00' },
+            { screen: '3', time: '19:00' },
+        ],
+        Tuesday: [
+            { screen: '2', time: '13:00' },
+            { screen: '5', time: '20:00' },
+        ],
     },
 };
 
@@ -85,8 +91,14 @@ describe('Get movie Lambda handler', () => {
             synopsis: 'A short description of the movie.',
             trailer: 'https://www.youtube-nocookie.com/embed/example',
             showtimes: {
-                Monday: ['11:00', '19:00'],
-                Tuesday: ['13:00', '20:00'],
+                Monday: [
+                    { screen: '1', time: '11:00' },
+                    { screen: '3', time: '19:00' },
+                ],
+                Tuesday: [
+                    { screen: '2', time: '13:00' },
+                    { screen: '5', time: '20:00' },
+                ],
             },
         });
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
@@ -95,6 +107,23 @@ describe('Get movie Lambda handler', () => {
             ExpressionAttributeValues: { ':tmdbId': '12345' },
             ConsistentRead: true,
         });
+    });
+
+    it('returns showtimes with assigned screens', async () => {
+        const showtimes = {
+            Monday: [
+                { screen: '1', time: '13:00' },
+                { screen: '3', time: '14:20' },
+            ],
+        };
+        ddbMock.on(QueryCommand).resolves({
+            Items: [{ ...movieRecord, showtimes }],
+        });
+
+        const result = await handler(createEvent('12345'));
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result).showtimes).toEqual(showtimes);
     });
 
     it('returns 404 when the movie does not exist', async () => {

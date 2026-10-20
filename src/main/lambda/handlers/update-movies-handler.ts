@@ -13,7 +13,7 @@ import {
     mapWithConcurrency,
     normalizeMovieIds,
 } from './utils/common';
-import { isMovieRecord } from './utils/movie-validation';
+import { isMovieRecord, isMovieShowtimes } from './utils/movie-validation';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient(), {
     marshallOptions: { removeUndefinedValues: true },
@@ -53,10 +53,6 @@ function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function isShowtimes(value: unknown): boolean {
-    return isRecord(value) && Object.values(value).every(isStringArray);
-}
-
 function isValidFieldValue(field: string, value: unknown): boolean {
     if (field === 'slug') {
         return typeof value === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
@@ -74,7 +70,7 @@ function isValidFieldValue(field: string, value: unknown): boolean {
         return isStringArray(value);
     }
     if (field === 'showtimes') {
-        return isShowtimes(value);
+        return isMovieShowtimes(value);
     }
     return typeof value === 'string';
 }

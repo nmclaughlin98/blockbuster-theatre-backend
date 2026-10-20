@@ -16,3 +16,4 @@ export type { TmdbReleaseCertification } from './tmdb-release-certification';
 export type { TmdbReleaseDates } from './tmdb-release-dates';
 export type { TmdbVideo } from './tmdb-video';
 export type { TmdbVideos } from './tmdb-videos';
+export type { MovieShowtimes, ScreenedShowtime } from './showtime';

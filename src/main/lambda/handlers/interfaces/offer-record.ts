@@ -1,3 +1,5 @@
+import type { MovieShowtimes } from './showtime';
+
 export interface OfferRecord {
     offerId: string;
     title: string;
@@ -7,6 +9,6 @@ export interface OfferRecord {
     featuredMovieId: string;
     pricingId: string;
     isActive: boolean;
-    overrideShowtimes?: Record<string, string[]>;
+    overrideShowtimes?: MovieShowtimes;
     displayLabel?: string;
 }

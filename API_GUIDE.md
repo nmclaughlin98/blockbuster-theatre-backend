@@ -12,6 +12,60 @@ npm run migrate:movie-image-urls
 npm run migrate:movie-image-urls -- --apply
 ```
 
+Newly imported movies use the same shared schedule generator as the one-time updater. Every showing has a screen from 1 to 5. Movies released more than one year ago or with a score below 5/10 are scheduled on 60% of days, with 1–2 showtimes per scheduled day. Other movies are scheduled on 85% of days, with 2–4 showtimes per scheduled day. Schedules are repeatable per movie so the preview matches the applied update.
+
+To replace every existing movie's showtimes, set the table name, AWS profile, and region, then preview the proposed schedules before applying them. The script updates only the `showtimes` attribute and follows the table's `tmdbId` and `slug` keys:
+
+```json
+{
+  "Monday": [
+    { "screen": "1", "time": "13:00" },
+    { "screen": "3", "time": "14:20" }
+  ]
+}
+```
+
+Pricing requests still select a movie showtime by its day and time.
+
+```powershell
+$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue"
+$env:AWS_PROFILE = "your-aws-profile"
+$env:AWS_REGION = "eu-west-2"
+npm run update:movie-showtimes
+npm run update:movie-showtimes -- --apply
+```
+
+On macOS or Linux, use Bash or Zsh `export` commands instead:
+
+```bash
+export MOVIE_TABLE_NAME="blockbuster-theatre-movie-catalogue"
+export AWS_PROFILE="your-aws-profile"
+export AWS_REGION="eu-west-2"
+npm run update:movie-showtimes
+npm run update:movie-showtimes -- --apply
+```
+
+## Deprecated showtime format
+
+The former string-only schedule format is deprecated and is no longer accepted for movie schedules or offer overrides. Requests using it are rejected:
+
+```json
+{
+  "Monday": ["13:00", "14:20"]
+}
+```
+
+Use screened showtime objects instead. Existing cloud records in the old format must be migrated with `update:movie-showtimes` before endpoints that read them can validate those records.
+
+```json
+{
+  "Monday": [
+    { "screen": "1", "time": "13:00" },
+    { "screen": "3", "time": "14:20" }
+  ]
+}
+```
+
 The bulk upsert endpoints use the same JWT authorizer as the existing movie administration POST endpoint. Each request accepts 1–25 complete records in the matching array property. Submitted IDs are replaced atomically; records not included in the request are unchanged. Duplicate IDs in one request are rejected.
 
 ## Movie collections
@@ -193,7 +247,9 @@ The Crazy Tuesday package is configured as one £4 ticket tier:
       "isActive": true,
       "displayLabel": "OFFER - Kids Club",
       "overrideShowtimes": {
-        "Tuesday": ["11:00"]
+        "Tuesday": [
+          { "screen": "1", "time": "11:00" }
+        ]
       }
     }
   ]

@@ -135,6 +135,26 @@ describe('Update movies Lambda handler', () => {
         });
     });
 
+    it('accepts screened showtime slots in movie updates', async () => {
+        ddbMock.on(UpdateCommand).resolves({});
+        const showtimes = {
+            Monday: [
+                { screen: '1', time: '13:00' },
+                { screen: '5', time: '14:20' },
+            ],
+        };
+
+        const result = await invoke(
+            JSON.stringify({ movieIds: [123], updates: { showtimes } })
+        );
+
+        expect(result.statusCode).toBe(200);
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input)
+            .toMatchObject({
+                ExpressionAttributeValues: { ':value0': showtimes },
+            });
+    });
+
     it('updates a movie sort title', async () => {
         ddbMock.on(UpdateCommand).resolves({});
 
@@ -212,6 +232,18 @@ describe('Update movies Lambda handler', () => {
         ['slug with repeated separators', { movieIds: [123], updates: { slug: 'star-wars---episode-iii' } }],
         ['slug with uppercase letters', { movieIds: [123], updates: { slug: 'Movie-Title' } }],
         ['empty sort title', { movieIds: [123], updates: { sortTitle: '   ' } }],
+        ['invalid screen number', {
+            movieIds: [123],
+            updates: { showtimes: { Monday: [{ screen: '6', time: '13:00' }] } },
+        }],
+        ['invalid screened showtime time', {
+            movieIds: [123],
+            updates: { showtimes: { Monday: [{ screen: '2', time: '25:00' }] } },
+        }],
+        ['legacy string showtimes', {
+            movieIds: [123],
+            updates: { showtimes: { Monday: ['13:00'] } },
+        }],
         ['empty IDs', { movieIds: [], updates: { title: 'New title' } }],
         ['nonnumeric ID', { movieIds: ['12x'], updates: { title: 'New title' } }],
     ])('rejects %s without writing', async (_name, request) => {

@@ -1,5 +1,7 @@
 import type {
     MovieRecord,
+    MovieShowtimes,
+    ScreenedShowtime,
     TmdbCastMember,
     TmdbCountryRelease,
     TmdbCredits,
@@ -112,8 +114,25 @@ function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function isShowtimes(value: unknown): value is Record<string, string[]> {
-    return isRecord(value) && Object.values(value).every(isStringArray);
+function isScreenedShowtime(value: unknown): value is ScreenedShowtime {
+    return (
+        isRecord(value) &&
+        Object.keys(value).length === 2 &&
+        typeof value.screen === 'string' &&
+        /^[1-5]$/.test(value.screen) &&
+        typeof value.time === 'string' &&
+        /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value.time)
+    );
+}
+
+export function isMovieShowtimes(value: unknown): value is MovieShowtimes {
+    return (
+        isRecord(value) &&
+        Object.values(value).every(
+            (showings) =>
+                Array.isArray(showings) && showings.every(isScreenedShowtime)
+        )
+    );
 }
 
 /**
@@ -149,6 +168,6 @@ export function isMovieRecord(value: unknown): value is MovieRecord {
         typeof value.director === 'string' &&
         typeof value.synopsis === 'string' &&
         typeof value.trailer === 'string' &&
-        isShowtimes(value.showtimes)
+        isMovieShowtimes(value.showtimes)
     );
 }

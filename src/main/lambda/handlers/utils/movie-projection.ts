@@ -6,6 +6,7 @@ import type {
     TmdbCrewMember,
     TmdbMovieResponse,
 } from '../interfaces';
+import { generateShowtimes } from './showtime-schedule';
 import { TMDB_MOVIE_METADATA_OVERRIDES } from './movie-metadata-overrides';
 
 function slugify(text: string): string {
@@ -125,11 +126,13 @@ export function projectTmdb(
         .slice(0, 3)
         .map((member) => member.name.trim())
         .join(', ') || 'Unknown';
-    const showtimes = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        .reduce<Record<string, string[]>>((schedule, day) => {
-            schedule[day] = ['11:00', '13:00', '15:00', '19:00'];
-            return schedule;
-        }, {});
+    const score = raw.vote_average ? Number(raw.vote_average.toFixed(1)) : 0;
+    const releaseDate = raw.release_date ? `${raw.release_date}T00:00:00.000Z` : '';
+    const showtimes = generateShowtimes(
+        String(raw.id),
+        releaseDate,
+        score
+    );
     const trailerKey = raw.videos?.results?.find(
         (video) => video.site === 'YouTube' && video.type === 'Trailer' && video.key
     )?.key;
@@ -146,9 +149,9 @@ export function projectTmdb(
         genres,
         mainGenre: genres[0] ?? 'Uncategorized',
         rating,
-        score: raw.vote_average ? Number(raw.vote_average.toFixed(1)) : 0,
+        score,
         runtime: raw.runtime || 0,
-        releaseDate: raw.release_date ? `${raw.release_date}T00:00:00.000Z` : '',
+        releaseDate,
         visible: true,
         isCarousel: false,
         isComingSoon: isComingSoon ?? checkIsComingSoon(raw.release_date || ''),
