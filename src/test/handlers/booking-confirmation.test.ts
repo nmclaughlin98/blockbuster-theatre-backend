@@ -79,6 +79,14 @@ describe('booking confirmation email handler', () => {
         );
         const html = sent.Content?.Simple?.Body?.Html?.Data ?? '';
         expect(html).toContain('background-color:#0c0d12');
+        expect(html).toContain('<meta name="color-scheme" content="dark">');
+        expect(html).toContain('<meta name="supported-color-schemes" content="dark">');
+        expect(html).toContain(':root { color-scheme: dark; supported-color-schemes: dark; }');
+        expect(html).toContain('@media (prefers-color-scheme: dark)');
+        expect(html).toContain('background-image:linear-gradient(#0c0d12,#0c0d12)');
+        expect(html).toContain('background-image:linear-gradient(#343744,#343744)');
+        expect(html).toContain('background-image:linear-gradient(#ffffff,#ffffff)');
+        expect(html).toContain('color-scheme:light');
         expect(html).toContain('#ff334b');
         expect(html).toContain('&lt;Movie &amp; More&gt;');
         expect(html).toContain('DATE &amp; SHOWTIME');
