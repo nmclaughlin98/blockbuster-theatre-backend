@@ -5,5 +5,6 @@ export interface MovieCollectionRecord {
     posterUrl: string;
     backdropUrl: string;
     movieIds: string[];
+    isActive?: boolean;
     lastUpdated?: string;
 }

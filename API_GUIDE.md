@@ -22,7 +22,7 @@ List all stored collections with the public endpoint:
 
 `GET /collections`
 
-The response contains collection summaries sorted by name. Each summary includes `collectionId`, `name`, `description`, `posterUrl`, `backdropUrl`, `movieCount`, and `lastUpdated` when available. Movie IDs are omitted; request a collection by ID to retrieve its full details.
+The response contains collection summaries sorted by name. Each summary includes `collectionId`, `name`, `description`, `posterUrl`, `backdropUrl`, `movieCount`, `isActive`, and `lastUpdated` when available. `isActive` defaults to `true` for collections without a stored value. Movie IDs are omitted; request a collection by ID to retrieve its full details.
 
 ```json
 {
@@ -33,6 +33,7 @@ The response contains collection summaries sorted by name. Each summary includes
       "description": "An interconnected film series.",
       "posterUrl": "",
       "backdropUrl": "",
+      "isActive": true,
       "movieCount": 3
     }
   ]
@@ -82,7 +83,7 @@ Example partial-success response:
 
 Set `TMDB_API_KEY` in the environment used to synthesize/deploy the stack. For local API testing, set that same environment variable before starting the local API; the local refresh route also requires the local admin token.
 
-`GET /collections/{id}` returns the list metadata, the complete `movieIds` array, and movie summaries for IDs that currently exist in the catalogue. When a missing movie is later added through `POST /movies`, it appears in this response automatically because membership is resolved from the list's IDs at read time.
+`GET /collections/{id}` returns the list metadata, its `isActive` state (defaulting to `true` when not stored), the complete `movieIds` array, and movie summaries for IDs that currently exist in the catalogue. When a missing movie is later added through `POST /movies`, it appears in this response automatically because membership is resolved from the list's IDs at read time.
 
 Example collection portion of the response:
 
@@ -94,7 +95,8 @@ Example collection portion of the response:
     "description": "An interconnected film series.",
     "posterUrl": "",
     "backdropUrl": "",
-    "movieIds": ["1726", "1724", "999"]
+    "movieIds": ["1726", "1724", "999"],
+    "isActive": true
   },
   "movies": []
 }

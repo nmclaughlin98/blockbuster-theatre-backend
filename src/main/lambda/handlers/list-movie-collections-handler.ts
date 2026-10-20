@@ -32,6 +32,7 @@ export const handler = async (
                 posterUrl: record.posterUrl,
                 backdropUrl: record.backdropUrl,
                 movieCount: record.movieIds.length,
+                isActive: record.isActive ?? true,
                 ...(record.lastUpdated && { lastUpdated: record.lastUpdated }),
                 };
             })

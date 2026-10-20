@@ -4,7 +4,7 @@ import type {
 } from 'aws-lambda';
 import {
     DynamoDBDocumentClient,
-    PutCommand,
+    UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
 import type { MovieCollectionRecord } from './interfaces';
@@ -270,13 +270,33 @@ async function refreshList(
                 ? `https://image.tmdb.org/t/p/w1280${firstPage.backdrop_path}`
                 : '',
             movieIds,
+            isActive: true,
             lastUpdated: new Date().toISOString(),
         };
 
         await docClient.send(
-            new PutCommand({
+            new UpdateCommand({
                 TableName: COLLECTIONS_TABLE_NAME,
-                Item: collection,
+                Key: { collectionId: listId },
+                UpdateExpression: 'SET #name = :name, #description = :description, #posterUrl = :posterUrl, #backdropUrl = :backdropUrl, #movieIds = :movieIds, #lastUpdated = :lastUpdated, #isActive = if_not_exists(#isActive, :isActive)',
+                ExpressionAttributeNames: {
+                    '#name': 'name',
+                    '#description': 'description',
+                    '#posterUrl': 'posterUrl',
+                    '#backdropUrl': 'backdropUrl',
+                    '#movieIds': 'movieIds',
+                    '#lastUpdated': 'lastUpdated',
+                    '#isActive': 'isActive',
+                },
+                ExpressionAttributeValues: {
+                    ':name': collection.name,
+                    ':description': collection.description,
+                    ':posterUrl': collection.posterUrl,
+                    ':backdropUrl': collection.backdropUrl,
+                    ':movieIds': collection.movieIds,
+                    ':lastUpdated': collection.lastUpdated,
+                    ':isActive': true,
+                },
             })
         );
 

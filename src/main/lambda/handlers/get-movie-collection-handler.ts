@@ -47,6 +47,7 @@ function collectionResponse(record: MovieCollectionRecord) {
         posterUrl: record.posterUrl,
         backdropUrl: record.backdropUrl,
         movieIds: record.movieIds,
+        isActive: record.isActive ?? true,
         ...(record.lastUpdated && { lastUpdated: record.lastUpdated }),
     };
 }

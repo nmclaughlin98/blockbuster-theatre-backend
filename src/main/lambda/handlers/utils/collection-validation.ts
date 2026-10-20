@@ -18,5 +18,6 @@ export function isMovieCollectionRecord(value: unknown): value is MovieCollectio
         typeof value.backdropUrl === 'string' &&
         Array.isArray(value.movieIds) &&
         value.movieIds.every((id) => typeof id === 'string' && /^\d+$/.test(id)) &&
+        (value.isActive === undefined || typeof value.isActive === 'boolean') &&
         (value.lastUpdated === undefined || typeof value.lastUpdated === 'string');
 }

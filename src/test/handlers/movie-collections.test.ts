@@ -5,9 +5,9 @@ import type {
 import {
     DynamoDBDocumentClient,
     GetCommand,
-    PutCommand,
     QueryCommand,
     ScanCommand,
+    UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
@@ -93,7 +93,7 @@ describe('TMDB list-backed movie collections', () => {
         ddbMock.reset();
         ddbMock.on(GetCommand).resolves({});
         ddbMock.on(QueryCommand).resolves({ Items: [] });
-        ddbMock.on(PutCommand).resolves({});
+        ddbMock.on(UpdateCommand).resolves({});
         ddbMock.on(ScanCommand).resolves({ Items: [] });
         fetchMock.mockReset();
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -157,17 +157,20 @@ describe('TMDB list-backed movie collections', () => {
         expect(new URL(String(fetchMock.mock.calls[0][0])).toString()).toContain(
             '/3/list/8706524?language=en-US&page=1'
         );
-        expect(ddbMock.commandCalls(PutCommand)[0].args[0].input).toMatchObject({
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-collections',
-            Item: {
-                collectionId: '8706524',
-                name: 'Marvel Cinematic Universe',
-                description: 'An interconnected film series.',
-                posterUrl: '',
-                backdropUrl: '',
-                movieIds: ['1726', '1724', '999'],
+            Key: { collectionId: '8706524' },
+            ExpressionAttributeValues: {
+                ':name': 'Marvel Cinematic Universe',
+                ':description': 'An interconnected film series.',
+                ':posterUrl': '',
+                ':backdropUrl': '',
+                ':movieIds': ['1726', '1724', '999'],
+                ':isActive': true,
             },
         });
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression)
+            .toContain('#isActive = if_not_exists(#isActive, :isActive)');
     });
 
     it('validates the IDs array and rejects duplicates before making TMDB requests', async () => {
@@ -193,7 +196,7 @@ describe('TMDB list-backed movie collections', () => {
         expect(responseBody(duplicateIds)).toMatchObject({ duplicateIds: ['123'] });
         expect(tooManyIds).toMatchObject({ statusCode: 400 });
         expect(fetchMock).not.toHaveBeenCalled();
-        expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
     it('reports per-ID failures while refreshing other lists in the same request', async () => {
@@ -230,7 +233,7 @@ describe('TMDB list-backed movie collections', () => {
                 },
             ],
         });
-        expect(ddbMock.commandCalls(PutCommand)).toHaveLength(1);
+        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
     });
 
     it('reports a missing TMDB list as a per-ID failure', async () => {
@@ -247,7 +250,7 @@ describe('TMDB list-backed movie collections', () => {
                 statusCode: 404,
             }],
         });
-        expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
     it('converts TMDB image paths to full poster and backdrop URLs', async () => {
@@ -264,9 +267,13 @@ describe('TMDB list-backed movie collections', () => {
 
         await refreshCollection(createEvent(undefined, { ids: ['8706524'] }));
 
-        expect(ddbMock.commandCalls(PutCommand)[0].args[0].input.Item).toMatchObject({
-            posterUrl: 'https://image.tmdb.org/t/p/w500/poster.jpg',
-            backdropUrl: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input)
+            .toMatchObject({
+                ExpressionAttributeValues: {
+                    ':posterUrl': 'https://image.tmdb.org/t/p/w500/poster.jpg',
+                    ':backdropUrl': 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+                    ':isActive': true,
+                },
         });
     });
 
@@ -279,6 +286,7 @@ describe('TMDB list-backed movie collections', () => {
                 posterUrl: '',
                 backdropUrl: '',
                 movieIds: ['1726', '999'],
+                isActive: false,
             },
         });
         ddbMock.on(QueryCommand).callsFake((input) => (
@@ -297,6 +305,7 @@ describe('TMDB list-backed movie collections', () => {
                 posterUrl: '',
                 backdropUrl: '',
                 movieIds: ['1726', '999'],
+                isActive: false,
             },
             movies: [{ movieId: 1726, title: 'Movie 1726' }],
         });
@@ -314,6 +323,7 @@ describe('TMDB list-backed movie collections', () => {
                     backdropUrl: '',
                     movieIds: ['1', '2'],
                     lastUpdated: '2025-01-01T00:00:00.000Z',
+                    isActive: false,
                 },
                 {
                     collectionId: '10',
@@ -338,6 +348,7 @@ describe('TMDB list-backed movie collections', () => {
                     posterUrl: '',
                     backdropUrl: 'https://example.com/alpha.jpg',
                     movieCount: 1,
+                    isActive: true,
                 },
                 {
                     collectionId: '20',
@@ -347,6 +358,7 @@ describe('TMDB list-backed movie collections', () => {
                     backdropUrl: '',
                     movieCount: 2,
                     lastUpdated: '2025-01-01T00:00:00.000Z',
+                    isActive: false,
                 },
             ],
         });
@@ -371,6 +383,7 @@ describe('TMDB list-backed movie collections', () => {
                     posterUrl: '',
                     backdropUrl: '',
                     movieIds: ['1'],
+                    isActive: true,
                 }],
                 LastEvaluatedKey: { collectionId: '10' },
             })
