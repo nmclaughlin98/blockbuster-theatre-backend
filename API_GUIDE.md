@@ -152,7 +152,7 @@ The Crazy Tuesday package is configured as one £4 ticket tier:
 
 ## Film selections
 
-`GET /film-selections` returns visible movies and active offers for booking. Offer entries retain the DynamoDB display attributes used by the website:
+`GET /film-selections` returns visible movies that are not coming soon, along with active offers for booking. Offer entries retain the DynamoDB display attributes used by the website:
 
 ```json
 {

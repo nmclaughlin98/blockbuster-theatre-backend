@@ -43,6 +43,13 @@ const movie = {
     GSI1PK: 'MOVIE',
     GSI1SK: '2026-09-25#456',
 };
+const comingSoonMovie = {
+    ...movie,
+    tmdbId: '789',
+    slug: 'coming-soon',
+    title: 'Coming Soon',
+    isComingSoon: true,
+};
 
 const kidsClubOffer = {
     offerId: 'kids-club',
@@ -127,8 +134,8 @@ describe('Special offers and pricing handlers', () => {
         jest.restoreAllMocks();
     });
 
-    it('combines visible movies and active offers for film selection', async () => {
-        ddbMock.on(QueryCommand).resolves({ Items: [movie] });
+    it('combines visible, non-coming-soon movies and active offers for film selection', async () => {
+        ddbMock.on(QueryCommand).resolves({ Items: [movie, comingSoonMovie] });
         ddbMock.on(ScanCommand).resolves({
             Items: [kidsClubOffer, secondOfferForSameMovie, { ...kidsClubOffer, isActive: false }],
         });

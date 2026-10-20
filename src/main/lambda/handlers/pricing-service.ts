@@ -420,7 +420,7 @@ export async function listFilmSelections(): Promise<FilmSelection[]> {
             if (!isMovieRecord(item)) {
                 throw new Error('DynamoDB returned an invalid movie record.');
             }
-            if (item.visible) movies.push(item);
+            if (item.visible && item.isComingSoon !== true) movies.push(item);
         }
         movieStartKey = result.LastEvaluatedKey;
     } while (movieStartKey);
