@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as ses from 'aws-cdk-lib/aws-ses';
 import { Construct } from 'constructs';
 import {
     ApiGatewayConstruct,
@@ -16,6 +17,9 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         // 1. Instantiate DynamoDB
         const database = new DatabaseConstruct(this, 'MoviesDatabase');
         const authentication = new AuthenticationConstruct(this, 'Authentication');
+        const bookingEmailIdentity = new ses.EmailIdentity(this, 'BookingEmailIdentity', {
+            identity: ses.Identity.email('niallmclaughlin1998@gmail.com'),
+        });
 
         // 2. Instantiate Lambda & pass DB table
         const lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {
@@ -23,6 +27,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             pricingTable: database.pricingTable,
             offersTable: database.offersTable,
             collectionsTable: database.collectionsTable,
+            bookingEmailIdentity,
         });
 
         // 3. Instantiate API Gateway & pass Lambda handler
@@ -36,6 +41,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             listFilmSelectionsFunction: lambdaServices.listFilmSelectionsFunction,
             getTicketPricingFunction: lambdaServices.getTicketPricingFunction,
             validateCheckoutFunction: lambdaServices.validateCheckoutFunction,
+            sendBookingConfirmationFunction: lambdaServices.sendBookingConfirmationFunction,
             upsertBookingOffersFunction: lambdaServices.upsertBookingOffersFunction,
             upsertTicketPricingFunction: lambdaServices.upsertTicketPricingFunction,
             listMovieCollectionsFunction: lambdaServices.listMovieCollectionsFunction,

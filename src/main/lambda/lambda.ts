@@ -1,5 +1,6 @@
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as ses from 'aws-cdk-lib/aws-ses';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
@@ -15,6 +16,7 @@ interface LambdaConstructProps {
     pricingTable: dynamodb.Table;
     offersTable: dynamodb.Table;
     collectionsTable: dynamodb.Table;
+    bookingEmailIdentity: ses.IEmailIdentity;
     lambdaConfig?: MovieImportLambdaConfig;
 }
 
@@ -28,6 +30,7 @@ export class LambdaConstruct extends Construct {
     public readonly listFilmSelectionsFunction: lambdaNodejs.NodejsFunction;
     public readonly getTicketPricingFunction: lambdaNodejs.NodejsFunction;
     public readonly validateCheckoutFunction: lambdaNodejs.NodejsFunction;
+    public readonly sendBookingConfirmationFunction: lambdaNodejs.NodejsFunction;
     public readonly upsertBookingOffersFunction: lambdaNodejs.NodejsFunction;
     public readonly upsertTicketPricingFunction: lambdaNodejs.NodejsFunction;
     public readonly listMovieCollectionsFunction: lambdaNodejs.NodejsFunction;
@@ -239,6 +242,24 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadData(this.validateCheckoutFunction);
         props.pricingTable.grantReadData(this.validateCheckoutFunction);
         props.offersTable.grantReadData(this.validateCheckoutFunction);
+
+        this.sendBookingConfirmationFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'SendBookingConfirmationHandler',
+            {
+                functionName: 'blockbuster-theatre-booking-confirmation-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/send-booking-confirmation-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+                environment: {
+                    BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
+                },
+            }
+        );
+
+        props.bookingEmailIdentity.grantSendEmail(this.sendBookingConfirmationFunction);
 
         this.upsertBookingOffersFunction = new lambdaNodejs.NodejsFunction(
             this,
