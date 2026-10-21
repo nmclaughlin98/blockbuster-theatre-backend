@@ -55,7 +55,7 @@ export function formatBookingConfirmationEmailHtml(
 ): string {
   const details: Array<[string, string]> = [
     ['DATE & SHOWTIME', `${booking.date} at ${booking.time}`],
-    ['SCREEN / HALL', `Screen ${booking.screen}`],
+    ['SCREEN', `Screen ${booking.screen}`],
     ['SEAT NUMBERS', booking.seats.join(', ')],
     ['TOTAL', `£${booking.totalPrice.toFixed(2)}`],
     ['GUEST NAME', `${booking.customer.firstName} ${booking.customer.surname}`],
@@ -110,15 +110,14 @@ export function formatBookingConfirmationEmailHtml(
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
                   <td style="font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:17px;font-weight:bold;letter-spacing:1px;color:#ffffff;-webkit-text-fill-color:#ffffff;">BLOCKBUSTER THEATRE</td>
-                  <td align="right"><span class="ticket-demo-badge" style="display:inline-block;padding:6px 9px;border-radius:999px;background-color:#b31e35;background-image:linear-gradient(#b31e35,#b31e35);color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:9px;font-weight:bold;letter-spacing:0.6px;">DEMO BOOKING</span></td>
+                  <td align="right"><span class="ticket-demo-badge" style="display:inline-block;padding:6px 9px;border-radius:999px;background-color:#b31e35;background-image:linear-gradient(#b31e35,#b31e35);color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:9px;font-weight:bold;letter-spacing:0.6px;">Booking Confirmed</span></td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
             <td style="padding:20px 18px 6px;">
-              <h1 class="ticket-text" style="margin:0;color:#f8fafc;-webkit-text-fill-color:#f8fafc;font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:28px;font-weight:normal;line-height:1.25;">${movieTitle}</h1>
-              <p class="ticket-muted" style="margin:6px 0 0;color:#94a3b8;-webkit-text-fill-color:#94a3b8;font-size:12px;line-height:1.5;">A demo booking preview for ${guestName}</p>
+              <h1 class="ticket-text" style="margin:0;color:#f8fafc;-webkit-text-fill-color:#f8fafc;font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:36px;font-weight:normal;line-height:1.25;">${movieTitle}</h1>
             </td>
           </tr>
           <tr>
@@ -156,9 +155,6 @@ export function formatBookingConfirmationEmailHtml(
             <td class="ticket-muted" align="center" style="padding:3px 18px 16px;color:#94a3b8;-webkit-text-fill-color:#94a3b8;font-size:9px;font-weight:bold;letter-spacing:1px;">REFERENCE ONLY - NOT VALID FOR ENTRY</td>
           </tr>
           <tr>
-            <td class="ticket-muted" style="padding:0 18px 14px;color:#94a3b8;-webkit-text-fill-color:#94a3b8;font-size:10px;line-height:1.5;text-align:center;">
-              Scan the code to read the booking reference. It does not verify or redeem a booking.
-            </td>
           </tr>
           <tr>
             <td class="ticket-muted" style="padding:12px 18px;border-top:1px solid #4a4e5b;color:#94a3b8;-webkit-text-fill-color:#94a3b8;font-size:10px;line-height:1.5;text-align:center;">No payment was taken, no reservation was created, and no valid ticket was issued.</td>
