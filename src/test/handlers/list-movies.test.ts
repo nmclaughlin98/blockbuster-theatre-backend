@@ -144,12 +144,50 @@ describe('List movies Lambda handler', () => {
     it.each([
         [{ limit: '0' }, 'limit must be an integer between 1 and 100.'],
         [{ limit: '101' }, 'limit must be an integer between 1 and 100.'],
+        [{ limit: '2.5' }, 'limit must be an integer between 1 and 100.'],
         [{ nextToken: 'not-a-valid-token' }, 'nextToken is invalid.'],
+        [{ nextToken: Buffer.from('{}').toString('base64url') }, 'nextToken is invalid.'],
     ])('rejects invalid pagination parameters %o', async (query, message) => {
         const result = await handler(createEvent(query));
 
         expect(result).toMatchObject({ statusCode: 400 });
         expect(responseBody(result)).toEqual({ message });
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
+    });
+
+    it('rejects an invalid movie record returned by DynamoDB', async () => {
+        ddbMock.on(QueryCommand).resolves({
+            Items: [{ ...movieRecord, title: 42 }],
+        });
+
+        const result = await handler(createEvent());
+
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toEqual({
+            message: 'Unable to retrieve movies.',
+        });
+    });
+
+    it('returns an error response when DynamoDB rejects the query', async () => {
+        ddbMock.on(QueryCommand).rejects(new Error('DynamoDB unavailable'));
+
+        const result = await handler(createEvent());
+
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toEqual({
+            message: 'Unable to retrieve movies.',
+        });
+    });
+
+    it('returns an empty page when DynamoDB omits Items', async () => {
+        ddbMock.on(QueryCommand).resolves({});
+
+        const result = await handler(createEvent());
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result)).toEqual({
+            movies: [],
+            nextToken: null,
+        });
     });
 });

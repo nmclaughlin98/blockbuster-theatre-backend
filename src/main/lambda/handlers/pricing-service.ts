@@ -265,7 +265,9 @@ export async function resolvePricing(value: unknown): Promise<ResolvedPricing> {
     const request = parseSelection(value);
     const offer = request.offerId ? await getOffer(request.offerId) : undefined;
     const movieId = offer?.featuredMovieId ?? request.movieId!;
-    const movie = await getMovie(movieId, !offer);
+    const movie = offer
+        ? await getMovie(movieId, false)
+        : await getMovie(movieId);
     validateScheduledTime(movie, offer, request.showtime);
 
     const pricingId = offer?.pricingId ?? standardPricingId(request.showtime);

@@ -180,6 +180,12 @@ describe('TMDB list-backed movie collections', () => {
         const invalidId = await refreshCollection(createEvent(undefined, {
             ids: ['abc'],
         }));
+        const fractionalId = await refreshCollection(createEvent(undefined, {
+            ids: [1.5],
+        }));
+        const unsafeId = await refreshCollection(createEvent(undefined, {
+            ids: [Number.MAX_SAFE_INTEGER + 1],
+        }));
         const duplicateIds = await refreshCollection(createEvent(undefined, {
             ids: ['00123', 123],
         }));
@@ -192,6 +198,8 @@ describe('TMDB list-backed movie collections', () => {
         expect(emptyIds).toMatchObject({ statusCode: 400 });
         expect(invalidId).toMatchObject({ statusCode: 400 });
         expect(responseBody(invalidId)).toMatchObject({ invalidIndexes: [0] });
+        expect(fractionalId).toMatchObject({ statusCode: 400 });
+        expect(unsafeId).toMatchObject({ statusCode: 400 });
         expect(duplicateIds).toMatchObject({ statusCode: 400 });
         expect(responseBody(duplicateIds)).toMatchObject({ duplicateIds: ['123'] });
         expect(tooManyIds).toMatchObject({ statusCode: 400 });
@@ -420,5 +428,314 @@ describe('TMDB list-backed movie collections', () => {
         expect(responseBody(result)).toMatchObject({
             message: 'Unable to retrieve movie collections.',
         });
+    });
+
+    it('sorts collections by ID when their names are identical', async () => {
+        ddbMock.on(ScanCommand).resolves({
+            Items: [
+                {
+                    collectionId: '20',
+                    name: 'Same Name',
+                    description: '',
+                    posterUrl: '',
+                    backdropUrl: '',
+                    movieIds: [],
+                },
+                {
+                    collectionId: '10',
+                    name: 'Same Name',
+                    description: '',
+                    posterUrl: '',
+                    backdropUrl: '',
+                    movieIds: [],
+                },
+            ],
+        });
+
+        const result = await listCollections(createEvent());
+
+        expect(responseBody(result).collections).toMatchObject([
+            { collectionId: '10' },
+            { collectionId: '20' },
+        ]);
+    });
+
+    it('handles a non-Error collection-list failure without a request context', async () => {
+        ddbMock.on(ScanCommand).callsFake(() => Promise.reject('scan failed'));
+
+        const result = await listCollections({} as APIGatewayProxyEventV2);
+
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toEqual({
+            message: 'Unable to retrieve movie collections.',
+        });
+    });
+
+    it('accepts base64 JSON bodies and TMDB items without a media type', async () => {
+        fetchMock.mockResolvedValue(tmdbResponse({
+            id: 8706524,
+            name: 'Collection',
+            page: 1,
+            total_pages: 1,
+            items: [{ id: 1726 }],
+        }));
+        const event = {
+            ...createEvent(),
+            body: Buffer.from(JSON.stringify({ ids: [8706524] })).toString('base64'),
+            isBase64Encoded: true,
+        } as APIGatewayProxyEventV2;
+
+        const result = await refreshCollection(event);
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input)
+            .toMatchObject({ ExpressionAttributeValues: { ':movieIds': ['1726'] } });
+    });
+
+    it.each([undefined, 'not-numeric'])(
+        'rejects an invalid collection ID (%s)',
+        async (id) => {
+            const result = await getCollection(createEvent(id));
+
+            expect(result).toMatchObject({ statusCode: 400 });
+            expect(responseBody(result)).toEqual({
+                message: 'A numeric collection ID is required.',
+            });
+            expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
+        }
+    );
+
+    it('returns not found for absent and malformed collection records', async () => {
+        for (const response of [{}, { Item: { collectionId: '8706524' } }]) {
+            ddbMock.reset();
+            ddbMock.on(GetCommand).resolves(response);
+
+            const result = await getCollection(createEvent('8706524'));
+
+            expect(result).toMatchObject({ statusCode: 404 });
+            expect(responseBody(result)).toEqual({
+                message: 'TMDB list collection not found.',
+            });
+        }
+    });
+
+    it('defaults collection metadata and omits catalogue movies that are absent', async () => {
+        ddbMock.on(GetCommand).resolves({
+            Item: {
+                collectionId: '8706524',
+                name: 'Collection',
+                description: '',
+                posterUrl: '',
+                backdropUrl: '',
+                movieIds: ['999'],
+            },
+        });
+        ddbMock.on(QueryCommand).resolves({ Items: [] });
+
+        const result = await getCollection(createEvent('8706524'));
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result)).toEqual({
+            collection: {
+                collectionId: '8706524',
+                name: 'Collection',
+                description: '',
+                posterUrl: '',
+                backdropUrl: '',
+                movieIds: ['999'],
+                isActive: true,
+            },
+            movies: [],
+        });
+    });
+
+    it('handles a catalogue query without an Items property', async () => {
+        ddbMock.on(GetCommand).resolves({
+            Item: {
+                collectionId: '8706524',
+                name: 'Collection',
+                description: '',
+                posterUrl: '',
+                backdropUrl: '',
+                movieIds: ['999'],
+            },
+        });
+        ddbMock.on(QueryCommand).resolves({});
+
+        const result = await getCollection(createEvent('8706524'));
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result).movies).toEqual([]);
+    });
+
+    it('includes the last update timestamp when present', async () => {
+        ddbMock.on(GetCommand).resolves({
+            Item: {
+                collectionId: '8706524',
+                name: 'Collection',
+                description: '',
+                posterUrl: '',
+                backdropUrl: '',
+                movieIds: [],
+                lastUpdated: '2026-01-01T00:00:00.000Z',
+            },
+        });
+
+        const result = await getCollection(createEvent('8706524'));
+
+        expect(responseBody(result).collection).toMatchObject({
+            lastUpdated: '2026-01-01T00:00:00.000Z',
+        });
+    });
+
+    it('returns an error for duplicate or invalid catalogue movie records', async () => {
+        for (const items of [
+            [movie('1726'), movie('1726')],
+            [{ ...movie('1726'), title: 42 }],
+        ]) {
+            ddbMock.reset();
+            ddbMock.on(GetCommand).resolves({
+                Item: {
+                    collectionId: '8706524',
+                    name: 'Collection',
+                    description: '',
+                    posterUrl: '',
+                    backdropUrl: '',
+                    movieIds: ['1726'],
+                },
+            });
+            ddbMock.on(QueryCommand).resolves({ Items: items });
+
+            const result = await getCollection(createEvent('8706524'));
+
+            expect(result).toMatchObject({ statusCode: 500 });
+            expect(responseBody(result)).toEqual({
+                message: 'Unable to retrieve movie collection.',
+            });
+        }
+    });
+
+    it('handles a non-Error collection database failure', async () => {
+        ddbMock.on(GetCommand).callsFake(() => Promise.reject('read failed'));
+
+        const result = await getCollection(createEvent('8706524'));
+
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toEqual({
+            message: 'Unable to retrieve movie collection.',
+        });
+    });
+
+    it.each([
+        ['non-object payload', null],
+        ['non-numeric list ID', { id: '8706524', name: 'Collection', page: 1, total_pages: 1, items: [] }],
+        ['invalid name', { id: 8706524, name: 42, page: 1, total_pages: 1, items: [] }],
+        ['invalid description', { id: 8706524, name: 'Collection', description: false, page: 1, total_pages: 1, items: [] }],
+        ['invalid poster path', { id: 8706524, name: 'Collection', poster_path: false, page: 1, total_pages: 1, items: [] }],
+        ['invalid backdrop path', { id: 8706524, name: 'Collection', backdrop_path: false, page: 1, total_pages: 1, items: [] }],
+        ['invalid page number', { id: 8706524, name: 'Collection', page: 0, total_pages: 1, items: [] }],
+        ['invalid total pages', { id: 8706524, name: 'Collection', page: 1, total_pages: 0, items: [] }],
+        ['non-array items', { id: 8706524, name: 'Collection', page: 1, total_pages: 1, items: {} }],
+        ['invalid item ID', { id: 8706524, name: 'Collection', page: 1, total_pages: 1, items: [{ id: 0 }] }],
+        ['invalid item media type', { id: 8706524, name: 'Collection', page: 1, total_pages: 1, items: [{ id: 1726, media_type: 42 }] }],
+        ['wrong list ID', { id: 42, name: 'Collection', page: 1, total_pages: 1, items: [] }],
+        ['wrong page number', { id: 8706524, name: 'Collection', page: 2, total_pages: 2, items: [] }],
+    ])('returns a gateway error for %s', async (_name, payload) => {
+        fetchMock.mockResolvedValue(tmdbResponse(payload));
+
+        const result = await refreshCollection(createEvent(undefined, {
+            ids: ['8706524'],
+        }));
+
+        expect(result).toMatchObject({ statusCode: 207 });
+        expect(responseBody(result).results).toMatchObject([{
+            success: false,
+            statusCode: 502,
+            message: 'Unable to retrieve the TMDB list.',
+        }]);
+    });
+
+    it('retries a transient TMDB response and converts fetch failures to item errors', async () => {
+        fetchMock
+            .mockResolvedValueOnce(new Response('', {
+                status: 503,
+                headers: { 'retry-after': '0.001' },
+            }))
+            .mockResolvedValueOnce(tmdbResponse({
+                id: 8706524,
+                name: 'Collection',
+                page: 1,
+                total_pages: 1,
+                items: [],
+            }));
+
+        const retried = await refreshCollection(createEvent(undefined, {
+            ids: ['8706524'],
+        }));
+
+        expect(retried).toMatchObject({ statusCode: 200 });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+
+        fetchMock.mockRejectedValueOnce('network failure');
+        const failed = await refreshCollection(createEvent(undefined, {
+            ids: ['8706524'],
+        }));
+        expect(failed).toMatchObject({ statusCode: 207 });
+        expect(responseBody(failed).results).toMatchObject([{
+            success: false,
+            statusCode: 502,
+        }]);
+    });
+
+    it('retries rate limits and rejects other unsuccessful or malformed responses', async () => {
+        fetchMock
+            .mockResolvedValueOnce(new Response('', { status: 429 }))
+            .mockResolvedValueOnce(tmdbResponse({
+                id: 8706524,
+                name: 'Collection',
+                page: 1,
+                total_pages: 1,
+                items: [],
+            }));
+        const retried = await refreshCollection(createEvent(undefined, {
+            ids: ['8706524'],
+        }));
+        expect(retried).toMatchObject({ statusCode: 200 });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+
+        for (const response of [
+            new Response('', { status: 400 }),
+            new Response('{invalid json', { status: 200 }),
+        ]) {
+            fetchMock.mockResolvedValue(response);
+            const failed = await refreshCollection(createEvent(undefined, {
+                ids: ['8706524'],
+            }));
+            expect(failed).toMatchObject({ statusCode: 207 });
+            expect(responseBody(failed).results).toMatchObject([{
+                success: false,
+                statusCode: 502,
+            }]);
+            fetchMock.mockReset();
+        }
+    });
+
+    it('reports exhausted request timeouts as gateway failures', async () => {
+        const timeout = Object.assign(new Error('request timed out'), {
+            name: 'AbortError',
+        });
+        fetchMock.mockRejectedValue(timeout);
+
+        const result = await refreshCollection(createEvent(undefined, {
+            ids: ['8706524'],
+        }));
+
+        expect(result).toMatchObject({ statusCode: 207 });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(responseBody(result).results).toMatchObject([{
+            success: false,
+            statusCode: 502,
+            message: 'Unable to retrieve the TMDB list.',
+        }]);
     });
 });

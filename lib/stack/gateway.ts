@@ -43,6 +43,17 @@ export class ApiGatewayConstruct extends Construct {
             },
         });
 
+        const customDomain = apigw2.CfnDomainName.fromDomainName(
+            this,
+            'ImportedCustomDomain',
+            'api.blockbuster-theatre.nml-applications.com'
+        );
+
+        new apigw2.ApiMapping(this, 'ApiMapping', {
+            api: this.httpApi,
+            domainName: customDomain,
+        });
+
         const integration = new integrations.HttpLambdaIntegration(
             'AddMoviesIntegration',
             props.addMoviesFunction

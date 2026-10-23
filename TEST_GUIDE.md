@@ -26,7 +26,7 @@ src/
 
 ## Overview
 
-This project includes comprehensive unit tests covering all Lambda handlers and AWS CDK constructs. **All 41 tests are passing**.
+This project includes unit tests covering Lambda handlers and AWS CDK constructs. The Jest configuration enforces at least 90% global coverage for statements, branches, functions, and lines.
 
 ## Test Setup
 
@@ -132,10 +132,12 @@ Tests the complete infrastructure stack:
 
 ## Running Tests
 
-### Run All Tests
+### Run All Tests (without coverage instrumentation)
 ```bash
 npm test
 ```
+
+The Jest commands run tests in-band rather than spawning worker processes. This also avoids concurrent CDK asset bundling across Jest workers.
 
 ### Run Tests in Watch Mode
 ```bash
@@ -146,6 +148,8 @@ npm run test:watch
 ```bash
 npm run test:coverage
 ```
+
+The coverage command enforces the configured 90% minimum for statements, branches, functions, and lines.
 
 ### Run Specific Test Suite
 ```bash
@@ -160,8 +164,8 @@ npm test -- --testNamePattern="should create"
 ## Test Results Summary
 
 ```
-Test Suites: 5 passed, 5 total
-Tests:       41 passed, 41 total
+Test Suites: 20 passed, 20 total
+Tests:       268 passed, 268 total
 Snapshots:   0 total
 ```
 
@@ -189,6 +193,8 @@ Snapshots:   0 total
 8. **Mirrored Structure**: Tests are organized to mirror source code structure
 
 ## Coverage
+
+Coverage is collected from `src/main/**/*.ts` and `lib/stack/gateway.ts`. Jest enforces a 90% minimum for each global coverage metric: statements, branches, functions, and lines.
 
 The test suite provides coverage for:
 - ✓ All HTTP methods (GET, POST, unsupported methods)
