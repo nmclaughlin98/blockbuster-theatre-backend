@@ -157,4 +157,52 @@ describe('Get movie Lambda handler', () => {
         });
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
     });
+
+    it('rejects missing IDs without querying DynamoDB', async () => {
+        const result = await handler(createEvent());
+
+        expect(result).toMatchObject({ statusCode: 400 });
+        expect(responseBody(result)).toEqual({
+            message: 'A numeric movie ID is required.',
+        });
+        expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
+    });
+
+    it('handles requests without request context and query results without Items', async () => {
+        ddbMock.on(QueryCommand).resolves({});
+
+        const result = await handler({
+            pathParameters: { id: '12345' },
+        } as APIGatewayProxyEventV2);
+
+        expect(result).toMatchObject({ statusCode: 404 });
+        expect(responseBody(result)).toEqual({ message: 'Movie not found.' });
+    });
+
+    it('returns an internal error for an invalid stored movie record', async () => {
+        ddbMock.on(QueryCommand).resolves({
+            Items: [{ ...movieRecord, title: 42 }],
+        });
+
+        const result = await handler(createEvent('12345'));
+
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toEqual({
+            message: 'Unable to retrieve movie.',
+        });
+    });
+
+    it.each([
+        ['an Error', new Error('DynamoDB unavailable')],
+        ['a non-Error value', 'DynamoDB unavailable'],
+    ])('handles query failures represented by %s', async (_name, error) => {
+        ddbMock.on(QueryCommand).rejects(error);
+
+        const result = await handler(createEvent('12345'));
+
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toEqual({
+            message: 'Unable to retrieve movie.',
+        });
+    });
 });

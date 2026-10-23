@@ -211,6 +211,61 @@ describe('Update movies Lambda handler', () => {
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
+    it('skips a slug-only update when the slug is unchanged', async () => {
+        const result = await invoke(
+            JSON.stringify({ movieIds: [123], updates: { slug: 'a-movie' } })
+        );
+
+        expect(result.statusCode).toBe(200);
+        expect(responseBody(result).successful).toEqual([
+            { id: '123', status: 'SUCCESS' },
+        ]);
+        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    });
+
+    it('updates the release-date index when moving a slug', async () => {
+        ddbMock.on(TransactWriteCommand).resolves({});
+
+        const result = await invoke(JSON.stringify({
+            movieIds: [123],
+            updates: { slug: 'new-slug', releaseDate: '2030-04-05' },
+        }));
+
+        expect(result.statusCode).toBe(200);
+        expect(ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input)
+            .toMatchObject({
+                TransactItems: [{
+                    Delete: { Key: { tmdbId: '123', slug: 'a-movie' } },
+                }, {
+                    Put: {
+                        Item: {
+                            tmdbId: '123',
+                            slug: 'new-slug',
+                            GSI1SK: '2030-04-05#123',
+                        },
+                    },
+                }],
+            });
+    });
+
+    it('uses the release-date fallback for an empty supplied release date', async () => {
+        ddbMock.on(UpdateCommand).resolves({});
+
+        const result = await invoke(
+            JSON.stringify({ movieIds: [123], updates: { releaseDate: '' } })
+        );
+
+        expect(result.statusCode).toBe(200);
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input)
+            .toMatchObject({
+                ExpressionAttributeValues: {
+                    ':value0': '',
+                    ':gsi1sk': '0000-00-00#123',
+                },
+            });
+    });
+
     it('reports a missing movie without attempting an update', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [] });
 
@@ -232,6 +287,11 @@ describe('Update movies Lambda handler', () => {
         ['slug with repeated separators', { movieIds: [123], updates: { slug: 'star-wars---episode-iii' } }],
         ['slug with uppercase letters', { movieIds: [123], updates: { slug: 'Movie-Title' } }],
         ['empty sort title', { movieIds: [123], updates: { sortTitle: '   ' } }],
+        ['non-string title', { movieIds: [123], updates: { title: 42 } }],
+        ['non-finite score', { movieIds: [123], updates: { score: null } }],
+        ['invalid runtime', { movieIds: [123], updates: { runtime: '100' } }],
+        ['invalid genres array', { movieIds: [123], updates: { genres: ['Drama', 42] } }],
+        ['invalid starring array', { movieIds: [123], updates: { starring: [null] } }],
         ['invalid screen number', {
             movieIds: [123],
             updates: { showtimes: { Monday: [{ screen: '6', time: '13:00' }] } },
@@ -262,6 +322,37 @@ describe('Update movies Lambda handler', () => {
         });
     });
 
+    it('rejects missing and non-object request bodies', async () => {
+        const missingBody = await invoke(undefined);
+        const nonObjectBody = await invoke('null');
+
+        expect(missingBody.statusCode).toBe(400);
+        expect(responseBody(missingBody)).toEqual({ message: 'Missing request body.' });
+        expect(nonObjectBody.statusCode).toBe(400);
+        expect(responseBody(nonObjectBody)).toEqual({
+            message: 'movieIds must be a non-empty array.',
+        });
+    });
+
+    it('reports ambiguous and invalid stored movie records', async () => {
+        for (const items of [
+            [movieRecord, { ...movieRecord, slug: 'another-slug' }],
+            [{ ...movieRecord, title: 42 }],
+        ]) {
+            ddbMock.reset();
+            ddbMock.on(QueryCommand).resolves({ Items: items });
+
+            const result = await invoke(JSON.stringify({
+                movieIds: [123],
+                updates: { visible: false },
+            }));
+
+            expect(responseBody(result).failed).toHaveLength(1);
+            expect(responseBody(result).failed[0].status).toBe('FAILED');
+            expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+        }
+    });
+
     it('reports per-movie write failures without failing the rest of the batch', async () => {
         ddbMock.on(UpdateCommand).callsFake((input) => {
             if (input.Key?.tmdbId === '123') {
@@ -280,5 +371,20 @@ describe('Update movies Lambda handler', () => {
             failed: [{ id: '123', status: 'FAILED', error: 'Movie does not exist' }],
             successful: [{ id: '456', status: 'SUCCESS' }],
         });
+    });
+
+    it('reports non-Error write failures with the standard message', async () => {
+        ddbMock.on(UpdateCommand).callsFake(() => Promise.reject('write failed'));
+
+        const result = await invoke(JSON.stringify({
+            movieIds: [123],
+            updates: { poster: 'poster-url' },
+        }));
+
+        expect(responseBody(result).failed).toEqual([{
+            id: '123',
+            status: 'FAILED',
+            error: 'Failed to update movie',
+        }]);
     });
 });

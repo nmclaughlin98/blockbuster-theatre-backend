@@ -49,6 +49,16 @@ describe('ApiGatewayConstruct', () => {
         });
     });
 
+    it('should map the default stage to the custom domain', () => {
+        const template = Template.fromStack(stack);
+        template.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 1);
+        template.hasResourceProperties('AWS::ApiGatewayV2::ApiMapping', {
+            ApiId: Match.anyValue(),
+            DomainName: 'api.blockbuster-theatre.nml-applications.com',
+            Stage: '$default',
+        });
+    });
+
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::ApiGatewayV2::Route', 15);

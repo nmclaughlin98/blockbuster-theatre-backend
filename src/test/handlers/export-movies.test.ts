@@ -88,4 +88,24 @@ describe('DynamoDB export handlers', () => {
         expect(result).toMatchObject({ statusCode: 500 });
         expect(responseBody(result)).toEqual({ message: 'Unable to export movies.' });
     });
+
+    it('returns empty results when scans omit Items and request context', async () => {
+        ddbMock.on(ScanCommand).resolves({});
+        const event = {} as APIGatewayProxyEventV2;
+
+        const movies = await exportMovies(event);
+        const tmdbIds = await listTmdbIds(event);
+
+        expect(responseBody(movies)).toEqual({ movies: [] });
+        expect(responseBody(tmdbIds)).toEqual({ tmdbIds: [] });
+    });
+
+    it('returns an error response when TMDB ID scanning fails', async () => {
+        ddbMock.on(ScanCommand).callsFake(() => Promise.reject('DynamoDB unavailable'));
+
+        const result = await listTmdbIds(createEvent());
+
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toEqual({ message: 'Unable to retrieve TMDB IDs.' });
+    });
 });

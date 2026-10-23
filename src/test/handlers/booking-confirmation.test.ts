@@ -24,7 +24,7 @@ const booking = {
     totalPrice: 15.2,
 };
 
-function createEvent(body: string): APIGatewayProxyEventV2 {
+function createEvent(body: string, isBase64Encoded = false): APIGatewayProxyEventV2 {
     return {
         version: '2.0',
         routeKey: 'POST /booking/confirmation',
@@ -50,7 +50,7 @@ function createEvent(body: string): APIGatewayProxyEventV2 {
             timeEpoch: 1792522800000,
         },
         body,
-        isBase64Encoded: false,
+        isBase64Encoded,
     };
 }
 
@@ -90,9 +90,9 @@ describe('booking confirmation email handler', () => {
         expect(html).toContain('#ff334b');
         expect(html).toContain('&lt;Movie &amp; More&gt;');
         expect(html).toContain('DATE &amp; SHOWTIME');
-        expect(html).toContain('SCREEN / HALL');
+        expect(html).toContain('SCREEN');
         expect(html).toContain('SEAT NUMBERS');
-        expect(html).toContain('DEMO TOTAL');
+        expect(html).toContain('TOTAL');
         expect(html).toContain('GUEST NAME');
         expect(html).toContain('TICKET BREAKDOWN');
         expect(html).toContain('src="cid:booking-reference-qr"');
@@ -130,6 +130,79 @@ describe('booking confirmation email handler', () => {
 
     it('reports an SES send failure', async () => {
         sesMock.on(SendEmailCommand).rejects(new Error('SES unavailable'));
+
+        const result = await handler(createEvent(JSON.stringify(booking)));
+
+        expect(result.statusCode).toBe(502);
+        expect(JSON.parse(String(result.body))).toEqual({
+            message: 'Unable to send booking confirmation email.',
+        });
+    });
+
+    it('accepts a base64 request with one ticket and an optional phone number', async () => {
+        sesMock.on(SendEmailCommand).resolves({});
+        const singleTicket = {
+            ...booking,
+            customer: { ...booking.customer, phone: '+441234567890' },
+            tickets: 1,
+            seats: ['A1'],
+        };
+
+        const result = await handler(createEvent(
+            Buffer.from(JSON.stringify(singleTicket)).toString('base64'),
+            true
+        ));
+
+        expect(result.statusCode).toBe(200);
+        const sent = sesMock.calls()[0].args[0].input;
+        expect(sent.Content?.Simple?.Body?.Text?.Data).toContain('Phone: +441234567890');
+        expect(sent.Content?.Simple?.Body?.Html?.Data).toContain('1 Ticket');
+    });
+
+    it.each([
+        ['non-object body', null],
+        ['missing customer object', { ...booking, customer: null }],
+        ['invalid booking reference', { ...booking, bookingRef: 'invalid' }],
+        ['blank first name', { ...booking, customer: { ...booking.customer, firstName: ' ' } }],
+        ['overlong surname', { ...booking, customer: { ...booking.customer, surname: 'x'.repeat(81) } }],
+        ['invalid email', { ...booking, customer: { ...booking.customer, email: 'not-an-email' } }],
+        ['invalid phone', { ...booking, customer: { ...booking.customer, phone: 'bad\nphone' } }],
+        ['overlong movie title', { ...booking, movieTitle: 'x'.repeat(161) }],
+        ['invalid date', { ...booking, date: 'bad\nvalue' }],
+        ['invalid showtime', { ...booking, time: '25:00' }],
+        ['blank screen', { ...booking, screen: '' }],
+        ['non-array seats', { ...booking, seats: 'A1,A2' }],
+        ['invalid seat characters', { ...booking, seats: ['A/1', 'A2'] }],
+        ['fractional ticket count', { ...booking, tickets: 2.5 }],
+        ['too many tickets', { ...booking, tickets: 11, seats: Array(11).fill('A1') }],
+        ['duplicate seats', { ...booking, seats: ['A1', 'A1'] }],
+        ['negative total', { ...booking, totalPrice: -1 }],
+        ['excessive total', { ...booking, totalPrice: 10001 }],
+    ])('rejects %s without sending email', async (_name, invalidBooking) => {
+        const result = await handler(createEvent(JSON.stringify(invalidBooking)));
+
+        expect(result.statusCode).toBe(400);
+        expect(sesMock.calls()).toHaveLength(0);
+    });
+
+    it('returns a configuration error when the sender address is missing', async () => {
+        const sender = process.env.BOOKING_EMAIL_FROM;
+        delete process.env.BOOKING_EMAIL_FROM;
+
+        try {
+            const result = await handler(createEvent(JSON.stringify(booking)));
+
+            expect(result.statusCode).toBe(500);
+            expect(JSON.parse(String(result.body))).toEqual({
+                message: 'Booking confirmation email is not configured.',
+            });
+        } finally {
+            process.env.BOOKING_EMAIL_FROM = sender;
+        }
+    });
+
+    it('handles SES failures that are not Error objects', async () => {
+        sesMock.on(SendEmailCommand).callsFake(() => Promise.reject('SES unavailable'));
 
         const result = await handler(createEvent(JSON.stringify(booking)));
 

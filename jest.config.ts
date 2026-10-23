@@ -8,10 +8,7 @@ const config: Config = {
   // Runs setup.ts before every test suite runs
   setupFilesAfterEnv: ['<rootDir>/src/test/setup.ts'],
 
-  // Automatically collect coverage when running tests
-  collectCoverage: true,
-
-  // Specify the format of the output reports
+  // Coverage is collected by the dedicated npm run test:coverage command.
   coverageReporters: ['text', 'lcov', 'html'],
 
   // Destination folder for reports
@@ -19,9 +16,18 @@ const config: Config = {
 
   collectCoverageFrom: [
     'src/main/**/*.ts',
+    'lib/stack/gateway.ts',
     '!**/*.d.ts',
     '!**/node_modules/**',
   ],
+  coverageThreshold: {
+    global: {
+      branches: 90,
+      functions: 90,
+      lines: 90,
+      statements: 90,
+    },
+  },
   moduleFileExtensions: ['ts', 'js', 'json'],
   moduleNameMapper: {
     '^@main/(.*)$': '<rootDir>/src/main/$1',

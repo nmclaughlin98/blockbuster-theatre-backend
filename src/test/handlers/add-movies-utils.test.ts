@@ -10,6 +10,7 @@ import {
     projectMovieSummary,
     projectTmdb,
 } from '../../main/lambda/handlers/utils/movie-projection';
+import { generateShowtimes } from '../../main/lambda/handlers/utils/showtime-schedule';
 
 describe('add movies utilities', () => {
     describe('intEnv', () => {
@@ -222,6 +223,23 @@ describe('add movies utilities', () => {
                 expect(projectMovieDetail(movie)).toMatchObject({
                     poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
                     still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
+                });
+            });
+
+            describe('generateShowtimes validation', () => {
+                it('rejects invalid release dates and non-finite scores', () => {
+                    expect(() => generateShowtimes(
+                        '42',
+                        'not-a-date',
+                        7,
+                        new Date('2026-01-01T00:00:00.000Z')
+                    )).toThrow('Invalid movie release date: not-a-date');
+                    expect(() => generateShowtimes(
+                        '42',
+                        '2025-01-01',
+                        Number.NaN,
+                        new Date('2026-01-01T00:00:00.000Z')
+                    )).toThrow('Movie 42 has an invalid score.');
                 });
             });
         });
