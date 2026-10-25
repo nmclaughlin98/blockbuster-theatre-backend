@@ -34,7 +34,7 @@ describe('BackendStack', () => {
 
     it('should create DynamoDB table', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::DynamoDB::Table', 5);
+        template.resourceCountIs('AWS::DynamoDB::Table', 6);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-movie-catalogue',
             BillingMode: 'PAY_PER_REQUEST',
@@ -82,6 +82,15 @@ describe('BackendStack', () => {
                 GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
             }),
         });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-guest-conversion-tokens',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'tokenHash', KeyType: 'HASH' }],
+            TimeToLiveSpecification: {
+                AttributeName: 'expiresAt',
+                Enabled: true,
+            },
+        });
     });
 
     it('should create Lambda function', () => {
@@ -107,12 +116,21 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 19);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 22);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /bookings',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /api/v1/bookings/guest',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /api/v1/bookings/guest',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /api/v1/auth/convert-guest',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/newest',
@@ -172,7 +190,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 18);
+        template.resourceCountIs('AWS::IAM::Policy', 21);
         template.hasResourceProperties('AWS::SES::EmailIdentity', {
             EmailIdentity: 'niallmclaughlin1998@gmail.com',
         });

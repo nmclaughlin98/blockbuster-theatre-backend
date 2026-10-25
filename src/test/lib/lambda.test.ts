@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
@@ -15,6 +16,9 @@ describe('LambdaConstruct', () => {
     let offersTable: dynamodb.Table;
     let collectionsTable: dynamodb.Table;
     let bookingsTable: dynamodb.Table;
+    let guestConversionTokensTable: dynamodb.Table;
+    let userPool: cognito.UserPool;
+    let userPoolClient: cognito.UserPoolClient;
     let bookingEmailIdentity: ses.EmailIdentity;
     let construct: LambdaConstruct;
 
@@ -24,6 +28,21 @@ describe('LambdaConstruct', () => {
             partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+        guestConversionTokensTable = new dynamodb.Table(
+            stack,
+            'TestGuestConversionTokensTable',
+            {
+                partitionKey: { name: 'tokenHash', type: dynamodb.AttributeType.STRING },
+                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            }
+        );
+        userPool = new cognito.UserPool(stack, 'TestUserPool', {
+            selfSignUpEnabled: false,
+            signInAliases: { email: true },
+        });
+        userPoolClient = userPool.addClient('TestUserPoolClient', {
+            authFlows: { adminUserPassword: true },
+        });
         pricingTable = new dynamodb.Table(stack, 'TestPricingTable', {
             partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -32,6 +51,7 @@ describe('LambdaConstruct', () => {
             partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         collectionsTable = new dynamodb.Table(stack, 'TestCollectionsTable', {
             partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -50,6 +70,9 @@ describe('LambdaConstruct', () => {
             offersTable,
             collectionsTable,
             bookingsTable,
+            guestConversionTokensTable,
+            userPool,
+            userPoolClient,
             bookingEmailIdentity,
         });
     });
@@ -172,7 +195,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(18);
+        expect(Object.values(functions)).toHaveLength(21);
         expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
@@ -203,6 +226,22 @@ describe('LambdaConstruct', () => {
             sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+        const configuredGuestConversionTokensTable = new dynamodb.Table(
+            configuredStack,
+            'ConfiguredGuestConversionTokensTable',
+            {
+                partitionKey: { name: 'tokenHash', type: dynamodb.AttributeType.STRING },
+                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            }
+        );
+        const configuredUserPool = new cognito.UserPool(configuredStack, 'ConfiguredUserPool', {
+            selfSignUpEnabled: false,
+            signInAliases: { email: true },
+        });
+        const configuredUserPoolClient = configuredUserPool.addClient(
+            'ConfiguredUserPoolClient',
+            { authFlows: { adminUserPassword: true } }
+        );
         const configuredBookingEmailIdentity = new ses.EmailIdentity(
             configuredStack,
             'ConfiguredBookingEmailIdentity',
@@ -215,6 +254,9 @@ describe('LambdaConstruct', () => {
             offersTable: configuredOffersTable,
             collectionsTable: configuredCollectionsTable,
             bookingsTable: configuredBookingsTable,
+            guestConversionTokensTable: configuredGuestConversionTokensTable,
+            userPool: configuredUserPool,
+            userPoolClient: configuredUserPoolClient,
             bookingEmailIdentity: configuredBookingEmailIdentity,
             lambdaConfig: {
                 ...cfg,
@@ -268,6 +310,12 @@ describe('LambdaConstruct', () => {
     it('should export collection functions', () => {
         expect(construct.getMovieCollectionFunction).toBeDefined();
         expect(construct.refreshMovieCollectionFunction).toBeDefined();
+    });
+
+    it('should export the guest booking and conversion functions', () => {
+        expect(construct.guestBookedSeatsFunction).toBeDefined();
+        expect(construct.guestBookingFunction).toBeDefined();
+        expect(construct.guestConversionFunction).toBeDefined();
     });
 
     it('should configure booking functions with least-privilege table access', () => {

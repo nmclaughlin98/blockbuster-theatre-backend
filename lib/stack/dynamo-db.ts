@@ -8,6 +8,7 @@ export class DatabaseConstruct extends Construct {
     public readonly offersTable: dynamodb.Table;
     public readonly collectionsTable: dynamodb.Table;
     public readonly bookingsTable: dynamodb.Table;
+    public readonly guestConversionTokensTable: dynamodb.Table;
 
     constructor(scope: Construct, id: string) {
         super(scope, id);
@@ -57,7 +58,7 @@ export class DatabaseConstruct extends Construct {
             removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
-        // One item per booked seat: showingId is `${movieId}#${date}#${time}` (date as YYYY-MM-DD).
+        // Booking summaries and conditional seat locks share this table partitioned by showtime/date.
         this.bookingsTable = new dynamodb.Table(this, 'BlockbusterTheatreBookings', {
             tableName: 'blockbuster-theatre-bookings',
             partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
@@ -73,5 +74,17 @@ export class DatabaseConstruct extends Construct {
             sortKey: { name: 'bookedAt', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
         });
+
+        this.guestConversionTokensTable = new dynamodb.Table(
+            this,
+            'BlockbusterTheatreGuestConversionTokens',
+            {
+                tableName: 'blockbuster-theatre-guest-conversion-tokens',
+                partitionKey: { name: 'tokenHash', type: dynamodb.AttributeType.STRING },
+                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+                timeToLiveAttribute: 'expiresAt',
+                removalPolicy: cdk.RemovalPolicy.RETAIN,
+            }
+        );
     }
 }

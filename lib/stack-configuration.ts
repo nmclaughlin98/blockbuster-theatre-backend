@@ -28,6 +28,9 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             offersTable: database.offersTable,
             collectionsTable: database.collectionsTable,
             bookingsTable: database.bookingsTable,
+            guestConversionTokensTable: database.guestConversionTokensTable,
+            userPool: authentication.userPool,
+            userPoolClient: authentication.userPoolClient,
             bookingEmailIdentity,
         });
 
@@ -51,6 +54,9 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             refreshMovieCollectionFunction: lambdaServices.refreshMovieCollectionFunction,
             listBookingsFunction: lambdaServices.listBookingsFunction,
             createBookingFunction: lambdaServices.createBookingFunction,
+            guestBookedSeatsFunction: lambdaServices.guestBookedSeatsFunction,
+            guestBookingFunction: lambdaServices.guestBookingFunction,
+            guestConversionFunction: lambdaServices.guestConversionFunction,
             jwtAuthorizer: authentication.jwtAuthorizer,
         });
 

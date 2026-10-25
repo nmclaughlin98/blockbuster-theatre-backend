@@ -71,7 +71,13 @@ const kidsClubOffer = {
     featuredMovieId: '456',
     pricingId: 'KIDS_CLUB_RATES',
     isActive: true,
-    overrideShowtimes: { Tuesday: [{ screen: '1', time: '11:00' }] },
+    overrideShowtimes: {
+        Tuesday: [{
+            screen: '1',
+            time: '11:00',
+            showtimeId: 'show_456_tuesday_1_1100',
+        }],
+    },
     displayLabel: 'OFFER - A Movie - Matinee',
 };
 const secondOfferForSameMovie = {
@@ -79,7 +85,13 @@ const secondOfferForSameMovie = {
     offerId: 'kids-club-evening',
     title: 'Kids Club Evening',
     pricingId: 'CRAZY_TUESDAY_RATES',
-    overrideShowtimes: { Tuesday: [{ screen: '3', time: '19:00' }] },
+    overrideShowtimes: {
+        Tuesday: [{
+            screen: '3',
+            time: '19:00',
+            showtimeId: 'show_456_tuesday_3_1900',
+        }],
+    },
 };
 
 const offPeakPricing = {
@@ -174,7 +186,13 @@ describe('Special offers and pricing handlers', () => {
                 displayLabel: 'OFFER - A Movie - Matinee',
                 featuredMovieId: '456',
                 pricingId: 'KIDS_CLUB_RATES',
-                overrideShowtimes: { Tuesday: [{ screen: '1', time: '11:00' }] },
+                overrideShowtimes: {
+                    Tuesday: [{
+                        screen: '1',
+                        time: '11:00',
+                        showtimeId: 'show_456_tuesday_1_1100',
+                    }],
+                },
             },
             {
                 type: 'offer',
@@ -188,7 +206,13 @@ describe('Special offers and pricing handlers', () => {
                 displayLabel: 'OFFER - A Movie - Matinee',
                 featuredMovieId: '456',
                 pricingId: 'CRAZY_TUESDAY_RATES',
-                overrideShowtimes: { Tuesday: [{ screen: '3', time: '19:00' }] },
+                overrideShowtimes: {
+                    Tuesday: [{
+                        screen: '3',
+                        time: '19:00',
+                        showtimeId: 'show_456_tuesday_3_1900',
+                    }],
+                },
             },
         ]);
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input.IndexName).toBe('GSI1');
@@ -448,7 +472,7 @@ describe('Special offers and pricing handlers', () => {
         ['missing showtime', { movieId: '456' }],
         ['unexpected showtime property', {
             movieId: '456',
-            showtime: { day: 'Monday', time: '11:00', screen: '1' },
+            showtime: { day: 'Monday', time: '11:00', unexpected: true },
         }],
         ['invalid day', {
             movieId: '456',

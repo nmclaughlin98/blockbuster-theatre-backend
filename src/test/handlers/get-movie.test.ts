@@ -29,12 +29,12 @@ const movieRecord = {
     trailer: 'https://www.youtube-nocookie.com/embed/example',
     showtimes: {
         Monday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
+            { screen: '1', time: '11:00', showtimeId: 'show_12345_monday_1_1100' },
+            { screen: '3', time: '19:00', showtimeId: 'show_12345_monday_3_1900' },
         ],
         Tuesday: [
-            { screen: '2', time: '13:00' },
-            { screen: '5', time: '20:00' },
+            { screen: '2', time: '13:00', showtimeId: 'show_12345_tuesday_2_1300' },
+            { screen: '5', time: '20:00', showtimeId: 'show_12345_tuesday_5_2000' },
         ],
     },
 };
@@ -92,12 +92,12 @@ describe('Get movie Lambda handler', () => {
             trailer: 'https://www.youtube-nocookie.com/embed/example',
             showtimes: {
                 Monday: [
-                    { screen: '1', time: '11:00' },
-                    { screen: '3', time: '19:00' },
+                    { screen: '1', time: '11:00', showtimeId: 'show_12345_monday_1_1100' },
+                    { screen: '3', time: '19:00', showtimeId: 'show_12345_monday_3_1900' },
                 ],
                 Tuesday: [
-                    { screen: '2', time: '13:00' },
-                    { screen: '5', time: '20:00' },
+                    { screen: '2', time: '13:00', showtimeId: 'show_12345_tuesday_2_1300' },
+                    { screen: '5', time: '20:00', showtimeId: 'show_12345_tuesday_5_2000' },
                 ],
             },
         });
@@ -123,7 +123,37 @@ describe('Get movie Lambda handler', () => {
         const result = await handler(createEvent('12345'));
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result).showtimes).toEqual(showtimes);
+        expect(responseBody(result).showtimes).toEqual({
+            Monday: [
+                { screen: '1', time: '13:00', showtimeId: 'show_12345_monday_1_1300' },
+                { screen: '3', time: '14:20', showtimeId: 'show_12345_monday_3_1420' },
+            ],
+        });
+    });
+
+    it('returns a stable showtime ID for the Bohemian Rhapsody Sunday 12:15 screen 5 slot', async () => {
+        ddbMock.on(QueryCommand).resolves({
+            Items: [
+                {
+                    ...movieRecord,
+                    tmdbId: '424694',
+                    title: 'Bohemian Rhapsody',
+                    showtimes: { Sunday: [{ screen: '5', time: '12:15' }] },
+                },
+            ],
+        });
+
+        const result = await handler(createEvent('424694'));
+
+        expect(responseBody(result).showtimes).toEqual({
+            Sunday: [
+                {
+                    screen: '5',
+                    time: '12:15',
+                    showtimeId: 'show_424694_sunday_5_1215',
+                },
+            ],
+        });
     });
 
     it('returns 404 when the movie does not exist', async () => {

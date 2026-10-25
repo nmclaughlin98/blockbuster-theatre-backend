@@ -7,6 +7,7 @@ import type {
     TmdbMovieResponse,
 } from '../interfaces';
 import { generateShowtimes } from './showtime-schedule';
+import { addShowtimeIds } from './showtime-ids';
 import { TMDB_MOVIE_METADATA_OVERRIDES } from './movie-metadata-overrides';
 
 function slugify(text: string): string {
@@ -61,7 +62,7 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
         mainGenre: movie.mainGenre,
         releaseDate: movie.releaseDate.slice(0, 10),
         score: movie.score,
-        showtimes: movie.showtimes,
+        showtimes: addShowtimeIds(movie.tmdbId, movie.showtimes),
     };
 }
 
@@ -91,7 +92,7 @@ export function projectMovieDetail(movie: MovieRecord): MovieDetail {
         synopsis: movie.synopsis,
         tagline: movie.tagline,
         trailer: movie.trailer,
-        showtimes: movie.showtimes,
+        showtimes: addShowtimeIds(movie.tmdbId, movie.showtimes),
     };
 }
 

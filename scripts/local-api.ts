@@ -52,6 +52,11 @@ if (cloudDatabaseMode) {
     process.env.BOOKINGS_TABLE_NAME = requireCloudTestTable(
         'LOCAL_CLOUD_BOOKINGS_TABLE_NAME'
     );
+    process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME'
+    );
+    process.env.USER_POOL_ID = process.env.LOCAL_CLOUD_USER_POOL_ID ?? '';
+    process.env.USER_POOL_CLIENT_ID = process.env.LOCAL_CLOUD_USER_POOL_CLIENT_ID ?? '';
 } else {
     process.env.LOCAL_API_DATABASE = 'local';
     process.env.DYNAMODB_ENDPOINT = localEndpoint;
@@ -60,6 +65,8 @@ if (cloudDatabaseMode) {
     process.env.OFFERS_TABLE_NAME = 'blockbuster-theatre-booking-offers-local';
     process.env.COLLECTIONS_TABLE_NAME = 'blockbuster-theatre-movie-collections-local';
     process.env.BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-local';
+    process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME =
+        'blockbuster-theatre-guest-conversion-tokens-local';
 }
 
 type LocalHandler = (
@@ -83,6 +90,9 @@ const handlers = {
     refreshMovieCollection: loadHandler('../src/main/lambda/handlers/refresh-movie-collection-handler'),
     listBookings: loadHandler('../src/main/lambda/handlers/list-bookings-handler'),
     createBooking: loadHandler('../src/main/lambda/handlers/create-booking-handler'),
+    guestBookedSeats: loadHandler('../src/main/lambda/handlers/guest-booked-seats-handler'),
+    guestBooking: loadHandler('../src/main/lambda/handlers/guest-booking-handler'),
+    guestConversion: loadHandler('../src/main/lambda/handlers/guest-conversion-handler'),
 };
 
 function corsHeaders(origin: string | undefined): Record<string, string> {
@@ -165,6 +175,24 @@ function routeRequest(
     }
     if (method === 'POST' && pathname === '/bookings') {
         return { handler: handlers.createBooking };
+    }
+    if (
+        method === 'GET' &&
+        (pathname === '/api/v1/bookings/guest' || pathname === '/bookings/guest')
+    ) {
+        return { handler: handlers.guestBookedSeats };
+    }
+    if (
+        method === 'POST' &&
+        (pathname === '/api/v1/bookings/guest' || pathname === '/bookings/guest')
+    ) {
+        return { handler: handlers.guestBooking };
+    }
+    if (
+        method === 'POST' &&
+        (pathname === '/api/v1/auth/convert-guest' || pathname === '/auth/convert-guest')
+    ) {
+        return { handler: handlers.guestConversion };
     }
 
     const movieMatch = method === 'GET' ? /^\/movies\/(\d+)$/.exec(pathname) : null;
@@ -302,7 +330,7 @@ server.listen(port, '127.0.0.1', () => {
     console.log(`Local API listening at http://127.0.0.1:${port}`);
     if (cloudDatabaseMode) {
         console.log(`AWS region: ${process.env.AWS_REGION}`);
-        console.log(`Cloud dev/test tables: ${process.env.TABLE_NAME}, ${process.env.PRICING_TABLE_NAME}, ${process.env.OFFERS_TABLE_NAME}, ${process.env.COLLECTIONS_TABLE_NAME}, ${process.env.BOOKINGS_TABLE_NAME}`);
+        console.log(`Cloud dev/test tables: ${process.env.TABLE_NAME}, ${process.env.PRICING_TABLE_NAME}, ${process.env.OFFERS_TABLE_NAME}, ${process.env.COLLECTIONS_TABLE_NAME}, ${process.env.BOOKINGS_TABLE_NAME}, ${process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME}`);
     } else {
         console.log(`DynamoDB Local endpoint: ${localEndpoint}`);
     }

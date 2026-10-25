@@ -1,5 +1,7 @@
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ses from 'aws-cdk-lib/aws-ses';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
@@ -17,6 +19,9 @@ interface LambdaConstructProps {
     offersTable: dynamodb.Table;
     collectionsTable: dynamodb.Table;
     bookingsTable: dynamodb.Table;
+    guestConversionTokensTable: dynamodb.Table;
+    userPool: cognito.IUserPool;
+    userPoolClient: cognito.IUserPoolClient;
     bookingEmailIdentity: ses.IEmailIdentity;
     lambdaConfig?: MovieImportLambdaConfig;
 }
@@ -40,6 +45,9 @@ export class LambdaConstruct extends Construct {
     public readonly refreshMovieCollectionFunction: lambdaNodejs.NodejsFunction;
     public readonly listBookingsFunction: lambdaNodejs.NodejsFunction;
     public readonly createBookingFunction: lambdaNodejs.NodejsFunction;
+    public readonly guestBookedSeatsFunction: lambdaNodejs.NodejsFunction;
+    public readonly guestBookingFunction: lambdaNodejs.NodejsFunction;
+    public readonly guestConversionFunction: lambdaNodejs.NodejsFunction;
 
     /**
      * Creates the movie import, update, list, and detail Lambda functions with table permissions.
@@ -374,5 +382,81 @@ export class LambdaConstruct extends Construct {
         props.pricingTable.grantReadData(this.createBookingFunction);
         props.offersTable.grantReadData(this.createBookingFunction);
         props.bookingsTable.grantWriteData(this.createBookingFunction);
+
+        this.guestBookedSeatsFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'GuestBookedSeatsHandler',
+            {
+                functionName: 'blockbuster-theatre-guest-booked-seats-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/guest-booked-seats-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+                environment: {
+                    BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                },
+            }
+        );
+        props.bookingsTable.grantReadData(this.guestBookedSeatsFunction);
+
+        this.guestBookingFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'GuestBookingHandler',
+            {
+                functionName: 'blockbuster-theatre-guest-booking-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/guest-booking-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+                environment: {
+                    TABLE_NAME: props.table.tableName,
+                    PRICING_TABLE_NAME: props.pricingTable.tableName,
+                    OFFERS_TABLE_NAME: props.offersTable.tableName,
+                    BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                    GUEST_CONVERSION_TOKENS_TABLE_NAME:
+                        props.guestConversionTokensTable.tableName,
+                },
+            }
+        );
+        props.table.grantReadData(this.guestBookingFunction);
+        props.pricingTable.grantReadData(this.guestBookingFunction);
+        props.offersTable.grantReadData(this.guestBookingFunction);
+        props.bookingsTable.grantWriteData(this.guestBookingFunction);
+        props.guestConversionTokensTable.grantWriteData(this.guestBookingFunction);
+
+        this.guestConversionFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'GuestConversionHandler',
+            {
+                functionName: 'blockbuster-theatre-guest-conversion-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/guest-conversion-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+                environment: {
+                    BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                    GUEST_CONVERSION_TOKENS_TABLE_NAME:
+                        props.guestConversionTokensTable.tableName,
+                    USER_POOL_ID: props.userPool.userPoolId,
+                    USER_POOL_CLIENT_ID: props.userPoolClient.userPoolClientId,
+                },
+            }
+        );
+        props.bookingsTable.grantReadWriteData(this.guestConversionFunction);
+        props.guestConversionTokensTable.grantReadWriteData(this.guestConversionFunction);
+        this.guestConversionFunction.addToRolePolicy(
+            new iam.PolicyStatement({
+                actions: [
+                    'cognito-idp:AdminCreateUser',
+                    'cognito-idp:AdminGetUser',
+                    'cognito-idp:AdminInitiateAuth',
+                    'cognito-idp:AdminSetUserPassword',
+                ],
+                resources: [props.userPool.userPoolArn],
+            })
+        );
     }
 }

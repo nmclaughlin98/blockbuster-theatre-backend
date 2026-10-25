@@ -22,6 +22,7 @@ const tableNames = {
     offers: 'blockbuster-theatre-booking-offers-local',
     collections: 'blockbuster-theatre-movie-collections-local',
     bookings: 'blockbuster-theatre-bookings-local',
+    guestConversionTokens: 'blockbuster-theatre-guest-conversion-tokens-local',
 };
 
 process.env.LOCAL_API = 'true';
@@ -98,6 +99,12 @@ const tableDefinitions: CreateTableCommandInput[] = [
                 Projection: { ProjectionType: 'ALL' },
             },
         ],
+    },
+    {
+        TableName: tableNames.guestConversionTokens,
+        BillingMode: 'PAY_PER_REQUEST',
+        AttributeDefinitions: [{ AttributeName: 'tokenHash', AttributeType: 'S' }],
+        KeySchema: [{ AttributeName: 'tokenHash', KeyType: 'HASH' }],
     },
 ];
 

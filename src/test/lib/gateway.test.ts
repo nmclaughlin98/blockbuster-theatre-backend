@@ -40,6 +40,9 @@ describe('ApiGatewayConstruct', () => {
             refreshMovieCollectionFunction: mockFunction,
             listBookingsFunction: mockFunction,
             createBookingFunction: mockFunction,
+            guestBookedSeatsFunction: mockFunction,
+            guestBookingFunction: mockFunction,
+            guestConversionFunction: mockFunction,
             jwtAuthorizer,
         });
     });
@@ -64,7 +67,19 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 19);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 22);
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /api/v1/bookings/guest',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /api/v1/bookings/guest',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /api/v1/auth/convert-guest',
+            AuthorizationType: 'NONE',
+        });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings',
             AuthorizationType: 'NONE',

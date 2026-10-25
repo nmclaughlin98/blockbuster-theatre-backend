@@ -23,6 +23,9 @@ interface ApiGatewayConstructProps {
     refreshMovieCollectionFunction: lambda.IFunction;
     listBookingsFunction: lambda.IFunction;
     createBookingFunction: lambda.IFunction;
+    guestBookedSeatsFunction: lambda.IFunction;
+    guestBookingFunction: lambda.IFunction;
+    guestConversionFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
@@ -128,6 +131,18 @@ export class ApiGatewayConstruct extends Construct {
         const createBookingIntegration = new integrations.HttpLambdaIntegration(
             'CreateBookingIntegration',
             props.createBookingFunction
+        );
+        const guestBookedSeatsIntegration = new integrations.HttpLambdaIntegration(
+            'GuestBookedSeatsIntegration',
+            props.guestBookedSeatsFunction
+        );
+        const guestBookingIntegration = new integrations.HttpLambdaIntegration(
+            'GuestBookingIntegration',
+            props.guestBookingFunction
+        );
+        const guestConversionIntegration = new integrations.HttpLambdaIntegration(
+            'GuestConversionIntegration',
+            props.guestConversionFunction
         );
 
         this.httpApi.addRoutes({
@@ -250,6 +265,24 @@ export class ApiGatewayConstruct extends Construct {
             path: '/bookings',
             methods: [apigw2.HttpMethod.POST],
             integration: createBookingIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/api/v1/bookings/guest',
+            methods: [apigw2.HttpMethod.GET],
+            integration: guestBookedSeatsIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/api/v1/bookings/guest',
+            methods: [apigw2.HttpMethod.POST],
+            integration: guestBookingIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/api/v1/auth/convert-guest',
+            methods: [apigw2.HttpMethod.POST],
+            integration: guestConversionIntegration,
         });
     }
 }
