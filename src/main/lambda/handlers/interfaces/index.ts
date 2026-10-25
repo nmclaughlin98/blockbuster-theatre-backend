@@ -1,3 +1,4 @@
+export type { BookingRecord } from './booking-record';
 export type { MovieDetail } from './movie-detail';
 export type { MovieCollectionRecord } from './movie-collection-record';
 export type { MovieData } from './movie-data';

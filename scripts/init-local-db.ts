@@ -21,6 +21,7 @@ const tableNames = {
     pricing: 'blockbuster-theatre-ticket-pricing-local',
     offers: 'blockbuster-theatre-booking-offers-local',
     collections: 'blockbuster-theatre-movie-collections-local',
+    bookings: 'blockbuster-theatre-bookings-local',
 };
 
 process.env.LOCAL_API = 'true';
@@ -73,6 +74,30 @@ const tableDefinitions: CreateTableCommandInput[] = [
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [{ AttributeName: 'collectionId', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
+    },
+    {
+        TableName: tableNames.bookings,
+        BillingMode: 'PAY_PER_REQUEST',
+        AttributeDefinitions: [
+            { AttributeName: 'showingId', AttributeType: 'S' },
+            { AttributeName: 'seatId', AttributeType: 'S' },
+            { AttributeName: 'userId', AttributeType: 'S' },
+            { AttributeName: 'bookedAt', AttributeType: 'S' },
+        ],
+        KeySchema: [
+            { AttributeName: 'showingId', KeyType: 'HASH' },
+            { AttributeName: 'seatId', KeyType: 'RANGE' },
+        ],
+        GlobalSecondaryIndexes: [
+            {
+                IndexName: 'UserBookings',
+                KeySchema: [
+                    { AttributeName: 'userId', KeyType: 'HASH' },
+                    { AttributeName: 'bookedAt', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+        ],
     },
 ];
 

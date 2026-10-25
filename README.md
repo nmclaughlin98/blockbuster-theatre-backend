@@ -39,6 +39,7 @@ The API supports:
 - `GET /film-selections` for active movie and offer booking selections.
 - `GET /ticket-pricing` for pricing resolved by movie or offer, weekday, and showtime.
 - `POST /checkout/validate` to validate booking selections and calculate authoritative totals.
+- `GET /bookings` to list booked seats for a showing, and `POST /bookings` to book seats (stored with a user ID, randomly generated until login exists).
 - `POST /booking/confirmation` to send a demo booking confirmation email through Amazon SES.
 - `POST /collections/refresh` to refresh all pages for a batch of TMDB lists. Protected admin routes require the configured API Gateway JWT authorizer.
 

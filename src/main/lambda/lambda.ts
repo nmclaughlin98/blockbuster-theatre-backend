@@ -16,6 +16,7 @@ interface LambdaConstructProps {
     pricingTable: dynamodb.Table;
     offersTable: dynamodb.Table;
     collectionsTable: dynamodb.Table;
+    bookingsTable: dynamodb.Table;
     bookingEmailIdentity: ses.IEmailIdentity;
     lambdaConfig?: MovieImportLambdaConfig;
 }
@@ -37,6 +38,8 @@ export class LambdaConstruct extends Construct {
     public readonly listMovieCollectionsFunction: lambdaNodejs.NodejsFunction;
     public readonly getMovieCollectionFunction: lambdaNodejs.NodejsFunction;
     public readonly refreshMovieCollectionFunction: lambdaNodejs.NodejsFunction;
+    public readonly listBookingsFunction: lambdaNodejs.NodejsFunction;
+    public readonly createBookingFunction: lambdaNodejs.NodejsFunction;
 
     /**
      * Creates the movie import, update, list, and detail Lambda functions with table permissions.
@@ -336,5 +339,40 @@ export class LambdaConstruct extends Construct {
         );
 
         props.collectionsTable.grantReadWriteData(this.refreshMovieCollectionFunction);
+
+        this.listBookingsFunction = new lambdaNodejs.NodejsFunction(this, 'ListBookingsHandler', {
+            functionName: 'blockbuster-theatre-list-bookings-handler',
+            runtime: lambdaSettings.runtime,
+            entry: path.join(__dirname, './handlers/list-bookings-handler.ts'),
+            handler: 'handler',
+            memorySize: lambdaSettings.default.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+            environment: {
+                BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+            },
+        });
+
+        props.bookingsTable.grantReadData(this.listBookingsFunction);
+
+        // Booking creation validates the movie and showtime, which needs the pricing lookups.
+        this.createBookingFunction = new lambdaNodejs.NodejsFunction(this, 'CreateBookingHandler', {
+            functionName: 'blockbuster-theatre-create-booking-handler',
+            runtime: lambdaSettings.runtime,
+            entry: path.join(__dirname, './handlers/create-booking-handler.ts'),
+            handler: 'handler',
+            memorySize: lambdaSettings.default.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                PRICING_TABLE_NAME: props.pricingTable.tableName,
+                OFFERS_TABLE_NAME: props.offersTable.tableName,
+                BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+            },
+        });
+
+        props.table.grantReadData(this.createBookingFunction);
+        props.pricingTable.grantReadData(this.createBookingFunction);
+        props.offersTable.grantReadData(this.createBookingFunction);
+        props.bookingsTable.grantWriteData(this.createBookingFunction);
     }
 }

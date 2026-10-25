@@ -7,6 +7,7 @@ export class DatabaseConstruct extends Construct {
     public readonly pricingTable: dynamodb.Table;
     public readonly offersTable: dynamodb.Table;
     public readonly collectionsTable: dynamodb.Table;
+    public readonly bookingsTable: dynamodb.Table;
 
     constructor(scope: Construct, id: string) {
         super(scope, id);
@@ -56,5 +57,21 @@ export class DatabaseConstruct extends Construct {
             removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
+        // One item per booked seat: showingId is `${movieId}#${date}#${time}` (date as YYYY-MM-DD).
+        this.bookingsTable = new dynamodb.Table(this, 'BlockbusterTheatreBookings', {
+            tableName: 'blockbuster-theatre-bookings',
+            partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
+        });
+
+        // Lets a user's booked seats be listed once login exists.
+        this.bookingsTable.addGlobalSecondaryIndex({
+            indexName: 'UserBookings',
+            partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'bookedAt', type: dynamodb.AttributeType.STRING },
+            projectionType: dynamodb.ProjectionType.ALL,
+        });
     }
 }

@@ -38,6 +38,8 @@ describe('ApiGatewayConstruct', () => {
             listMovieCollectionsFunction: mockFunction,
             getMovieCollectionFunction: mockFunction,
             refreshMovieCollectionFunction: mockFunction,
+            listBookingsFunction: mockFunction,
+            createBookingFunction: mockFunction,
             jwtAuthorizer,
         });
     });
@@ -62,7 +64,15 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 17);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 19);
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /bookings',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /bookings',
+            AuthorizationType: 'NONE',
+        });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/newest',
             AuthorizationType: 'NONE',

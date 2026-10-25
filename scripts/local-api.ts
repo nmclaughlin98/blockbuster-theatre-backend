@@ -49,6 +49,9 @@ if (cloudDatabaseMode) {
     process.env.COLLECTIONS_TABLE_NAME = requireCloudTestTable(
         'LOCAL_CLOUD_COLLECTIONS_TABLE_NAME'
     );
+    process.env.BOOKINGS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_BOOKINGS_TABLE_NAME'
+    );
 } else {
     process.env.LOCAL_API_DATABASE = 'local';
     process.env.DYNAMODB_ENDPOINT = localEndpoint;
@@ -56,6 +59,7 @@ if (cloudDatabaseMode) {
     process.env.PRICING_TABLE_NAME = 'blockbuster-theatre-ticket-pricing-local';
     process.env.OFFERS_TABLE_NAME = 'blockbuster-theatre-booking-offers-local';
     process.env.COLLECTIONS_TABLE_NAME = 'blockbuster-theatre-movie-collections-local';
+    process.env.BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-local';
 }
 
 type LocalHandler = (
@@ -77,6 +81,8 @@ const handlers = {
     listMovieCollections: loadHandler('../src/main/lambda/handlers/list-movie-collections-handler'),
     getMovieCollection: loadHandler('../src/main/lambda/handlers/get-movie-collection-handler'),
     refreshMovieCollection: loadHandler('../src/main/lambda/handlers/refresh-movie-collection-handler'),
+    listBookings: loadHandler('../src/main/lambda/handlers/list-bookings-handler'),
+    createBooking: loadHandler('../src/main/lambda/handlers/create-booking-handler'),
 };
 
 function corsHeaders(origin: string | undefined): Record<string, string> {
@@ -153,6 +159,12 @@ function routeRequest(
     }
     if (method === 'POST' && pathname === '/checkout/validate') {
         return { handler: handlers.validateCheckout };
+    }
+    if (method === 'GET' && pathname === '/bookings') {
+        return { handler: handlers.listBookings };
+    }
+    if (method === 'POST' && pathname === '/bookings') {
+        return { handler: handlers.createBooking };
     }
 
     const movieMatch = method === 'GET' ? /^\/movies\/(\d+)$/.exec(pathname) : null;
@@ -290,7 +302,7 @@ server.listen(port, '127.0.0.1', () => {
     console.log(`Local API listening at http://127.0.0.1:${port}`);
     if (cloudDatabaseMode) {
         console.log(`AWS region: ${process.env.AWS_REGION}`);
-        console.log(`Cloud dev/test tables: ${process.env.TABLE_NAME}, ${process.env.PRICING_TABLE_NAME}, ${process.env.OFFERS_TABLE_NAME}, ${process.env.COLLECTIONS_TABLE_NAME}`);
+        console.log(`Cloud dev/test tables: ${process.env.TABLE_NAME}, ${process.env.PRICING_TABLE_NAME}, ${process.env.OFFERS_TABLE_NAME}, ${process.env.COLLECTIONS_TABLE_NAME}, ${process.env.BOOKINGS_TABLE_NAME}`);
     } else {
         console.log(`DynamoDB Local endpoint: ${localEndpoint}`);
     }

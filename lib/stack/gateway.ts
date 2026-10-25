@@ -21,6 +21,8 @@ interface ApiGatewayConstructProps {
     listMovieCollectionsFunction: lambda.IFunction;
     getMovieCollectionFunction: lambda.IFunction;
     refreshMovieCollectionFunction: lambda.IFunction;
+    listBookingsFunction: lambda.IFunction;
+    createBookingFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
@@ -118,6 +120,14 @@ export class ApiGatewayConstruct extends Construct {
         const refreshMovieCollectionIntegration = new integrations.HttpLambdaIntegration(
             'RefreshMovieCollectionIntegration',
             props.refreshMovieCollectionFunction
+        );
+        const listBookingsIntegration = new integrations.HttpLambdaIntegration(
+            'ListBookingsIntegration',
+            props.listBookingsFunction
+        );
+        const createBookingIntegration = new integrations.HttpLambdaIntegration(
+            'CreateBookingIntegration',
+            props.createBookingFunction
         );
 
         this.httpApi.addRoutes({
@@ -227,6 +237,19 @@ export class ApiGatewayConstruct extends Construct {
             methods: [apigw2.HttpMethod.POST],
             integration: refreshMovieCollectionIntegration,
             authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/bookings',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listBookingsIntegration,
+        });
+
+        // Unauthenticated until the login system exists; the user ID is generated server-side for now.
+        this.httpApi.addRoutes({
+            path: '/bookings',
+            methods: [apigw2.HttpMethod.POST],
+            integration: createBookingIntegration,
         });
     }
 }

@@ -14,6 +14,7 @@ describe('LambdaConstruct', () => {
     let pricingTable: dynamodb.Table;
     let offersTable: dynamodb.Table;
     let collectionsTable: dynamodb.Table;
+    let bookingsTable: dynamodb.Table;
     let bookingEmailIdentity: ses.EmailIdentity;
     let construct: LambdaConstruct;
 
@@ -35,6 +36,11 @@ describe('LambdaConstruct', () => {
             partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+        bookingsTable = new dynamodb.Table(stack, 'TestBookingsTable', {
+            partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
         bookingEmailIdentity = new ses.EmailIdentity(stack, 'TestBookingEmailIdentity', {
             identity: ses.Identity.email('booking@example.com'),
         });
@@ -43,6 +49,7 @@ describe('LambdaConstruct', () => {
             pricingTable,
             offersTable,
             collectionsTable,
+            bookingsTable,
             bookingEmailIdentity,
         });
     });
@@ -165,7 +172,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(16);
+        expect(Object.values(functions)).toHaveLength(18);
         expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
@@ -191,6 +198,11 @@ describe('LambdaConstruct', () => {
                 billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             }
         );
+        const configuredBookingsTable = new dynamodb.Table(configuredStack, 'ConfiguredBookingsTable', {
+            partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
         const configuredBookingEmailIdentity = new ses.EmailIdentity(
             configuredStack,
             'ConfiguredBookingEmailIdentity',
@@ -202,6 +214,7 @@ describe('LambdaConstruct', () => {
             pricingTable: configuredPricingTable,
             offersTable: configuredOffersTable,
             collectionsTable: configuredCollectionsTable,
+            bookingsTable: configuredBookingsTable,
             bookingEmailIdentity: configuredBookingEmailIdentity,
             lambdaConfig: {
                 ...cfg,
@@ -255,6 +268,29 @@ describe('LambdaConstruct', () => {
     it('should export collection functions', () => {
         expect(construct.getMovieCollectionFunction).toBeDefined();
         expect(construct.refreshMovieCollectionFunction).toBeDefined();
+    });
+
+    it('should configure booking functions with least-privilege table access', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-list-bookings-handler',
+            Environment: {
+                Variables: { BOOKINGS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestBookingsTable') } },
+            },
+        });
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-create-booking-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    BOOKINGS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestBookingsTable') },
+                    TABLE_NAME: Match.anyValue(),
+                    PRICING_TABLE_NAME: Match.anyValue(),
+                    OFFERS_TABLE_NAME: Match.anyValue(),
+                }),
+            },
+        });
+        expect(construct.listBookingsFunction).toBeDefined();
+        expect(construct.createBookingFunction).toBeDefined();
     });
 
     it('should grant read/write permissions to DynamoDB', () => {
