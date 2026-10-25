@@ -8,6 +8,7 @@ interface ApiGatewayConstructProps {
     addMoviesFunction: lambda.IFunction;
     updateMoviesFunction: lambda.IFunction;
     listMoviesFunction: lambda.IFunction;
+    listFeaturedMoviesFunction: lambda.IFunction;
     getMovieFunction: lambda.IFunction;
     exportMoviesFunction: lambda.IFunction;
     listTmdbIdsFunction: lambda.IFunction;
@@ -20,6 +21,11 @@ interface ApiGatewayConstructProps {
     listMovieCollectionsFunction: lambda.IFunction;
     getMovieCollectionFunction: lambda.IFunction;
     refreshMovieCollectionFunction: lambda.IFunction;
+    listBookingsFunction: lambda.IFunction;
+    createBookingFunction: lambda.IFunction;
+    guestBookedSeatsFunction: lambda.IFunction;
+    guestBookingFunction: lambda.IFunction;
+    guestConversionFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
@@ -65,6 +71,10 @@ export class ApiGatewayConstruct extends Construct {
         const listMoviesIntegration = new integrations.HttpLambdaIntegration(
             'ListMoviesIntegration',
             props.listMoviesFunction
+        );
+        const listFeaturedMoviesIntegration = new integrations.HttpLambdaIntegration(
+            'ListFeaturedMoviesIntegration',
+            props.listFeaturedMoviesFunction
         );
         const getMovieIntegration = new integrations.HttpLambdaIntegration(
             'GetMovieIntegration',
@@ -114,6 +124,26 @@ export class ApiGatewayConstruct extends Construct {
             'RefreshMovieCollectionIntegration',
             props.refreshMovieCollectionFunction
         );
+        const listBookingsIntegration = new integrations.HttpLambdaIntegration(
+            'ListBookingsIntegration',
+            props.listBookingsFunction
+        );
+        const createBookingIntegration = new integrations.HttpLambdaIntegration(
+            'CreateBookingIntegration',
+            props.createBookingFunction
+        );
+        const guestBookedSeatsIntegration = new integrations.HttpLambdaIntegration(
+            'GuestBookedSeatsIntegration',
+            props.guestBookedSeatsFunction
+        );
+        const guestBookingIntegration = new integrations.HttpLambdaIntegration(
+            'GuestBookingIntegration',
+            props.guestBookingFunction
+        );
+        const guestConversionIntegration = new integrations.HttpLambdaIntegration(
+            'GuestConversionIntegration',
+            props.guestConversionFunction
+        );
 
         this.httpApi.addRoutes({
             path: '/film-selections',
@@ -157,6 +187,18 @@ export class ApiGatewayConstruct extends Construct {
             path: '/movies',
             methods: [apigw2.HttpMethod.GET],
             integration: listMoviesIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/movies/newest',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listFeaturedMoviesIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/movies/top-picks',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listFeaturedMoviesIntegration,
         });
 
         this.httpApi.addRoutes({
@@ -210,6 +252,37 @@ export class ApiGatewayConstruct extends Construct {
             methods: [apigw2.HttpMethod.POST],
             integration: refreshMovieCollectionIntegration,
             authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/bookings',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listBookingsIntegration,
+        });
+
+        // Unauthenticated until the login system exists; the user ID is generated server-side for now.
+        this.httpApi.addRoutes({
+            path: '/bookings',
+            methods: [apigw2.HttpMethod.POST],
+            integration: createBookingIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/api/v1/bookings/guest',
+            methods: [apigw2.HttpMethod.GET],
+            integration: guestBookedSeatsIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/api/v1/bookings/guest',
+            methods: [apigw2.HttpMethod.POST],
+            integration: guestBookingIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/api/v1/auth/convert-guest',
+            methods: [apigw2.HttpMethod.POST],
+            integration: guestConversionIntegration,
         });
     }
 }

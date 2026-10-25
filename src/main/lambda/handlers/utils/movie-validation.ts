@@ -117,7 +117,13 @@ function isStringArray(value: unknown): value is string[] {
 export function isScreenedShowtime(value: unknown): value is ScreenedShowtime {
     return (
         isRecord(value) &&
-        Object.keys(value).length === 2 &&
+        Object.keys(value).every((key) => ['showtimeId', 'date', 'screen', 'time'].includes(key)) &&
+        Object.keys(value).length >= 2 &&
+        (value.showtimeId === undefined ||
+            (typeof value.showtimeId === 'string' &&
+                /^\d{6}_\d{4}-\d{2}-\d{2}_(?:[01]\d|2[0-3])[0-5]\d$/.test(value.showtimeId))) &&
+        (value.date === undefined ||
+            (typeof value.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.date))) &&
         typeof value.screen === 'string' &&
         /^[1-5]$/.test(value.screen) &&
         typeof value.time === 'string' &&

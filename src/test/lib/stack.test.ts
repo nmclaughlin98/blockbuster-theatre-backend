@@ -34,7 +34,7 @@ describe('BackendStack', () => {
 
     it('should create DynamoDB table', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::DynamoDB::Table', 4);
+        template.resourceCountIs('AWS::DynamoDB::Table', 9);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-movie-catalogue',
             BillingMode: 'PAY_PER_REQUEST',
@@ -69,6 +69,47 @@ describe('BackendStack', () => {
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
         });
+        template.hasResource('AWS::DynamoDB::Table', {
+            DeletionPolicy: 'Retain',
+            UpdateReplacePolicy: 'Retain',
+            Properties: Match.objectLike({
+                TableName: 'blockbuster-theatre-bookings',
+                BillingMode: 'PAY_PER_REQUEST',
+                KeySchema: [
+                    { AttributeName: 'showingId', KeyType: 'HASH' },
+                    { AttributeName: 'seatId', KeyType: 'RANGE' },
+                ],
+                GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
+            }),
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-bookings-by-showtime',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [
+                { AttributeName: 'showtimeId', KeyType: 'HASH' },
+                { AttributeName: 'seatId', KeyType: 'RANGE' },
+            ],
+            GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-showtime-registry',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-booking-references',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'bookingRef', KeyType: 'HASH' }],
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-guest-conversion-tokens',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'tokenHash', KeyType: 'HASH' }],
+            TimeToLiveSpecification: {
+                AttributeName: 'expiresAt',
+                Enabled: true,
+            },
+        });
     });
 
     it('should create Lambda function', () => {
@@ -94,7 +135,30 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 15);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 22);
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /bookings',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /bookings',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /api/v1/bookings/guest',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /api/v1/bookings/guest',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /api/v1/auth/convert-guest',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/newest',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/top-picks',
+            AuthorizationType: 'NONE',
+        });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies',
         });
@@ -145,7 +209,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 15);
+        template.resourceCountIs('AWS::IAM::Policy', 21);
         template.hasResourceProperties('AWS::SES::EmailIdentity', {
             EmailIdentity: 'niallmclaughlin1998@gmail.com',
         });

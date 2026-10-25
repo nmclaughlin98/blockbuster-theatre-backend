@@ -25,6 +25,7 @@ describe('ApiGatewayConstruct', () => {
             addMoviesFunction: mockFunction,
             updateMoviesFunction: mockFunction,
             listMoviesFunction: mockFunction,
+            listFeaturedMoviesFunction: mockFunction,
             getMovieFunction: mockFunction,
             exportMoviesFunction: mockFunction,
             listTmdbIdsFunction: mockFunction,
@@ -37,6 +38,11 @@ describe('ApiGatewayConstruct', () => {
             listMovieCollectionsFunction: mockFunction,
             getMovieCollectionFunction: mockFunction,
             refreshMovieCollectionFunction: mockFunction,
+            listBookingsFunction: mockFunction,
+            createBookingFunction: mockFunction,
+            guestBookedSeatsFunction: mockFunction,
+            guestBookingFunction: mockFunction,
+            guestConversionFunction: mockFunction,
             jwtAuthorizer,
         });
     });
@@ -61,7 +67,35 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 15);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 22);
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /api/v1/bookings/guest',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /api/v1/bookings/guest',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /api/v1/auth/convert-guest',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /bookings',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /bookings',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/newest',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/top-picks',
+            AuthorizationType: 'NONE',
+        });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/export',
             AuthorizationType: 'JWT',

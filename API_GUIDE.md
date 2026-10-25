@@ -1,5 +1,13 @@
 # Booking Data API
 
+## Public featured movie endpoints
+
+`GET /movies/newest` returns movies ordered by release date, newest first, excluding records where `isComingSoon` is `true`. Legacy records without an `isComingSoon` field are included.
+
+`GET /movies/top-picks` returns movies ordered by TMDB score (`score`) from highest to lowest. This endpoint does not filter coming-soon records.
+
+Both endpoints are public and accept the same optional pagination parameters as `GET /movies`: `limit` (1–100, default 50) and `nextToken` from the prior response. They return `{ "movies": [...], "nextToken": "..." }`, with `nextToken: null` when no additional page is available.
+
 ## Demo booking confirmation email
 
 `POST /booking/confirmation` sends the guest a plain-text demo confirmation through Amazon SES. It does not process payment, create a reservation, or issue a valid cinema ticket. The email states this clearly.
@@ -299,6 +307,149 @@ The Crazy Tuesday package is configured as one £4 ticket tier:
 
 Successful requests return the number of upserted records and their IDs. Invalid input returns HTTP 400; DynamoDB failures return HTTP 500 with a request ID for log lookup.
 
+## Seat bookings
+
+Each showtime in `GET /movies/{movieId}` and `GET /film-selections` has a stable, backend-resolvable `showtimeId`, alongside `screen` and `time`. Pass `?date=YYYY-MM-DD` to either endpoint for IDs for a specific occurrence, for example `GET /movies/456?date=2026-11-01` or `GET /film-selections?date=2026-11-01`. IDs use the format `NNNNNN_YYYY-MM-DD_HHmm`, for example `559924_2026-11-01_1215` for a 12:15 screening. The random six-digit prefix is generated once and persisted by the backend for that dated screening, so the same screening has the same ID across requests. Offer override showtimes use the same registry and format.
+
+Catalogue showtimes repeat weekly. Both schedule endpoints accept an optional `?date=YYYY-MM-DD` to return IDs for a specific occurrence; without it, the next occurrence date for each weekday is used. A booking also supplies the same calendar `date` in `YYYY-MM-DD` format. The date must be valid, match the date embedded in `showtimeId`, and must not be in the past in UK time. Up to 10 unique seats may be selected per booking; IDs are a row letter `A`-`G` plus a seat number `1`-`11`.
+
+### Get booked seats for a showing
+
+`GET /api/v1/bookings/guest?showtimeId=559924_2026-11-01_1215&date=2026-11-01`
+
+```json
+{
+  "showtimeId": "559924_2026-11-01_1215",
+  "date": "2026-11-01",
+  "bookedSeats": ["F10", "F11"]
+}
+```
+
+The lookup uses the same `showtimeId` and date identity as the guest booking endpoint. Invalid or unknown IDs and dates return HTTP 400; storage errors return HTTP 500.
+
+### Make an unpaid guest booking
+
+`POST /api/v1/bookings/guest`
+
+```json
+{
+  "showtimeId": "559924_2026-11-01_1215",
+  "date": "2026-11-01",
+  "seats": ["F10", "F11"],
+  "email": "customer@example.com",
+  "customerName": "Niall McLaughlin",
+  "tickets": [
+    { "tierId": "adult", "quantity": 1 },
+    { "tierId": "child", "quantity": 1 }
+  ]
+}
+```
+
+`tickets` is required so the backend can validate the selected tiers, ensure ticket quantity equals the seat count, and calculate the authoritative amount using the existing pricing rules. For offer showtimes, include `offerId` as well. No `userId`, cart, guest-session token, or `paymentToken` is required or processed; do not send payment or card details. The request is unpaid and does not create a payment.
+
+Success returns HTTP 201:
+
+```json
+{
+  "bookingId": "bk_990123",
+  "bookingRef": "BBT-883214",
+  "showtimeId": "559924_2026-11-01_1215",
+  "movieTitle": "Bohemian Rhapsody",
+  "date": "2026-11-01",
+  "seats": ["F10", "F11"],
+  "tickets": [
+    { "tierId": "adult", "label": "Standard Adult", "quantity": 1, "unitPrice": 9.5, "subtotal": 9.5 },
+    { "tierId": "child", "label": "Child Ticket", "quantity": 1, "unitPrice": 6, "subtotal": 6 }
+  ],
+  "totalAmount": 15.5,
+  "currency": "GBP",
+  "customerEmail": "customer@example.com",
+  "conversionToken": "cnv_tok_<opaque-random-token>",
+  "conversionTokenExpiresAt": "2026-10-26T12:15:00.000Z",
+  "confirmationEmailSent": true
+}
+```
+
+The endpoint returns HTTP 201. The email contains the separate `bookingRef` as the existing QR-code value; this reference is not the `showtimeId`. If email delivery fails after the reservation is committed, the endpoint still returns HTTP 201 with `confirmationEmailSent: false`.
+
+Invalid guest details, seats, ticket tiers, date, or showtime return HTTP 400. Unknown movies or offers return HTTP 404. If a requested seat is no longer available, the transaction reserves none of the seats and returns HTTP 409. Unexpected storage or pricing failures return HTTP 500.
+
+The active booking table is keyed by `showtimeId` and `seatId`. It stores one booking record with the selected seat and ticket arrays; separate seat-lock records in the same table are reserved atomically with the booking and prevent double-booking. The previous `showingId` table is retained for compatibility and existing bookings are checked there before reserving seats. The conversion token is randomly generated, stored only as a SHA-256 hash, expires after 24 hours, and can only be consumed once.
+
+### Convert a guest booking to an account
+
+`POST /api/v1/auth/convert-guest`
+
+```json
+{
+  "conversionToken": "cnv_tok_<opaque-random-token>",
+  "password": "SuperSecretPassword123!"
+}
+```
+
+The password is set and hashed by the existing Cognito user pool; it is never stored or logged by the application. On success, the one-time token is consumed, the booking is associated with the Cognito user ID, and the endpoint returns HTTP 200:
+
+```json
+{
+  "userId": "cognito-user-id",
+  "email": "customer@example.com",
+  "accessToken": "<cognito-access-token>",
+  "refreshToken": "<cognito-refresh-token>"
+}
+```
+
+Invalid request or password returns HTTP 400, an unknown token returns HTTP 404, an already-consumed token returns HTTP 409, an expired (24-hour) token returns HTTP 410, and unexpected Cognito or storage failures return HTTP 500. Passwords, conversion tokens, and Cognito tokens are not logged.
+
+### Existing booking endpoints
+
+The existing `GET /bookings` and `POST /bookings` routes remain available for compatibility with the original booking model. New guest booking clients should use the versioned `/api/v1/bookings/guest` routes above so seat lookup and reservation share the same `showtimeId` and date.
+
+### Get booked seats
+
+`GET /bookings?movieId=456&date=2026-11-02&day=Monday&time=19:00`
+
+```json
+{
+  "movieId": "456",
+  "date": "2026-11-02",
+  "showtime": { "day": "Monday", "screen": "3", "time": "19:00" },
+  "bookedSeats": ["A1", "B4", "C2"]
+}
+```
+
+Use `bookedSeats` to render booked seats in the seat map. Invalid query parameters return HTTP 400.
+
+### Book seats
+
+`POST /bookings`
+
+```json
+{
+  "movieId": "456",
+  "date": "2026-11-02",
+  "showtime": { "day": "Monday", "time": "19:00" },
+  "seats": ["B4", "B5"]
+}
+```
+
+When the booking comes from an offer, also send `offerId` (with the offer's featured `movieId`); the offer's showtimes are then validated instead of the movie's. Otherwise the movie and showtime are validated against the catalogue. A successful request returns HTTP 201:
+
+```json
+{
+  "bookingId": "6b0e5f3e-...",
+  "userId": "2f9d0c7a-...",
+  "movieId": "456",
+  "movieTitle": "A Movie",
+  "date": "2026-11-02",
+  "showtimeId": "559924_2026-11-02_1900",
+  "showtime": { "day": "Monday", "screen": "3", "time": "19:00" },
+  "seats": ["B4", "B5"],
+  "bookedAt": "2026-10-25T03:19:42.816Z"
+}
+```
+
+Invalid seats, dates, or showtimes return HTTP 400, an unknown movie returns HTTP 404, and seats that were booked in the meantime return HTTP 409 (`Seat already booked: B5.`) without reserving any of the requested seats.
+
 ## Run the booking API locally
 
 Requirements: Node.js 24 or newer and Docker with Compose.
@@ -323,7 +474,7 @@ The local admin endpoints require `Authorization: Bearer local-dev-token` by def
 
 ### Use local handlers with cloud DynamoDB dev/test tables
 
-To run the same local HTTP adapter and Lambda handlers against existing AWS DynamoDB dev/test tables, configure AWS credentials and all three table names before starting the cloud mode. The names must end in `-dev`, `-test`, `-testing`, `-staging`, or `-sandbox`; this guard prevents accidentally targeting the production table names. Cloud mode does not start or initialize DynamoDB Local and does not create AWS resources.
+To run the same local HTTP adapter and Lambda handlers against existing AWS DynamoDB dev/test tables, configure AWS credentials and all nine table names before starting the cloud mode. The names must end in `-dev`, `-test`, `-testing`, `-staging`, or `-sandbox`; this guard prevents accidentally targeting the production table names. Cloud mode does not start or initialize DynamoDB Local and does not create AWS resources.
 
 ```powershell
 $env:AWS_PROFILE = "your-aws-profile"
@@ -332,7 +483,14 @@ $env:LOCAL_CLOUD_TABLE_NAME = "blockbuster-theatre-movie-catalogue-dev"
 $env:LOCAL_CLOUD_PRICING_TABLE_NAME = "blockbuster-theatre-ticket-pricing-dev"
 $env:LOCAL_CLOUD_OFFERS_TABLE_NAME = "blockbuster-theatre-booking-offers-dev"
 $env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections-dev"
+$env:LOCAL_CLOUD_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-by-showtime-dev"
+$env:LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-dev"
+$env:LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry-dev"
+$env:LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME = "blockbuster-theatre-booking-references-dev"
+$env:LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME = "blockbuster-theatre-guest-conversion-tokens-dev"
+$env:LOCAL_CLOUD_USER_POOL_ID = "eu-west-2_example"
+$env:LOCAL_CLOUD_USER_POOL_CLIENT_ID = "exampleclientid"
 npm run local:cloud
 ```
 
-The profile must have DynamoDB permissions for those tables. The tables must already exist with the same keys and movie-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections/refresh` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.
+The profile must have DynamoDB permissions for those tables and Cognito admin permissions on the specified dev/test user pool to convert guest accounts. The tables must already exist with the same keys and movie-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections/refresh` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.

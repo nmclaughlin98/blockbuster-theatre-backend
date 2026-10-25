@@ -79,7 +79,7 @@ export class AuthenticationConstruct extends Construct {
         this.userPoolClient = this.userPool.addClient('BackendClient', {
             userPoolClientName: 'blockbuster-theatre-backend',
             generateSecret: false,
-            authFlows: { userSrp: true },
+            authFlows: { userSrp: true, adminUserPassword: true },
             preventUserExistenceErrors: true,
             enableTokenRevocation: true,
             accessTokenValidity: cdk.Duration.minutes(60),

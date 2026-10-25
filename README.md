@@ -39,7 +39,10 @@ The API supports:
 - `GET /film-selections` for active movie and offer booking selections.
 - `GET /ticket-pricing` for pricing resolved by movie or offer, weekday, and showtime.
 - `POST /checkout/validate` to validate booking selections and calculate authoritative totals.
-- `POST /booking/confirmation` to send a demo booking confirmation email through Amazon SES.
+- `GET /bookings` to list booked seats for a showing, and `POST /bookings` to book seats (stored with a user ID, randomly generated until login exists).
+- `GET /api/v1/bookings/guest` and `POST /api/v1/bookings/guest` for date-specific, unpaid guest bookings with backend-validated ticket totals, stable `showtimeId` values, and a separate `BBT-######` email/QR reference.
+- `POST /api/v1/auth/convert-guest` to convert a guest booking to a Cognito account using its one-time conversion token.
+- `POST /booking/confirmation` for the legacy demo confirmation email endpoint; guest reservations send their own booking-reference confirmation email.
 - `POST /collections/refresh` to refresh all pages for a batch of TMDB lists. Protected admin routes require the configured API Gateway JWT authorizer.
 
 See [API_GUIDE.md](./API_GUIDE.md) for booking data examples and local API instructions.

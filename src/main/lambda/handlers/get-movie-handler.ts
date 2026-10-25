@@ -4,6 +4,7 @@ import { createDynamoDBClient } from './dynamodb-client';
 import { json, log } from './utils/common';
 import { projectMovieDetail } from './utils/movie-projection';
 import { isMovieRecord } from './utils/movie-validation';
+import { ShowtimeIdError } from './utils/showtime-ids';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
@@ -53,8 +54,17 @@ export const handler = async (
             throw new Error('DynamoDB returned an invalid movie record.');
         }
 
-        return json(200, projectMovieDetail(movie));
+        return json(
+            200,
+            await projectMovieDetail(
+                movie,
+                event.queryStringParameters?.date
+            )
+        );
     } catch (error: unknown) {
+        if (error instanceof ShowtimeIdError) {
+            return json(error.statusCode, { message: error.message });
+        }
         log('ERROR', 'Failed to retrieve movie', {
             requestId,
             id,

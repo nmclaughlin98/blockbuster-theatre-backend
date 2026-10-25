@@ -12,8 +12,10 @@ import type {
     MovieShowtimes,
     PricingRecord,
     PricingTier,
+    ScreenedShowtime,
 } from './interfaces';
 import { isMovieRecord, isMovieShowtimes } from './utils/movie-validation';
+import { addShowtimeIds } from './utils/showtime-ids';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -29,11 +31,16 @@ export class PricingServiceError extends Error {
         super(message);
         this.name = 'PricingServiceError';
     }
+    }
+
+    function isScreen(value: unknown): value is ScreenedShowtime['screen'] {
+        return value === '1' || value === '2' || value === '3' || value === '4' || value === '5';
 }
 
 export interface ShowtimeSelection {
     day: string;
     time: string;
+    screen?: ScreenedShowtime['screen'];
 }
 
 export interface ResolvedPricing {
@@ -166,23 +173,28 @@ function parseSelection(value: unknown): {
         throw new PricingServiceError(400, 'showtime with day and time is required.');
     }
 
-    const { day, time } = value.showtime;
-    if (Object.keys(value.showtime).some((key) => !['day', 'time'].includes(key))) {
-        throw new PricingServiceError(400, 'showtime only accepts day and time.');
+    const { day, time, screen } = value.showtime;
+    if (Object.keys(value.showtime).some((key) => !['day', 'time', 'screen'].includes(key))) {
+        throw new PricingServiceError(400, 'showtime only accepts day, time, and optional screen.');
     }
     if (
         typeof day !== 'string' ||
         !DAYS.includes(day) ||
         typeof time !== 'string' ||
-        !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+        !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time) ||
+        (screen !== undefined && !isScreen(screen))
     ) {
         throw new PricingServiceError(
             400,
-            'showtime.day must be a weekday name and showtime.time must use HH:mm.'
+            'showtime.day must be a weekday name, showtime.time must use HH:mm, and showtime.screen must be 1-5 when supplied.'
         );
     }
 
-    return { movieId, offerId, showtime: { day, time } };
+    return {
+        movieId,
+        offerId,
+        showtime: { day, time, ...(isScreen(screen) && { screen }) },
+    };
 }
 
 async function getMovie(movieId: string, requireVisible = true): Promise<MovieRecord> {
@@ -244,14 +256,17 @@ function validateScheduledTime(
     movie: MovieRecord,
     offer: OfferRecord | undefined,
     showtime: ShowtimeSelection
-): void {
+): ShowtimeSelection {
     const schedule = offer?.overrideShowtimes ?? movie.showtimes;
-    const isScheduled = schedule[showtime.day]?.some(
-        (entry) => entry.time === showtime.time
+    const matches = schedule[showtime.day]?.filter(
+        (entry) =>
+            entry.time === showtime.time &&
+            (showtime.screen === undefined || entry.screen === showtime.screen)
     );
-    if (!isScheduled) {
+    if (!matches?.length) {
         throw new PricingServiceError(400, 'The selected showtime is not available.');
     }
+    return { ...showtime, screen: showtime.screen ?? matches[0].screen };
 }
 
 function standardPricingId(showtime: ShowtimeSelection): string {
@@ -268,7 +283,7 @@ export async function resolvePricing(value: unknown): Promise<ResolvedPricing> {
     const movie = offer
         ? await getMovie(movieId, false)
         : await getMovie(movieId);
-    validateScheduledTime(movie, offer, request.showtime);
+    const showtime = validateScheduledTime(movie, offer, request.showtime);
 
     const pricingId = offer?.pricingId ?? standardPricingId(request.showtime);
     const pricing = await getPricing(pricingId);
@@ -276,7 +291,7 @@ export async function resolvePricing(value: unknown): Promise<ResolvedPricing> {
         movieId,
         movieTitle: movie.title,
         ...(offer && { offerId: offer.offerId, offerTitle: offer.title }),
-        showtime: request.showtime,
+        showtime,
         pricing,
     };
 }
@@ -402,7 +417,7 @@ export type FilmSelection =
           overrideShowtimes: MovieShowtimes;
       };
 
-export async function listFilmSelections(): Promise<FilmSelection[]> {
+export async function listFilmSelections(date?: string): Promise<FilmSelection[]> {
     const tableName = requiredTableName('TABLE_NAME');
     const offersTableName = requiredTableName('OFFERS_TABLE_NAME');
     const movies: MovieRecord[] = [];
@@ -465,7 +480,11 @@ export async function listFilmSelections(): Promise<FilmSelection[]> {
             ...(offer.displayLabel !== undefined && { displayLabel: offer.displayLabel }),
             featuredMovieId: offer.featuredMovieId,
             pricingId: offer.pricingId,
-            overrideShowtimes: offer.overrideShowtimes ?? {},
+            overrideShowtimes: await addShowtimeIds(
+                offer.featuredMovieId,
+                offer.overrideShowtimes ?? {},
+                date
+            ),
         });
     }
 

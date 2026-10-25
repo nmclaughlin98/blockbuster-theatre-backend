@@ -27,6 +27,13 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             pricingTable: database.pricingTable,
             offersTable: database.offersTable,
             collectionsTable: database.collectionsTable,
+            bookingsTable: database.bookingsTable,
+            legacyBookingsTable: database.legacyBookingsTable,
+            showtimeRegistryTable: database.showtimeRegistryTable,
+            bookingReferencesTable: database.bookingReferencesTable,
+            guestConversionTokensTable: database.guestConversionTokensTable,
+            userPool: authentication.userPool,
+            userPoolClient: authentication.userPoolClient,
             bookingEmailIdentity,
         });
 
@@ -35,6 +42,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             addMoviesFunction: lambdaServices.addMoviesFunction,
             updateMoviesFunction: lambdaServices.updateMoviesFunction,
             listMoviesFunction: lambdaServices.listMoviesFunction,
+            listFeaturedMoviesFunction: lambdaServices.listFeaturedMoviesFunction,
             getMovieFunction: lambdaServices.getMovieFunction,
             exportMoviesFunction: lambdaServices.exportMoviesFunction,
             listTmdbIdsFunction: lambdaServices.listTmdbIdsFunction,
@@ -47,6 +55,11 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             listMovieCollectionsFunction: lambdaServices.listMovieCollectionsFunction,
             getMovieCollectionFunction: lambdaServices.getMovieCollectionFunction,
             refreshMovieCollectionFunction: lambdaServices.refreshMovieCollectionFunction,
+            listBookingsFunction: lambdaServices.listBookingsFunction,
+            createBookingFunction: lambdaServices.createBookingFunction,
+            guestBookedSeatsFunction: lambdaServices.guestBookedSeatsFunction,
+            guestBookingFunction: lambdaServices.guestBookingFunction,
+            guestConversionFunction: lambdaServices.guestConversionFunction,
             jwtAuthorizer: authentication.jwtAuthorizer,
         });
 

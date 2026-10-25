@@ -7,6 +7,7 @@ import type {
     TmdbMovieResponse,
 } from '../interfaces';
 import { generateShowtimes } from './showtime-schedule';
+import { addShowtimeIds } from './showtime-ids';
 import { TMDB_MOVIE_METADATA_OVERRIDES } from './movie-metadata-overrides';
 
 function slugify(text: string): string {
@@ -70,7 +71,10 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
  * @param movie Stored movie record.
  * @returns Full movie detail, including the primary genre.
  */
-export function projectMovieDetail(movie: MovieRecord): MovieDetail {
+export async function projectMovieDetail(
+    movie: MovieRecord,
+    date?: string
+): Promise<MovieDetail> {
     return {
         slug: movie.slug,
         sortTitle: movie.sortTitle ?? movie.title,
@@ -91,7 +95,7 @@ export function projectMovieDetail(movie: MovieRecord): MovieDetail {
         synopsis: movie.synopsis,
         tagline: movie.tagline,
         trailer: movie.trailer,
-        showtimes: movie.showtimes,
+        showtimes: await addShowtimeIds(movie.tmdbId, movie.showtimes, date),
     };
 }
 

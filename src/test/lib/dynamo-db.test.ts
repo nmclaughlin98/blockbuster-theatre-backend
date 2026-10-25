@@ -56,6 +56,26 @@ describe('DatabaseConstruct', () => {
         });
     });
 
+    it('should index movies by their numeric rating for top picks', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-movie-catalogue',
+            GlobalSecondaryIndexes: Match.arrayWith([
+                {
+                    IndexName: 'GSI2',
+                    KeySchema: [
+                        { AttributeName: 'GSI1PK', KeyType: 'HASH' },
+                        { AttributeName: 'score', KeyType: 'RANGE' },
+                    ],
+                    Projection: { ProjectionType: 'ALL' },
+                },
+            ]),
+            AttributeDefinitions: Match.arrayWith([
+                { AttributeName: 'score', AttributeType: 'N' },
+            ]),
+        });
+    });
+
     it('should export table property', () => {
         expect(construct.table).toBeDefined();
         expect(construct.table).toHaveProperty('tableName');

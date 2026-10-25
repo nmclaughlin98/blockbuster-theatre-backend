@@ -21,6 +21,11 @@ const tableNames = {
     pricing: 'blockbuster-theatre-ticket-pricing-local',
     offers: 'blockbuster-theatre-booking-offers-local',
     collections: 'blockbuster-theatre-movie-collections-local',
+    bookings: 'blockbuster-theatre-bookings-by-showtime-local',
+    legacyBookings: 'blockbuster-theatre-bookings-local',
+    showtimeRegistry: 'blockbuster-theatre-showtime-registry-local',
+    bookingReferences: 'blockbuster-theatre-booking-references-local',
+    guestConversionTokens: 'blockbuster-theatre-guest-conversion-tokens-local',
 };
 
 process.env.LOCAL_API = 'true';
@@ -73,6 +78,60 @@ const tableDefinitions: CreateTableCommandInput[] = [
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [{ AttributeName: 'collectionId', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
+    },
+    {
+        TableName: tableNames.bookings,
+        BillingMode: 'PAY_PER_REQUEST',
+        AttributeDefinitions: [
+            { AttributeName: 'showtimeId', AttributeType: 'S' },
+            { AttributeName: 'seatId', AttributeType: 'S' },
+            { AttributeName: 'userId', AttributeType: 'S' },
+            { AttributeName: 'bookedAt', AttributeType: 'S' },
+        ],
+        KeySchema: [
+            { AttributeName: 'showtimeId', KeyType: 'HASH' },
+            { AttributeName: 'seatId', KeyType: 'RANGE' },
+        ],
+        GlobalSecondaryIndexes: [
+            {
+                IndexName: 'UserBookings',
+                KeySchema: [
+                    { AttributeName: 'userId', KeyType: 'HASH' },
+                    { AttributeName: 'bookedAt', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+        ],
+    },
+    {
+        TableName: tableNames.legacyBookings,
+        BillingMode: 'PAY_PER_REQUEST',
+        AttributeDefinitions: [
+            { AttributeName: 'showingId', AttributeType: 'S' },
+            { AttributeName: 'seatId', AttributeType: 'S' },
+        ],
+        KeySchema: [
+            { AttributeName: 'showingId', KeyType: 'HASH' },
+            { AttributeName: 'seatId', KeyType: 'RANGE' },
+        ],
+    },
+    {
+        TableName: tableNames.showtimeRegistry,
+        BillingMode: 'PAY_PER_REQUEST',
+        AttributeDefinitions: [{ AttributeName: 'registryKey', AttributeType: 'S' }],
+        KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
+    },
+    {
+        TableName: tableNames.bookingReferences,
+        BillingMode: 'PAY_PER_REQUEST',
+        AttributeDefinitions: [{ AttributeName: 'bookingRef', AttributeType: 'S' }],
+        KeySchema: [{ AttributeName: 'bookingRef', KeyType: 'HASH' }],
+    },
+    {
+        TableName: tableNames.guestConversionTokens,
+        BillingMode: 'PAY_PER_REQUEST',
+        AttributeDefinitions: [{ AttributeName: 'tokenHash', AttributeType: 'S' }],
+        KeySchema: [{ AttributeName: 'tokenHash', KeyType: 'HASH' }],
     },
 ];
 

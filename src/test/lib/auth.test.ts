@@ -22,7 +22,10 @@ describe('AuthenticationConstruct', () => {
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
             ClientName: 'blockbuster-theatre-backend',
             GenerateSecret: false,
-            ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH']),
+            ExplicitAuthFlows: Match.arrayWith([
+                'ALLOW_ADMIN_USER_PASSWORD_AUTH',
+                'ALLOW_USER_SRP_AUTH',
+            ]),
             EnableTokenRevocation: true,
         });
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
