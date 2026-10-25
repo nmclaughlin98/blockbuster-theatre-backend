@@ -42,6 +42,13 @@ export class DatabaseConstruct extends Construct {
             projectionType: dynamodb.ProjectionType.ALL,
         });
 
+        this.table.addGlobalSecondaryIndex({
+            indexName: 'GSI2',
+            partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'score', type: dynamodb.AttributeType.NUMBER },
+            projectionType: dynamodb.ProjectionType.ALL,
+        });
+
         this.collectionsTable = new dynamodb.Table(this, 'BlockbusterTheatreMovieCollections', {
             tableName: 'blockbuster-theatre-movie-collections',
             partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },

@@ -94,7 +94,15 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 15);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 17);
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/newest',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /movies/top-picks',
+            AuthorizationType: 'NONE',
+        });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies',
         });
@@ -145,7 +153,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 15);
+        template.resourceCountIs('AWS::IAM::Policy', 16);
         template.hasResourceProperties('AWS::SES::EmailIdentity', {
             EmailIdentity: 'niallmclaughlin1998@gmail.com',
         });

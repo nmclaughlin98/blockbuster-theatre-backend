@@ -105,6 +105,11 @@ describe('LambdaConstruct', () => {
             Timeout: 10,
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-list-featured-movies-handler',
+            MemorySize: 256,
+            Timeout: 10,
+        });
+        template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-get-movie-collection-handler',
             MemorySize: 256,
             Timeout: 25,
@@ -160,7 +165,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(15);
+        expect(Object.values(functions)).toHaveLength(16);
         expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
@@ -220,6 +225,10 @@ describe('LambdaConstruct', () => {
 
     it('should export listMoviesFunction', () => {
         expect(construct.listMoviesFunction).toBeDefined();
+    });
+
+    it('should export listFeaturedMoviesFunction', () => {
+        expect(construct.listFeaturedMoviesFunction).toBeDefined();
     });
 
     it('should export getMovieFunction', () => {

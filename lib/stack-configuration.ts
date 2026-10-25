@@ -35,6 +35,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             addMoviesFunction: lambdaServices.addMoviesFunction,
             updateMoviesFunction: lambdaServices.updateMoviesFunction,
             listMoviesFunction: lambdaServices.listMoviesFunction,
+            listFeaturedMoviesFunction: lambdaServices.listFeaturedMoviesFunction,
             getMovieFunction: lambdaServices.getMovieFunction,
             exportMoviesFunction: lambdaServices.exportMoviesFunction,
             listTmdbIdsFunction: lambdaServices.listTmdbIdsFunction,

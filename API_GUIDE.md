@@ -1,5 +1,13 @@
 # Booking Data API
 
+## Public featured movie endpoints
+
+`GET /movies/newest` returns movies ordered by release date, newest first, excluding records where `isComingSoon` is `true`. Legacy records without an `isComingSoon` field are included.
+
+`GET /movies/top-picks` returns movies ordered by TMDB score (`score`) from highest to lowest. This endpoint does not filter coming-soon records.
+
+Both endpoints are public and accept the same optional pagination parameters as `GET /movies`: `limit` (1–100, default 50) and `nextToken` from the prior response. They return `{ "movies": [...], "nextToken": "..." }`, with `nextToken: null` when no additional page is available.
+
 ## Demo booking confirmation email
 
 `POST /booking/confirmation` sends the guest a plain-text demo confirmation through Amazon SES. It does not process payment, create a reservation, or issue a valid cinema ticket. The email states this clearly.

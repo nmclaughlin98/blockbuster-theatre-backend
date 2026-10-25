@@ -24,6 +24,7 @@ export class LambdaConstruct extends Construct {
     public readonly addMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly updateMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly listMoviesFunction: lambdaNodejs.NodejsFunction;
+    public readonly listFeaturedMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly getMovieFunction: lambdaNodejs.NodejsFunction;
     public readonly exportMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly listTmdbIdsFunction: lambdaNodejs.NodejsFunction;
@@ -98,6 +99,24 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadData(this.listMoviesFunction);
+
+        this.listFeaturedMoviesFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'ListFeaturedMoviesHandler',
+            {
+                functionName: 'blockbuster-theatre-list-featured-movies-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/list-featured-movies-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+                environment: {
+                    TABLE_NAME: props.table.tableName,
+                },
+            }
+        );
+
+        props.table.grantReadData(this.listFeaturedMoviesFunction);
 
         this.getMovieFunction = new lambdaNodejs.NodejsFunction(this, 'GetMovieHandler', {
             functionName: 'blockbuster-theatre-get-movie-lambda',

@@ -8,6 +8,7 @@ interface ApiGatewayConstructProps {
     addMoviesFunction: lambda.IFunction;
     updateMoviesFunction: lambda.IFunction;
     listMoviesFunction: lambda.IFunction;
+    listFeaturedMoviesFunction: lambda.IFunction;
     getMovieFunction: lambda.IFunction;
     exportMoviesFunction: lambda.IFunction;
     listTmdbIdsFunction: lambda.IFunction;
@@ -65,6 +66,10 @@ export class ApiGatewayConstruct extends Construct {
         const listMoviesIntegration = new integrations.HttpLambdaIntegration(
             'ListMoviesIntegration',
             props.listMoviesFunction
+        );
+        const listFeaturedMoviesIntegration = new integrations.HttpLambdaIntegration(
+            'ListFeaturedMoviesIntegration',
+            props.listFeaturedMoviesFunction
         );
         const getMovieIntegration = new integrations.HttpLambdaIntegration(
             'GetMovieIntegration',
@@ -157,6 +162,18 @@ export class ApiGatewayConstruct extends Construct {
             path: '/movies',
             methods: [apigw2.HttpMethod.GET],
             integration: listMoviesIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/movies/newest',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listFeaturedMoviesIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/movies/top-picks',
+            methods: [apigw2.HttpMethod.GET],
+            integration: listFeaturedMoviesIntegration,
         });
 
         this.httpApi.addRoutes({
