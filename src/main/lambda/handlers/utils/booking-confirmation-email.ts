@@ -50,11 +50,27 @@ function escapeHtml(value: string): string {
   });
 }
 
+function formatScreeningDate(date, time) {
+  const parsedDate = new Date(`${date}T00:00:00Z`);
+  const formattedDate = !Number.isNaN(parsedDate.getTime())
+    && parsedDate.toISOString().slice(0, 10) === date
+    ? new Intl.DateTimeFormat('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(parsedDate).replace(',', '')
+    : date;
+
+  return `${formattedDate} at ${time}`;
+}
+
 export function formatBookingConfirmationEmailHtml(
   booking: BookingConfirmationEmail
 ): string {
   const details: Array<[string, string]> = [
-    ['DATE & SHOWTIME', `${booking.date} at ${booking.time}`],
+    ['SHOWTIME', `${formatScreeningDate(booking.date, booking.time)}`],
     ['SCREEN', `Screen ${booking.screen}`],
     ['SEAT NUMBERS', booking.seats.join(', ')],
     ['TOTAL', `£${booking.totalPrice.toFixed(2)}`],
@@ -109,7 +125,7 @@ export function formatBookingConfirmationEmailHtml(
             <td class="ticket-header" bgcolor="#ff334b" style="padding:17px 20px;background-color:#ff334b;background-image:linear-gradient(#ff334b,#ff334b);">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:17px;font-weight:bold;letter-spacing:1px;color:#ffffff;-webkit-text-fill-color:#ffffff;">BLOCKBUSTER THEATRE</td>
+                  <td style="font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:17px;letter-spacing:1px;color:#ffffff;-webkit-text-fill-color:#ffffff;">BLOCKBUSTER THEATRE</td>
                   <td align="right"><span class="ticket-demo-badge" style="display:inline-block;padding:6px 9px;border-radius:999px;background-color:#b31e35;background-image:linear-gradient(#b31e35,#b31e35);color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:9px;font-weight:bold;letter-spacing:0.6px;">Booking Confirmed</span></td>
                 </tr>
               </table>
