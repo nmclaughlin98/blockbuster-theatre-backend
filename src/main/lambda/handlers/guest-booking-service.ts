@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import {
     DynamoDBDocumentClient,
     QueryCommand,
@@ -6,12 +6,12 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
 import { PricingServiceError, validateCheckout } from './pricing-service';
-import { createShowtimeId, parseShowtimeId } from './utils/showtime-ids';
+import { sendBookingConfirmationEmail } from './booking-confirmation-service';
+import { log } from './utils/common';
+import { parseShowtimeId, resolveShowtimeId } from './utils/showtime-ids';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SEAT_ID_PATTERN = /^[A-G](?:[1-9]|1[01])$/;
-const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_SEATS_PER_BOOKING = 10;
 const CONVERSION_TOKEN_TTL_SECONDS = 24 * 60 * 60;
@@ -45,29 +45,6 @@ function isRecord(value: unknown): value is UnknownRecord {
 function requiredEnvironmentVariable(name: string): string {
     const value = process.env[name];
     if (!value) throw new GuestBookingError(500, `${name} is not configured.`);
-    return value;
-}
-
-function parseDate(value: unknown, day: string): string {
-    const match = typeof value === 'string' ? DATE_PATTERN.exec(value) : null;
-    if (!match) {
-        throw new GuestBookingError(400, 'date must be a valid calendar date in YYYY-MM-DD format.');
-    }
-    const parsed = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-    if (parsed.toISOString().slice(0, 10) !== value) {
-        throw new GuestBookingError(400, 'date must be a valid calendar date in YYYY-MM-DD format.');
-    }
-    if (DAYS[(parsed.getUTCDay() + 6) % 7] !== day) {
-        throw new GuestBookingError(400, `date ${value} is not a ${day}.`);
-    }
-
-    const today = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Europe/London',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(new Date());
-    if (value < today) throw new GuestBookingError(400, 'date must not be in the past.');
     return value;
 }
 
@@ -121,6 +98,9 @@ function parseRequest(value: unknown): GuestBookingRequest {
 
     const parsedShowtime = parseShowtimeId(value.showtimeId);
     if (!parsedShowtime) throw new GuestBookingError(400, 'showtimeId is invalid.');
+    if (value.date !== parsedShowtime.date) {
+        throw new GuestBookingError(400, 'date must match the date embedded in showtimeId.');
+    }
     if (
         value.offerId !== undefined &&
         (typeof value.offerId !== 'string' || !value.offerId.trim())
@@ -143,12 +123,8 @@ function parseRequest(value: unknown): GuestBookingRequest {
     }
 
     return {
-        showtimeId: createShowtimeId(
-            parsedShowtime.movieId,
-            parsedShowtime.day,
-            parsedShowtime
-        ),
-        date: parseDate(value.date, parsedShowtime.day),
+        showtimeId: parsedShowtime.showtimeId,
+        date: parsedShowtime.date,
         ...(typeof value.offerId === 'string' && { offerId: value.offerId.trim() }),
         seats: parseSeats(value.seats),
         email: value.email.trim().toLowerCase(),
@@ -193,8 +169,10 @@ function tokenHash(token: string): string {
 
 export async function createGuestBooking(value: unknown): Promise<Record<string, unknown>> {
     const request = parseRequest(value);
-    const parsedShowtime = parseShowtimeId(request.showtimeId);
-    if (!parsedShowtime) throw new Error('Validated showtime ID could not be parsed.');
+    const screening = await resolveShowtimeId(request.showtimeId);
+    if (screening.date !== request.date) {
+        throw new GuestBookingError(400, 'date must match the date embedded in showtimeId.');
+    }
     let ticketCount = 0;
     for (const ticket of request.tickets) {
         ticketCount += ticket.quantity;
@@ -214,11 +192,11 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
         checkout = await validateCheckout({
             ...(request.offerId
                 ? { offerId: request.offerId }
-                : { movieId: parsedShowtime.movieId }),
+                : { movieId: screening.movieId }),
             showtime: {
-                day: parsedShowtime.day,
-                screen: parsedShowtime.screen,
-                time: parsedShowtime.time,
+                day: screening.day,
+                screen: screening.screen,
+                time: screening.time,
             },
             tickets: request.tickets,
         });
@@ -228,7 +206,7 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
         }
         throw error;
     }
-    if (checkout.movieId !== parsedShowtime.movieId) {
+    if (checkout.movieId !== screening.movieId) {
         throw new GuestBookingError(400, 'showtimeId does not match the selected offer.');
     }
 
@@ -237,10 +215,14 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
     const now = Math.floor(Date.now() / 1000);
     const expiresAt = now + CONVERSION_TOKEN_TTL_SECONDS;
     const bookedAt = new Date().toISOString();
-    const showingId = `${request.showtimeId}#${request.date}`;
+    const legacyShowingId = `${screening.movieId}#${request.date}#${screening.time}`;
     const bookingsTableName = requiredEnvironmentVariable('BOOKINGS_TABLE_NAME');
+    const legacyBookingsTableName = requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME');
+    const bookingReferencesTableName = requiredEnvironmentVariable(
+        'BOOKING_REFERENCES_TABLE_NAME'
+    );
     const tokenTableName = requiredEnvironmentVariable('GUEST_CONVERSION_TOKENS_TABLE_NAME');
-    const bookingKey = { showingId, seatId: `BOOKING#${bookingId}` };
+    const bookingKey = { showtimeId: request.showtimeId, seatId: `BOOKING#${bookingId}` };
     const storedTickets = checkout.tickets.map((ticket) => ({
         tierId: ticket.tierId,
         label: ticket.label,
@@ -256,9 +238,9 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
         movieId: checkout.movieId,
         movieTitle: checkout.movieTitle,
         date: request.date,
-        day: parsedShowtime.day,
-        time: parsedShowtime.time,
-        screen: parsedShowtime.screen,
+        day: screening.day,
+        time: screening.time,
+        screen: screening.screen,
         seats: request.seats,
         tickets: storedTickets,
         totalAmount: checkout.total,
@@ -269,19 +251,18 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
         bookedAt,
     };
 
-    try {
-        await docClient.send(
-            new TransactWriteCommand({
-                TransactItems: [
+    let bookingRef: string | undefined;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        const candidate = `BBT-${randomInt(100000, 1000000)}`;
+        const transactionItems = [
                     ...request.seats.map((seatId) => ({
                         Put: {
                             TableName: bookingsTableName,
                             Item: {
-                                showingId,
+                                showtimeId: request.showtimeId,
                                 seatId,
                                 recordType: 'SEAT',
                                 bookingId,
-                                showtimeId: request.showtimeId,
                                 date: request.date,
                                 bookedAt,
                             },
@@ -291,7 +272,7 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
                     {
                         Put: {
                             TableName: bookingsTableName,
-                            Item: booking,
+                            Item: { ...booking, bookingRef: candidate },
                             ConditionExpression: 'attribute_not_exists(seatId)',
                         },
                     },
@@ -301,32 +282,98 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
                             Item: {
                                 tokenHash: tokenHash(conversionToken),
                                 bookingId,
-                                showingId,
+                                showtimeId: request.showtimeId,
                                 customerEmail: request.email,
                                 expiresAt,
                             },
                             ConditionExpression: 'attribute_not_exists(tokenHash)',
                         },
                     },
-                ],
-            })
-        );
-    } catch (error: unknown) {
-        if (
-            error instanceof Error &&
-            error.name === 'TransactionCanceledException' &&
-            (error as { CancellationReasons?: Array<{ Code?: string }> })
-                .CancellationReasons?.some(
+                    {
+                        Put: {
+                            TableName: bookingReferencesTableName,
+                            Item: {
+                                bookingRef: candidate,
+                                bookingId,
+                                showtimeId: request.showtimeId,
+                                date: request.date,
+                                createdAt: bookedAt,
+                            },
+                            ConditionExpression: 'attribute_not_exists(bookingRef)',
+                        },
+                    },
+                    ...request.seats.map((seatId) => ({
+                        ConditionCheck: {
+                            TableName: legacyBookingsTableName,
+                            Key: { showingId: legacyShowingId, seatId },
+                            ConditionExpression: 'attribute_not_exists(seatId)',
+                        },
+                    })),
+                ];
+        try {
+            await docClient.send(
+                new TransactWriteCommand({ TransactItems: transactionItems })
+            );
+            bookingRef = candidate;
+            break;
+        } catch (error: unknown) {
+            if (!(error instanceof Error) || error.name !== 'TransactionCanceledException') {
+                throw error;
+            }
+            const reasons = (
+                error as { CancellationReasons?: Array<{ Code?: string }> }
+            ).CancellationReasons;
+            const seatConflict =
+                reasons?.slice(0, request.seats.length).some(
                     (reason) => reason.Code === 'ConditionalCheckFailed'
-                )
-        ) {
-            throw new GuestBookingError(409, 'One or more selected seats are no longer available.');
+                ) ||
+                reasons?.slice(request.seats.length + 3).some(
+                    (reason) => reason.Code === 'ConditionalCheckFailed'
+                );
+            if (seatConflict) {
+                throw new GuestBookingError(
+                    409,
+                    'One or more selected seats are no longer available.'
+                );
+            }
+            if (reasons?.[request.seats.length + 2]?.Code === 'ConditionalCheckFailed') {
+                continue;
+            }
+            throw error;
         }
-        throw error;
     }
+    if (!bookingRef) throw new Error('Unable to allocate a unique booking reference.');
 
+    const nameParts = request.customerName.split(/\s+/);
+    const firstName = nameParts.shift() ?? request.customerName;
+    const surname = nameParts.join(' ') || 'Guest';
+    let confirmationEmailSent = true;
+    try {
+        await sendBookingConfirmationEmail({
+            bookingRef,
+            customer: {
+                firstName,
+                surname,
+                email: request.email,
+            },
+            movieTitle: checkout.movieTitle,
+            date: request.date,
+            time: screening.time,
+            screen: screening.screen,
+            seats: request.seats,
+            tickets: request.seats.length,
+            totalPrice: checkout.total,
+        });
+    } catch (error: unknown) {
+        confirmationEmailSent = false;
+        log('ERROR', 'Guest booking created but confirmation email failed', {
+            bookingId,
+            errorName: error instanceof Error ? error.name : 'UnknownError',
+        });
+    }
     return {
         bookingId,
+        bookingRef,
         showtimeId: request.showtimeId,
         movieTitle: checkout.movieTitle,
         seats: request.seats,
@@ -337,6 +384,7 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
         date: request.date,
         conversionToken,
         conversionTokenExpiresAt: new Date(expiresAt * 1000).toISOString(),
+        confirmationEmailSent,
     };
 }
 
@@ -344,37 +392,54 @@ export async function listGuestBookedSeats(
     showtimeId: string | undefined,
     date: string | undefined
 ): Promise<{ showtimeId: string; date: string; bookedSeats: string[] }> {
-    const parsedShowtime = parseShowtimeId(showtimeId);
-    if (!parsedShowtime) throw new GuestBookingError(400, 'showtimeId is invalid.');
-    const validatedShowtimeId = createShowtimeId(
-        parsedShowtime.movieId,
-        parsedShowtime.day,
-        parsedShowtime
-    );
-    const validatedDate = parseDate(date, parsedShowtime.day);
-    const showingId = `${validatedShowtimeId}#${validatedDate}`;
+    const screening = await resolveShowtimeId(showtimeId);
+    if (date !== screening.date) {
+        throw new GuestBookingError(400, 'date must match the date embedded in showtimeId.');
+    }
+    const legacyShowingId = `${screening.movieId}#${screening.date}#${screening.time}`;
     const seats: string[] = [];
-    let exclusiveStartKey: Record<string, unknown> | undefined;
-    do {
-        const result = await docClient.send(
-            new QueryCommand({
-                TableName: requiredEnvironmentVariable('BOOKINGS_TABLE_NAME'),
-                KeyConditionExpression: 'showingId = :showingId',
-                FilterExpression: 'recordType = :seat',
-                ExpressionAttributeValues: {
-                    ':showingId': showingId,
-                    ':seat': 'SEAT',
-                },
-                ProjectionExpression: 'seatId',
-                ConsistentRead: true,
-                ExclusiveStartKey: exclusiveStartKey,
-            })
-        );
-        for (const item of result.Items ?? []) {
-            if (typeof item.seatId === 'string') seats.push(item.seatId);
-        }
-        exclusiveStartKey = result.LastEvaluatedKey;
-    } while (exclusiveStartKey);
+    for (const [tableName, keyName, keyValue, filterExpression, filterValue] of [
+        [
+            requiredEnvironmentVariable('BOOKINGS_TABLE_NAME'),
+            'showtimeId',
+            screening.showtimeId,
+            'recordType = :seat',
+            'SEAT',
+        ],
+        [
+            requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME'),
+            'showingId',
+            legacyShowingId,
+            undefined,
+            undefined,
+        ],
+    ] as const) {
+        let exclusiveStartKey: Record<string, unknown> | undefined;
+        do {
+            const result = await docClient.send(
+                new QueryCommand({
+                    TableName: tableName,
+                    KeyConditionExpression: `${keyName} = :key`,
+                    ...(filterExpression && { FilterExpression: filterExpression }),
+                    ExpressionAttributeValues: {
+                        ':key': keyValue,
+                        ...(filterValue && { ':seat': filterValue }),
+                    },
+                    ProjectionExpression: 'seatId',
+                    ConsistentRead: true,
+                    ExclusiveStartKey: exclusiveStartKey,
+                })
+            );
+            for (const item of result.Items ?? []) {
+                if (typeof item.seatId === 'string') seats.push(item.seatId);
+            }
+            exclusiveStartKey = result.LastEvaluatedKey;
+        } while (exclusiveStartKey);
+    }
 
-    return { showtimeId: validatedShowtimeId, date: validatedDate, bookedSeats: seats.sort() };
+    return {
+        showtimeId: screening.showtimeId,
+        date: screening.date,
+        bookedSeats: [...new Set(seats)].sort(),
+    };
 }

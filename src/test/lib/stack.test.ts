@@ -34,7 +34,7 @@ describe('BackendStack', () => {
 
     it('should create DynamoDB table', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::DynamoDB::Table', 6);
+        template.resourceCountIs('AWS::DynamoDB::Table', 9);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-movie-catalogue',
             BillingMode: 'PAY_PER_REQUEST',
@@ -81,6 +81,25 @@ describe('BackendStack', () => {
                 ],
                 GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
             }),
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-bookings-by-showtime',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [
+                { AttributeName: 'showtimeId', KeyType: 'HASH' },
+                { AttributeName: 'seatId', KeyType: 'RANGE' },
+            ],
+            GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-showtime-registry',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-booking-references',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [{ AttributeName: 'bookingRef', KeyType: 'HASH' }],
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-guest-conversion-tokens',

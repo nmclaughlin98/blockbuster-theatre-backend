@@ -16,6 +16,9 @@ describe('LambdaConstruct', () => {
     let offersTable: dynamodb.Table;
     let collectionsTable: dynamodb.Table;
     let bookingsTable: dynamodb.Table;
+    let legacyBookingsTable: dynamodb.Table;
+    let showtimeRegistryTable: dynamodb.Table;
+    let bookingReferencesTable: dynamodb.Table;
     let guestConversionTokensTable: dynamodb.Table;
     let userPool: cognito.UserPool;
     let userPoolClient: cognito.UserPoolClient;
@@ -57,8 +60,21 @@ describe('LambdaConstruct', () => {
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
         bookingsTable = new dynamodb.Table(stack, 'TestBookingsTable', {
+            partitionKey: { name: 'showtimeId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+        legacyBookingsTable = new dynamodb.Table(stack, 'TestLegacyBookingsTable', {
             partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+        showtimeRegistryTable = new dynamodb.Table(stack, 'TestShowtimeRegistryTable', {
+            partitionKey: { name: 'registryKey', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+        bookingReferencesTable = new dynamodb.Table(stack, 'TestBookingReferencesTable', {
+            partitionKey: { name: 'bookingRef', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
         bookingEmailIdentity = new ses.EmailIdentity(stack, 'TestBookingEmailIdentity', {
@@ -70,6 +86,9 @@ describe('LambdaConstruct', () => {
             offersTable,
             collectionsTable,
             bookingsTable,
+            legacyBookingsTable,
+            showtimeRegistryTable,
+            bookingReferencesTable,
             guestConversionTokensTable,
             userPool,
             userPoolClient,
@@ -222,10 +241,35 @@ describe('LambdaConstruct', () => {
             }
         );
         const configuredBookingsTable = new dynamodb.Table(configuredStack, 'ConfiguredBookingsTable', {
-            partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
+            partitionKey: { name: 'showtimeId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+        const configuredLegacyBookingsTable = new dynamodb.Table(
+            configuredStack,
+            'ConfiguredLegacyBookingsTable',
+            {
+            partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            }
+        );
+        const configuredShowtimeRegistryTable = new dynamodb.Table(
+            configuredStack,
+            'ConfiguredShowtimeRegistryTable',
+            {
+                partitionKey: { name: 'registryKey', type: dynamodb.AttributeType.STRING },
+                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            }
+        );
+        const configuredBookingReferencesTable = new dynamodb.Table(
+            configuredStack,
+            'ConfiguredBookingReferencesTable',
+            {
+                partitionKey: { name: 'bookingRef', type: dynamodb.AttributeType.STRING },
+                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            }
+        );
         const configuredGuestConversionTokensTable = new dynamodb.Table(
             configuredStack,
             'ConfiguredGuestConversionTokensTable',
@@ -254,6 +298,9 @@ describe('LambdaConstruct', () => {
             offersTable: configuredOffersTable,
             collectionsTable: configuredCollectionsTable,
             bookingsTable: configuredBookingsTable,
+            legacyBookingsTable: configuredLegacyBookingsTable,
+            showtimeRegistryTable: configuredShowtimeRegistryTable,
+            bookingReferencesTable: configuredBookingReferencesTable,
             guestConversionTokensTable: configuredGuestConversionTokensTable,
             userPool: configuredUserPool,
             userPoolClient: configuredUserPoolClient,

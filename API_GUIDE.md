@@ -309,23 +309,23 @@ Successful requests return the number of upserted records and their IDs. Invalid
 
 ## Seat bookings
 
-Each showtime in `GET /movies/{movieId}` has a stable backend-resolvable `showtimeId`, alongside `screen` and `time`. The ID is derived from the movie, weekday, screen, and time (for example `show_424694_sunday_5_1215`). Offer override showtimes returned by `GET /film-selections` use the same ID format and identity.
+Each showtime in `GET /movies/{movieId}` and `GET /film-selections` has a stable, backend-resolvable `showtimeId`, alongside `screen` and `time`. Pass `?date=YYYY-MM-DD` to either endpoint for IDs for a specific occurrence, for example `GET /movies/456?date=2026-11-01` or `GET /film-selections?date=2026-11-01`. IDs use the format `NNNNNN_YYYY-MM-DD_HHmm`, for example `559924_2026-11-01_1215` for a 12:15 screening. The random six-digit prefix is generated once and persisted by the backend for that dated screening, so the same screening has the same ID across requests. Offer override showtimes use the same registry and format.
 
-Catalogue showtimes repeat weekly, so a booking also supplies a calendar `date` in `YYYY-MM-DD` format. The date must be valid, match the weekday embedded in `showtimeId`, and must not be in the past in UK time. Up to 10 unique seats may be selected per booking; IDs are a row letter `A`-`G` plus a seat number `1`-`11`.
+Catalogue showtimes repeat weekly. Both schedule endpoints accept an optional `?date=YYYY-MM-DD` to return IDs for a specific occurrence; without it, the next occurrence date for each weekday is used. A booking also supplies the same calendar `date` in `YYYY-MM-DD` format. The date must be valid, match the date embedded in `showtimeId`, and must not be in the past in UK time. Up to 10 unique seats may be selected per booking; IDs are a row letter `A`-`G` plus a seat number `1`-`11`.
 
 ### Get booked seats for a showing
 
-`GET /api/v1/bookings/guest?showtimeId=show_424694_sunday_5_1215&date=2026-11-01`
+`GET /api/v1/bookings/guest?showtimeId=559924_2026-11-01_1215&date=2026-11-01`
 
 ```json
 {
-  "showtimeId": "show_424694_sunday_5_1215",
+  "showtimeId": "559924_2026-11-01_1215",
   "date": "2026-11-01",
   "bookedSeats": ["F10", "F11"]
 }
 ```
 
-The lookup uses the same `showtimeId` and date identity as the guest booking endpoint. Invalid IDs or dates return HTTP 400; storage errors return HTTP 500.
+The lookup uses the same `showtimeId` and date identity as the guest booking endpoint. Invalid or unknown IDs and dates return HTTP 400; storage errors return HTTP 500.
 
 ### Make an unpaid guest booking
 
@@ -333,7 +333,7 @@ The lookup uses the same `showtimeId` and date identity as the guest booking end
 
 ```json
 {
-  "showtimeId": "show_424694_sunday_5_1215",
+  "showtimeId": "559924_2026-11-01_1215",
   "date": "2026-11-01",
   "seats": ["F10", "F11"],
   "email": "customer@example.com",
@@ -352,7 +352,8 @@ Success returns HTTP 201:
 ```json
 {
   "bookingId": "bk_990123",
-  "showtimeId": "show_424694_sunday_5_1215",
+  "bookingRef": "BBT-883214",
+  "showtimeId": "559924_2026-11-01_1215",
   "movieTitle": "Bohemian Rhapsody",
   "date": "2026-11-01",
   "seats": ["F10", "F11"],
@@ -364,13 +365,16 @@ Success returns HTTP 201:
   "currency": "GBP",
   "customerEmail": "customer@example.com",
   "conversionToken": "cnv_tok_<opaque-random-token>",
-  "conversionTokenExpiresAt": "2026-10-26T12:15:00.000Z"
+  "conversionTokenExpiresAt": "2026-10-26T12:15:00.000Z",
+  "confirmationEmailSent": true
 }
 ```
 
+The endpoint returns HTTP 201. The email contains the separate `bookingRef` as the existing QR-code value; this reference is not the `showtimeId`. If email delivery fails after the reservation is committed, the endpoint still returns HTTP 201 with `confirmationEmailSent: false`.
+
 Invalid guest details, seats, ticket tiers, date, or showtime return HTTP 400. Unknown movies or offers return HTTP 404. If a requested seat is no longer available, the transaction reserves none of the seats and returns HTTP 409. Unexpected storage or pricing failures return HTTP 500.
 
-The booking table stores one booking record with the selected seat and ticket arrays. Separate seat-lock records in the same table are reserved atomically with the booking and prevent double-booking. The conversion token is randomly generated, stored only as a SHA-256 hash, expires after 24 hours, and can only be consumed once.
+The active booking table is keyed by `showtimeId` and `seatId`. It stores one booking record with the selected seat and ticket arrays; separate seat-lock records in the same table are reserved atomically with the booking and prevent double-booking. The previous `showingId` table is retained for compatibility and existing bookings are checked there before reserving seats. The conversion token is randomly generated, stored only as a SHA-256 hash, expires after 24 hours, and can only be consumed once.
 
 ### Convert a guest booking to an account
 
@@ -408,7 +412,7 @@ The existing `GET /bookings` and `POST /bookings` routes remain available for co
 {
   "movieId": "456",
   "date": "2026-11-02",
-  "showtime": { "day": "Monday", "time": "19:00" },
+  "showtime": { "day": "Monday", "screen": "3", "time": "19:00" },
   "bookedSeats": ["A1", "B4", "C2"]
 }
 ```
@@ -437,7 +441,8 @@ When the booking comes from an offer, also send `offerId` (with the offer's feat
   "movieId": "456",
   "movieTitle": "A Movie",
   "date": "2026-11-02",
-  "showtime": { "day": "Monday", "time": "19:00" },
+  "showtimeId": "559924_2026-11-02_1900",
+  "showtime": { "day": "Monday", "screen": "3", "time": "19:00" },
   "seats": ["B4", "B5"],
   "bookedAt": "2026-10-25T03:19:42.816Z"
 }
@@ -469,7 +474,7 @@ The local admin endpoints require `Authorization: Bearer local-dev-token` by def
 
 ### Use local handlers with cloud DynamoDB dev/test tables
 
-To run the same local HTTP adapter and Lambda handlers against existing AWS DynamoDB dev/test tables, configure AWS credentials and all six table names before starting the cloud mode. The names must end in `-dev`, `-test`, `-testing`, `-staging`, or `-sandbox`; this guard prevents accidentally targeting the production table names. Cloud mode does not start or initialize DynamoDB Local and does not create AWS resources.
+To run the same local HTTP adapter and Lambda handlers against existing AWS DynamoDB dev/test tables, configure AWS credentials and all nine table names before starting the cloud mode. The names must end in `-dev`, `-test`, `-testing`, `-staging`, or `-sandbox`; this guard prevents accidentally targeting the production table names. Cloud mode does not start or initialize DynamoDB Local and does not create AWS resources.
 
 ```powershell
 $env:AWS_PROFILE = "your-aws-profile"
@@ -478,7 +483,10 @@ $env:LOCAL_CLOUD_TABLE_NAME = "blockbuster-theatre-movie-catalogue-dev"
 $env:LOCAL_CLOUD_PRICING_TABLE_NAME = "blockbuster-theatre-ticket-pricing-dev"
 $env:LOCAL_CLOUD_OFFERS_TABLE_NAME = "blockbuster-theatre-booking-offers-dev"
 $env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections-dev"
-$env:LOCAL_CLOUD_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-dev"
+$env:LOCAL_CLOUD_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-by-showtime-dev"
+$env:LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-dev"
+$env:LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry-dev"
+$env:LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME = "blockbuster-theatre-booking-references-dev"
 $env:LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME = "blockbuster-theatre-guest-conversion-tokens-dev"
 $env:LOCAL_CLOUD_USER_POOL_ID = "eu-west-2_example"
 $env:LOCAL_CLOUD_USER_POOL_CLIENT_ID = "exampleclientid"

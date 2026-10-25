@@ -8,6 +8,9 @@ export class DatabaseConstruct extends Construct {
     public readonly offersTable: dynamodb.Table;
     public readonly collectionsTable: dynamodb.Table;
     public readonly bookingsTable: dynamodb.Table;
+    public readonly legacyBookingsTable: dynamodb.Table;
+    public readonly showtimeRegistryTable: dynamodb.Table;
+    public readonly bookingReferencesTable: dynamodb.Table;
     public readonly guestConversionTokensTable: dynamodb.Table;
 
     constructor(scope: Construct, id: string) {
@@ -58,8 +61,8 @@ export class DatabaseConstruct extends Construct {
             removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
-        // Booking summaries and conditional seat locks share this table partitioned by showtime/date.
-        this.bookingsTable = new dynamodb.Table(this, 'BlockbusterTheatreBookings', {
+        // Preserve the deployed key schema; the new booking table is separate because DynamoDB keys cannot be altered in place.
+        this.legacyBookingsTable = new dynamodb.Table(this, 'BlockbusterTheatreBookings', {
             tableName: 'blockbuster-theatre-bookings',
             partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
@@ -67,12 +70,39 @@ export class DatabaseConstruct extends Construct {
             removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
-        // Lets a user's booked seats be listed once login exists.
+        this.legacyBookingsTable.addGlobalSecondaryIndex({
+            indexName: 'UserBookings',
+            partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'bookedAt', type: dynamodb.AttributeType.STRING },
+            projectionType: dynamodb.ProjectionType.ALL,
+        });
+
+        this.bookingsTable = new dynamodb.Table(this, 'BlockbusterTheatreBookingsByShowtime', {
+            tableName: 'blockbuster-theatre-bookings-by-showtime',
+            partitionKey: { name: 'showtimeId', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
+        });
         this.bookingsTable.addGlobalSecondaryIndex({
             indexName: 'UserBookings',
             partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'bookedAt', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
+        });
+
+        this.showtimeRegistryTable = new dynamodb.Table(this, 'BlockbusterTheatreShowtimeRegistry', {
+            tableName: 'blockbuster-theatre-showtime-registry',
+            partitionKey: { name: 'registryKey', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
+        });
+
+        this.bookingReferencesTable = new dynamodb.Table(this, 'BlockbusterTheatreBookingReferences', {
+            tableName: 'blockbuster-theatre-booking-references',
+            partitionKey: { name: 'bookingRef', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
         this.guestConversionTokensTable = new dynamodb.Table(

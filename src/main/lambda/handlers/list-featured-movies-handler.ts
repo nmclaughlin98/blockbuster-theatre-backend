@@ -5,9 +5,10 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
-import { json, log } from './utils/common';
+import { json, log, mapWithConcurrency } from './utils/common';
 import { projectMovieSummary } from './utils/movie-projection';
 import { isMovieRecord } from './utils/movie-validation';
+import { ShowtimeIdError } from './utils/showtime-ids';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const TABLE_NAME = process.env.TABLE_NAME ?? '';
@@ -151,15 +152,18 @@ export const handler = async (
         const nextToken = result.LastEvaluatedKey
             ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64url')
             : null;
-        const movies = (result.Items ?? []).map((item) => {
+        const movies = await mapWithConcurrency(result.Items ?? [], 5, async (item) => {
             if (!isMovieRecord(item)) {
                 throw new Error('DynamoDB returned an invalid movie record.');
             }
-            return projectMovieSummary(item);
+            return projectMovieSummary(item, event.queryStringParameters?.date);
         });
 
         return json(200, { movies, nextToken });
     } catch (error: unknown) {
+        if (error instanceof ShowtimeIdError) {
+            return json(error.statusCode, { message: error.message });
+        }
         log('ERROR', `Failed to retrieve ${kind} movies`, {
             requestId,
             error: error instanceof Error ? error.message : 'Unknown error',

@@ -204,7 +204,7 @@ describe('add movies utilities', () => {
         });
 
         describe('movie image projections', () => {
-            it('returns TMDB poster and still URLs at original resolution', () => {
+            it('returns TMDB poster and still URLs at original resolution', async () => {
                 const { movieId, ...movieData } = projectTmdb({
                     id: 42,
                     title: 'A Movie',
@@ -214,13 +214,14 @@ describe('add movies utilities', () => {
                     tmdbId: String(movieId),
                     poster: 'https://image.tmdb.org/t/p/w500/poster.jpg',
                     still: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+                    showtimes: {},
                 };
 
                 expect(projectMovieSummary(movie)).toMatchObject({
                     poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
                     still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
                 });
-                expect(projectMovieDetail(movie)).toMatchObject({
+                expect(await projectMovieDetail(movie)).toMatchObject({
                     poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
                     still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
                 });

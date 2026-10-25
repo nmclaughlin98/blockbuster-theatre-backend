@@ -60,14 +60,14 @@ describe('booking confirmation email handler', () => {
         process.env.BOOKING_EMAIL_FROM = 'niallmclaughlin1998@gmail.com';
     });
 
-    it('sends a clearly labelled demo confirmation through SES', async () => {
+    it('sends an unpaid reservation confirmation and QR reference through SES', async () => {
         sesMock.on(SendEmailCommand).resolves({});
 
         const result = await handler(createEvent(JSON.stringify(booking)));
 
         expect(result.statusCode).toBe(200);
         expect(JSON.parse(String(result.body))).toEqual({
-            message: 'Demo booking confirmation email sent.',
+            message: 'Booking reservation confirmation email sent.',
             bookingRef: booking.bookingRef,
         });
         const sent = sesMock.calls()[0].args[0].input;
@@ -75,7 +75,7 @@ describe('booking confirmation email handler', () => {
         expect(sent.Destination?.ToAddresses).toEqual([booking.customer.email]);
         expect(sent.Content?.Simple?.Subject?.Data).toContain(booking.bookingRef);
         expect(sent.Content?.Simple?.Body?.Text?.Data).toContain(
-            'No payment was taken and this email is not a valid cinema ticket.'
+            'Your seat reservation has been recorded, but payment has not been processed.'
         );
         const html = sent.Content?.Simple?.Body?.Html?.Data ?? '';
         expect(html).toContain('background-color:#0c0d12');

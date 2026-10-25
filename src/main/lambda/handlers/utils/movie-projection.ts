@@ -62,7 +62,7 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
         mainGenre: movie.mainGenre,
         releaseDate: movie.releaseDate.slice(0, 10),
         score: movie.score,
-        showtimes: addShowtimeIds(movie.tmdbId, movie.showtimes),
+        showtimes: movie.showtimes,
     };
 }
 
@@ -71,7 +71,10 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
  * @param movie Stored movie record.
  * @returns Full movie detail, including the primary genre.
  */
-export function projectMovieDetail(movie: MovieRecord): MovieDetail {
+export async function projectMovieDetail(
+    movie: MovieRecord,
+    date?: string
+): Promise<MovieDetail> {
     return {
         slug: movie.slug,
         sortTitle: movie.sortTitle ?? movie.title,
@@ -92,7 +95,7 @@ export function projectMovieDetail(movie: MovieRecord): MovieDetail {
         synopsis: movie.synopsis,
         tagline: movie.tagline,
         trailer: movie.trailer,
-        showtimes: addShowtimeIds(movie.tmdbId, movie.showtimes),
+        showtimes: await addShowtimeIds(movie.tmdbId, movie.showtimes, date),
     };
 }
 

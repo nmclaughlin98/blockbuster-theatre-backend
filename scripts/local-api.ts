@@ -52,6 +52,15 @@ if (cloudDatabaseMode) {
     process.env.BOOKINGS_TABLE_NAME = requireCloudTestTable(
         'LOCAL_CLOUD_BOOKINGS_TABLE_NAME'
     );
+    process.env.LEGACY_BOOKINGS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME'
+    );
+    process.env.SHOWTIME_REGISTRY_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME'
+    );
+    process.env.BOOKING_REFERENCES_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME'
+    );
     process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME = requireCloudTestTable(
         'LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME'
     );
@@ -64,7 +73,10 @@ if (cloudDatabaseMode) {
     process.env.PRICING_TABLE_NAME = 'blockbuster-theatre-ticket-pricing-local';
     process.env.OFFERS_TABLE_NAME = 'blockbuster-theatre-booking-offers-local';
     process.env.COLLECTIONS_TABLE_NAME = 'blockbuster-theatre-movie-collections-local';
-    process.env.BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-local';
+    process.env.BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-by-showtime-local';
+    process.env.LEGACY_BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-local';
+    process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'blockbuster-theatre-showtime-registry-local';
+    process.env.BOOKING_REFERENCES_TABLE_NAME = 'blockbuster-theatre-booking-references-local';
     process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME =
         'blockbuster-theatre-guest-conversion-tokens-local';
 }

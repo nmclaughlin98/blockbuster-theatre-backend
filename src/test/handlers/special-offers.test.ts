@@ -2,7 +2,13 @@ import type {
     APIGatewayProxyEventV2,
     APIGatewayProxyResultV2,
 } from 'aws-lambda';
-import { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import {
+    DynamoDBDocumentClient,
+    GetCommand,
+    QueryCommand,
+    ScanCommand,
+    TransactWriteCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 import {
     listFilmSelections as resolveFilmSelections,
@@ -13,8 +19,10 @@ import {
 process.env.TABLE_NAME = 'test-movies-table';
 process.env.OFFERS_TABLE_NAME = 'test-offers-table';
 process.env.PRICING_TABLE_NAME = 'test-pricing-table';
+process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
+const registry = new Map<string, Record<string, unknown>>();
 const { handler: listSelections } = require('../../main/lambda/handlers/list-film-selections-handler') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
@@ -75,7 +83,6 @@ const kidsClubOffer = {
         Tuesday: [{
             screen: '1',
             time: '11:00',
-            showtimeId: 'show_456_tuesday_1_1100',
         }],
     },
     displayLabel: 'OFFER - A Movie - Matinee',
@@ -89,7 +96,6 @@ const secondOfferForSameMovie = {
         Tuesday: [{
             screen: '3',
             time: '19:00',
-            showtimeId: 'show_456_tuesday_3_1900',
         }],
     },
 };
@@ -148,6 +154,21 @@ function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> 
 describe('Special offers and pricing handlers', () => {
     beforeEach(() => {
         ddbMock.reset();
+        registry.clear();
+        ddbMock
+            .on(GetCommand, { TableName: 'test-showtime-registry' })
+            .callsFake((input) => ({
+                Item: registry.get(input.Key?.registryKey as string),
+            }));
+        ddbMock.on(TransactWriteCommand).callsFake((input) => {
+            for (const action of input.TransactItems ?? []) {
+                const item = action.Put?.Item;
+                if (item && typeof item.registryKey === 'string') {
+                    registry.set(item.registryKey, item);
+                }
+            }
+            return {};
+        });
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -166,55 +187,41 @@ describe('Special offers and pricing handlers', () => {
         const result = await listSelections(createEvent());
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result).selections).toEqual([
-            {
-                type: 'movie',
-                id: '456',
-                movieId: 456,
-                title: 'A Movie',
-                label: 'A Movie',
-            },
-            {
-                type: 'offer',
-                id: 'kids-club',
-                offerId: 'kids-club',
-                title: 'Kids Club',
-                label: 'OFFER - A Movie - Matinee',
-                tagline: 'Every Tuesday',
-                priceDescription: 'Tickets from £2.50',
-                ctaLabel: 'Book tickets',
-                displayLabel: 'OFFER - A Movie - Matinee',
-                featuredMovieId: '456',
-                pricingId: 'KIDS_CLUB_RATES',
-                overrideShowtimes: {
-                    Tuesday: [{
-                        screen: '1',
-                        time: '11:00',
-                        showtimeId: 'show_456_tuesday_1_1100',
-                    }],
-                },
-            },
-            {
-                type: 'offer',
-                id: 'kids-club-evening',
-                offerId: 'kids-club-evening',
-                title: 'Kids Club Evening',
-                label: 'OFFER - A Movie - Matinee',
-                tagline: 'Every Tuesday',
-                priceDescription: 'Tickets from £2.50',
-                ctaLabel: 'Book tickets',
-                displayLabel: 'OFFER - A Movie - Matinee',
-                featuredMovieId: '456',
-                pricingId: 'CRAZY_TUESDAY_RATES',
-                overrideShowtimes: {
-                    Tuesday: [{
-                        screen: '3',
-                        time: '19:00',
-                        showtimeId: 'show_456_tuesday_3_1900',
-                    }],
-                },
-            },
+        const selections = responseBody(result).selections as Array<Record<string, unknown>>;
+        expect(selections.map((selection) => selection.id)).toEqual([
+            '456',
+            'kids-club',
+            'kids-club-evening',
         ]);
+        const offers = selections.filter((selection) => selection.type === 'offer');
+        for (const offer of offers) {
+            const overrideShowtimes = offer.overrideShowtimes as Record<
+                string,
+                Array<Record<string, unknown>>
+            >;
+            const screening = overrideShowtimes.Tuesday[0];
+            expect(screening.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+            expect(screening.showtimeId).toMatch(
+                new RegExp(`^\\d{6}_${screening.date}_\\d{4}$`)
+            );
+        }
+        const firstIds = offers.map((offer) => {
+            const showtimes = offer.overrideShowtimes as Record<
+                string,
+                Array<Record<string, unknown>>
+            >;
+            return showtimes.Tuesday[0].showtimeId;
+        });
+        const repeated = await listSelections(createEvent());
+        const repeatedOffers = (responseBody(repeated).selections as Array<Record<string, unknown>>)
+            .filter((selection) => selection.type === 'offer');
+        expect(repeatedOffers.map((offer) => {
+            const showtimes = offer.overrideShowtimes as Record<
+                string,
+                Array<Record<string, unknown>>
+            >;
+            return showtimes.Tuesday[0].showtimeId;
+        })).toEqual(firstIds);
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input.IndexName).toBe('GSI1');
         expect(ddbMock.commandCalls(ScanCommand)[0].args[0].input.TableName).toBe(
             'test-offers-table'

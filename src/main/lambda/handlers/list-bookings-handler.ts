@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { BookingServiceError, listBookedSeats, parseShowingQuery } from './booking-service';
 import { GuestBookingError, listGuestBookedSeats } from './guest-booking-service';
+import { ShowtimeIdError } from './utils/showtime-ids';
 import { json, log } from './utils/common';
 
 export const handler = async (
@@ -15,6 +16,9 @@ export const handler = async (
                 await listGuestBookedSeats(query.showtimeId, query.date)
             );
         } catch (error: unknown) {
+            if (error instanceof ShowtimeIdError) {
+                return json(error.statusCode, { message: error.message });
+            }
             if (error instanceof GuestBookingError) {
                 if (error.statusCode >= 500) {
                     log('ERROR', 'Failed to list guest booked seats', {
@@ -34,13 +38,17 @@ export const handler = async (
 
     try {
         const selection = parseShowingQuery(query);
+        const { showtime, bookedSeats } = await listBookedSeats(selection);
         return json(200, {
             movieId: selection.movieId,
             date: selection.date,
-            showtime: selection.showtime,
-            bookedSeats: await listBookedSeats(selection),
+            showtime,
+            bookedSeats,
         });
     } catch (error: unknown) {
+        if (error instanceof ShowtimeIdError) {
+            return json(error.statusCode, { message: error.message });
+        }
         if (error instanceof BookingServiceError) {
             if (error.statusCode >= 500) {
                 log('ERROR', 'Failed to list bookings', { requestId, error: error.message });

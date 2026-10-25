@@ -12,6 +12,7 @@ import type {
     MovieShowtimes,
     PricingRecord,
     PricingTier,
+    ScreenedShowtime,
 } from './interfaces';
 import { isMovieRecord, isMovieShowtimes } from './utils/movie-validation';
 import { addShowtimeIds } from './utils/showtime-ids';
@@ -30,12 +31,16 @@ export class PricingServiceError extends Error {
         super(message);
         this.name = 'PricingServiceError';
     }
+    }
+
+    function isScreen(value: unknown): value is ScreenedShowtime['screen'] {
+        return value === '1' || value === '2' || value === '3' || value === '4' || value === '5';
 }
 
 export interface ShowtimeSelection {
     day: string;
     time: string;
-    screen?: string;
+    screen?: ScreenedShowtime['screen'];
 }
 
 export interface ResolvedPricing {
@@ -177,7 +182,7 @@ function parseSelection(value: unknown): {
         !DAYS.includes(day) ||
         typeof time !== 'string' ||
         !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time) ||
-        (screen !== undefined && (typeof screen !== 'string' || !/^[1-5]$/.test(screen)))
+        (screen !== undefined && !isScreen(screen))
     ) {
         throw new PricingServiceError(
             400,
@@ -188,7 +193,7 @@ function parseSelection(value: unknown): {
     return {
         movieId,
         offerId,
-        showtime: { day, time, ...(typeof screen === 'string' && { screen }) },
+        showtime: { day, time, ...(isScreen(screen) && { screen }) },
     };
 }
 
@@ -251,16 +256,17 @@ function validateScheduledTime(
     movie: MovieRecord,
     offer: OfferRecord | undefined,
     showtime: ShowtimeSelection
-): void {
+): ShowtimeSelection {
     const schedule = offer?.overrideShowtimes ?? movie.showtimes;
-    const isScheduled = schedule[showtime.day]?.some(
+    const matches = schedule[showtime.day]?.filter(
         (entry) =>
             entry.time === showtime.time &&
             (showtime.screen === undefined || entry.screen === showtime.screen)
     );
-    if (!isScheduled) {
+    if (!matches?.length) {
         throw new PricingServiceError(400, 'The selected showtime is not available.');
     }
+    return { ...showtime, screen: showtime.screen ?? matches[0].screen };
 }
 
 function standardPricingId(showtime: ShowtimeSelection): string {
@@ -277,7 +283,7 @@ export async function resolvePricing(value: unknown): Promise<ResolvedPricing> {
     const movie = offer
         ? await getMovie(movieId, false)
         : await getMovie(movieId);
-    validateScheduledTime(movie, offer, request.showtime);
+    const showtime = validateScheduledTime(movie, offer, request.showtime);
 
     const pricingId = offer?.pricingId ?? standardPricingId(request.showtime);
     const pricing = await getPricing(pricingId);
@@ -285,7 +291,7 @@ export async function resolvePricing(value: unknown): Promise<ResolvedPricing> {
         movieId,
         movieTitle: movie.title,
         ...(offer && { offerId: offer.offerId, offerTitle: offer.title }),
-        showtime: request.showtime,
+        showtime,
         pricing,
     };
 }
@@ -411,7 +417,7 @@ export type FilmSelection =
           overrideShowtimes: MovieShowtimes;
       };
 
-export async function listFilmSelections(): Promise<FilmSelection[]> {
+export async function listFilmSelections(date?: string): Promise<FilmSelection[]> {
     const tableName = requiredTableName('TABLE_NAME');
     const offersTableName = requiredTableName('OFFERS_TABLE_NAME');
     const movies: MovieRecord[] = [];
@@ -474,9 +480,10 @@ export async function listFilmSelections(): Promise<FilmSelection[]> {
             ...(offer.displayLabel !== undefined && { displayLabel: offer.displayLabel }),
             featuredMovieId: offer.featuredMovieId,
             pricingId: offer.pricingId,
-            overrideShowtimes: addShowtimeIds(
+            overrideShowtimes: await addShowtimeIds(
                 offer.featuredMovieId,
-                offer.overrideShowtimes ?? {}
+                offer.overrideShowtimes ?? {},
+                date
             ),
         });
     }

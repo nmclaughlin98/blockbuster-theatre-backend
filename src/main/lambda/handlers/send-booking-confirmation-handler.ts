@@ -1,14 +1,7 @@
-import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import QRCode = require('qrcode');
-import {
-    formatBookingConfirmationEmailBody,
-    formatBookingConfirmationEmailHtml,
-    type BookingConfirmationEmail,
-} from './utils/booking-confirmation-email';
+import type { BookingConfirmationEmail } from './utils/booking-confirmation-email';
+import { sendBookingConfirmationEmail } from './booking-confirmation-service';
 import { json, log } from './utils/common';
-
-const sesClient = new SESv2Client({});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -125,41 +118,9 @@ export const handler = async (
     }
 
     try {
-        const qrCode = await QRCode.toBuffer(confirmation.bookingRef, {
-            errorCorrectionLevel: 'M',
-            margin: 4,
-            width: 240,
-            color: {
-                dark: '#0c0d12',
-                light: '#ffffff',
-            },
-        });
-        await sesClient.send(new SendEmailCommand({
-            FromEmailAddress: source,
-            Destination: { ToAddresses: [confirmation.customer.email] },
-            Content: {
-                Simple: {
-                    Subject: { Data: `Demo booking confirmation - ${confirmation.bookingRef}` },
-                    Body: {
-                        Text: { Data: formatBookingConfirmationEmailBody(confirmation) },
-                        Html: {
-                            Data: formatBookingConfirmationEmailHtml(confirmation),
-                            Charset: 'UTF-8',
-                        },
-                    },
-                    Attachments: [{
-                        RawContent: qrCode,
-                        ContentType: 'image/png',
-                        ContentDisposition: 'INLINE',
-                        ContentId: 'booking-reference-qr',
-                        ContentTransferEncoding: 'BASE64',
-                        FileName: 'booking-reference.png',
-                    }],
-                },
-            },
-        }));
+        await sendBookingConfirmationEmail(confirmation);
         return json(200, {
-            message: 'Demo booking confirmation email sent.',
+            message: 'Booking reservation confirmation email sent.',
             bookingRef: confirmation.bookingRef,
         });
     } catch (error: unknown) {

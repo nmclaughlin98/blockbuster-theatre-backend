@@ -35,7 +35,8 @@ export class GuestConversionError extends Error {
 interface GuestConversionTokenRecord {
     tokenHash: string;
     bookingId: string;
-    showingId: string;
+    showtimeId?: string;
+    showingId?: string;
     customerEmail: string;
     expiresAt: number;
     consumedAt?: string;
@@ -49,7 +50,7 @@ function isGuestConversionTokenRecord(
         isRecord(value) &&
         typeof value.tokenHash === 'string' &&
         typeof value.bookingId === 'string' &&
-        typeof value.showingId === 'string' &&
+        (typeof value.showtimeId === 'string' || typeof value.showingId === 'string') &&
         typeof value.customerEmail === 'string' &&
         Number.isSafeInteger(value.expiresAt) &&
         (value.consumedAt === undefined || typeof value.consumedAt === 'string')
@@ -161,6 +162,9 @@ export async function convertGuestAccount(value: unknown): Promise<{
         throw new Error('DynamoDB returned an invalid guest conversion token record.');
     }
     const tokenRecord = tokenResult.Item;
+    if (!tokenRecord.showtimeId && !tokenRecord.showingId) {
+        throw new Error('Guest conversion token does not reference a booking partition.');
+    }
     if (tokenRecord.consumedAt) {
         throw new GuestConversionError(409, 'Guest conversion token has already been used.');
     }
@@ -169,13 +173,18 @@ export async function convertGuestAccount(value: unknown): Promise<{
         throw new GuestConversionError(410, 'Guest conversion token has expired.');
     }
 
+    const bookingTableName = tokenRecord.showtimeId
+        ? bookingsTableName
+        : requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME');
     const bookingKey = {
-        showingId: tokenRecord.showingId,
+        ...(tokenRecord.showtimeId
+            ? { showtimeId: tokenRecord.showtimeId }
+            : { showingId: tokenRecord.showingId }),
         seatId: `BOOKING#${tokenRecord.bookingId}`,
     };
     const bookingResult = await docClient.send(
         new GetCommand({
-            TableName: bookingsTableName,
+            TableName: bookingTableName,
             Key: bookingKey,
             ConsistentRead: true,
         })
@@ -267,7 +276,7 @@ export async function convertGuestAccount(value: unknown): Promise<{
                     },
                     {
                         Update: {
-                            TableName: bookingsTableName,
+                            TableName: bookingTableName,
                             Key: bookingKey,
                             UpdateExpression: 'SET userId = :userId',
                             ConditionExpression:

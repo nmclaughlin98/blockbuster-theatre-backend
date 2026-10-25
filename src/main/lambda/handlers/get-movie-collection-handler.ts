@@ -13,6 +13,7 @@ import { json, log, mapWithConcurrency } from './utils/common';
 import { projectMovieSummary } from './utils/movie-projection';
 import { isMovieRecord } from './utils/movie-validation';
 import { isMovieCollectionRecord } from './utils/collection-validation';
+import { ShowtimeIdError } from './utils/showtime-ids';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const MOVIE_TABLE_NAME = process.env.TABLE_NAME ?? '';
@@ -88,14 +89,20 @@ export const handler = async (
             5,
             getMovie
         );
+        const movieSummaries = await mapWithConcurrency(
+            movies.filter((movie): movie is MovieRecord => movie !== undefined),
+            5,
+            (movie) => projectMovieSummary(movie, event.queryStringParameters?.date)
+        );
 
         return json(200, {
             collection: collectionResponse(collection),
-            movies: movies
-                .filter((movie): movie is MovieRecord => movie !== undefined)
-                .map(projectMovieSummary),
+            movies: movieSummaries,
         });
     } catch (error: unknown) {
+        if (error instanceof ShowtimeIdError) {
+            return json(error.statusCode, { message: error.message });
+        }
         log('ERROR', 'Failed to retrieve movie collection', {
             requestId,
             collectionId,

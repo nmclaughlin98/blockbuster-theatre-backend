@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { createGuestBooking, GuestBookingError } from './guest-booking-service';
 import { json, log } from './utils/common';
+import { ShowtimeIdError } from './utils/showtime-ids';
 
 export const handler = async (
     event: APIGatewayProxyEventV2
@@ -21,6 +22,9 @@ export const handler = async (
     try {
         return json(201, await createGuestBooking(request));
     } catch (error: unknown) {
+        if (error instanceof ShowtimeIdError) {
+            return json(error.statusCode, { message: error.message });
+        }
         if (error instanceof GuestBookingError) {
             if (error.statusCode >= 500) {
                 log('ERROR', 'Failed to create unpaid guest booking', {

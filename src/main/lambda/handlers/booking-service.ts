@@ -7,6 +7,7 @@ import {
 import { createDynamoDBClient } from './dynamodb-client';
 import type { BookingRecord } from './interfaces';
 import { PricingServiceError, resolvePricing, type ShowtimeSelection } from './pricing-service';
+import { createShowtimeId } from './utils/showtime-ids';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -42,6 +43,7 @@ export interface CreatedBooking {
     movieId: string;
     movieTitle: string;
     date: string;
+    showtimeId: string;
     showtime: ShowtimeSelection;
     seats: string[];
     bookedAt: string;
@@ -57,8 +59,12 @@ function bookingsTableName(): string {
     return tableName;
 }
 
-function showingId(movieId: string, date: string, time: string): string {
+function legacyShowingId(movieId: string, date: string, time: string): string {
     return `${movieId}#${date}#${time}`;
+}
+
+function isScreen(value: unknown): value is NonNullable<ShowtimeSelection['screen']> {
+    return value === '1' || value === '2' || value === '3' || value === '4' || value === '5';
 }
 
 function parseMovieId(value: unknown): string {
@@ -70,19 +76,20 @@ function parseMovieId(value: unknown): string {
     return movieId;
 }
 
-function parseShowtime(day: unknown, time: unknown): ShowtimeSelection {
+function parseShowtime(day: unknown, time: unknown, screen?: unknown): ShowtimeSelection {
     if (
         typeof day !== 'string' ||
         !DAYS.includes(day) ||
         typeof time !== 'string' ||
-        !TIME_PATTERN.test(time)
+        !TIME_PATTERN.test(time) ||
+        (screen !== undefined && !isScreen(screen))
     ) {
         throw new BookingServiceError(
             400,
             'showtime.day must be a weekday name and showtime.time must use HH:mm.'
         );
     }
-    return { day, time };
+    return { day, time, ...(isScreen(screen) && { screen }) };
 }
 
 /** Validates a YYYY-MM-DD calendar date whose weekday matches the showtime's day. */
@@ -129,7 +136,7 @@ export function resolveBookingUserId(): string {
 export function parseShowingQuery(
     query: Record<string, string | undefined>
 ): ShowingSelection {
-    const showtime = parseShowtime(query.day, query.time);
+    const showtime = parseShowtime(query.day, query.time, query.screen);
     return {
         movieId: parseMovieId(query.movieId),
         date: parseDate(query.date, showtime.day),
@@ -140,34 +147,73 @@ export function parseShowingQuery(
 /**
  * Lists the seats already booked for a showing.
  * @param selection Movie, date, and showtime to look up.
- * @returns Booked seat IDs sorted alphabetically.
+ * @returns The resolved showtime and booked seat IDs sorted alphabetically.
  */
-export async function listBookedSeats(selection: ShowingSelection): Promise<string[]> {
-    const seats: string[] = [];
-    let exclusiveStartKey: Record<string, unknown> | undefined;
-    do {
-        const result = await docClient.send(
-            new QueryCommand({
-                TableName: bookingsTableName(),
-                KeyConditionExpression: 'showingId = :showingId',
-                ExpressionAttributeValues: {
-                    ':showingId': showingId(
-                        selection.movieId,
-                        selection.date,
-                        selection.showtime.time
-                    ),
-                },
-                ProjectionExpression: 'seatId',
-                ConsistentRead: true,
-                ExclusiveStartKey: exclusiveStartKey,
-            })
-        );
-        for (const item of result.Items ?? []) {
-            if (typeof item.seatId === 'string') seats.push(item.seatId);
+export async function listBookedSeats(
+    selection: ShowingSelection
+): Promise<{ showtime: ShowtimeSelection; bookedSeats: string[] }> {
+    let showtime: ShowtimeSelection;
+    try {
+        const resolved = await resolvePricing({
+            movieId: selection.movieId,
+            showtime: selection.showtime,
+        });
+        showtime = resolved.showtime;
+    } catch (error: unknown) {
+        if (error instanceof PricingServiceError) {
+            throw new BookingServiceError(error.statusCode, error.message);
         }
-        exclusiveStartKey = result.LastEvaluatedKey;
-    } while (exclusiveStartKey);
-    return seats.sort();
+        throw error;
+    }
+    if (!showtime.screen) throw new Error('Pricing resolution did not return a screen.');
+    const showtimeId = await createShowtimeId(
+        selection.movieId,
+        showtime.day,
+        selection.date,
+        { screen: showtime.screen, time: showtime.time }
+    );
+    const seats: string[] = [];
+    for (const [tableName, keyName, keyValue, recordFilter] of [
+        [bookingsTableName(), 'showtimeId', showtimeId, 'recordType = :seat'],
+        [
+            requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME'),
+            'showingId',
+            legacyShowingId(selection.movieId, selection.date, showtime.time),
+            undefined,
+        ],
+    ] as const) {
+        let exclusiveStartKey: Record<string, unknown> | undefined;
+        do {
+            const result = await docClient.send(
+                new QueryCommand({
+                    TableName: tableName,
+                    KeyConditionExpression: `${keyName} = :key`,
+                    ...(recordFilter && { FilterExpression: recordFilter }),
+                    ExpressionAttributeValues: {
+                        ':key': keyValue,
+                        ...(recordFilter && { ':seat': 'SEAT' }),
+                    },
+                    ProjectionExpression: 'seatId',
+                    ConsistentRead: true,
+                    ExclusiveStartKey: exclusiveStartKey,
+                })
+            );
+            for (const item of result.Items ?? []) {
+                if (typeof item.seatId === 'string') seats.push(item.seatId);
+            }
+            exclusiveStartKey = result.LastEvaluatedKey;
+        } while (exclusiveStartKey);
+    }
+    return {
+        showtime,
+        bookedSeats: [...new Set(seats)].sort(),
+    };
+}
+
+function requiredEnvironmentVariable(name: string): string {
+    const value = process.env[name];
+    if (!value) throw new BookingServiceError(500, `${name} is not configured.`);
+    return value;
 }
 
 function parseSeats(value: unknown): string[] {
@@ -218,8 +264,8 @@ function parseBookingRequest(value: unknown): {
     if (!isRecord(value.showtime)) {
         throw new BookingServiceError(400, 'showtime with day and time is required.');
     }
-    if (Object.keys(value.showtime).some((key) => !['day', 'time'].includes(key))) {
-        throw new BookingServiceError(400, 'showtime only accepts day and time.');
+    if (Object.keys(value.showtime).some((key) => !['day', 'time', 'screen'].includes(key))) {
+        throw new BookingServiceError(400, 'showtime only accepts day, time, and optional screen.');
     }
     if (
         value.offerId !== undefined &&
@@ -228,7 +274,11 @@ function parseBookingRequest(value: unknown): {
         throw new BookingServiceError(400, 'offerId must be a non-empty string.');
     }
 
-    const showtime = parseShowtime(value.showtime.day, value.showtime.time);
+    const showtime = parseShowtime(
+        value.showtime.day,
+        value.showtime.time,
+        value.showtime.screen
+    );
     return {
         movieId: parseMovieId(value.movieId),
         offerId: typeof value.offerId === 'string' ? value.offerId.trim() : undefined,
@@ -284,37 +334,67 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
     const userId = resolveBookingUserId();
     const bookedAt = new Date().toISOString();
     const tableName = bookingsTableName();
-    const showing = showingId(resolved.movieId, request.date, request.showtime.time);
+    const screen = resolved.showtime.screen;
+    if (!screen) throw new Error('Pricing resolution did not return a screen.');
+    const showtimeId = await createShowtimeId(
+        resolved.movieId,
+        request.showtime.day,
+        request.date,
+        { screen, time: request.showtime.time }
+    );
+    const legacyTableName = requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME');
+    const legacyId = legacyShowingId(
+        resolved.movieId,
+        request.date,
+        request.showtime.time
+    );
 
     const records: BookingRecord[] = request.seats.map((seatId) => ({
-        showingId: showing,
+        showtimeId,
         seatId,
         bookingId,
         userId,
         movieId: resolved.movieId,
         date: request.date,
+        screen,
         time: request.showtime.time,
         bookedAt,
+        recordType: 'SEAT',
     }));
 
     try {
         await docClient.send(
             new TransactWriteCommand({
-                TransactItems: records.map((record) => ({
-                    Put: {
-                        TableName: tableName,
-                        Item: record,
-                        ConditionExpression: 'attribute_not_exists(seatId)',
-                    },
-                })),
+                TransactItems: [
+                    ...records.map((record) => ({
+                        Put: {
+                            TableName: tableName,
+                            Item: record,
+                            ConditionExpression: 'attribute_not_exists(seatId)',
+                        },
+                    })),
+                    ...request.seats.map((seatId) => ({
+                        ConditionCheck: {
+                            TableName: legacyTableName,
+                            Key: { showingId: legacyId, seatId },
+                            ConditionExpression: 'attribute_not_exists(seatId)',
+                        },
+                    })),
+                ],
             })
         );
     } catch (error: unknown) {
+        const reasons = error instanceof Error && error.name === 'TransactionCanceledException'
+            ? (error as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons
+            : undefined;
+        const conflicts = reasons?.some((reason) => reason.Code === 'ConditionalCheckFailed');
         const taken = conflictingSeats(error, request.seats);
-        if (taken) {
+        if (taken || conflicts) {
             throw new BookingServiceError(
                 409,
-                `Seat${taken.length > 1 ? 's' : ''} already booked: ${taken.join(', ')}.`
+                taken
+                    ? `Seat${taken.length > 1 ? 's' : ''} already booked: ${taken.join(', ')}.`
+                    : 'One or more selected seats are no longer available.'
             );
         }
         throw error;
@@ -326,7 +406,8 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
         movieId: resolved.movieId,
         movieTitle: resolved.movieTitle,
         date: request.date,
-        showtime: request.showtime,
+        showtimeId,
+        showtime: resolved.showtime,
         seats: request.seats,
         bookedAt,
     };

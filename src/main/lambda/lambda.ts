@@ -19,6 +19,9 @@ interface LambdaConstructProps {
     offersTable: dynamodb.Table;
     collectionsTable: dynamodb.Table;
     bookingsTable: dynamodb.Table;
+    legacyBookingsTable: dynamodb.Table;
+    showtimeRegistryTable: dynamodb.Table;
+    bookingReferencesTable: dynamodb.Table;
     guestConversionTokensTable: dynamodb.Table;
     userPool: cognito.IUserPool;
     userPoolClient: cognito.IUserPoolClient;
@@ -106,10 +109,12 @@ export class LambdaConstruct extends Construct {
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
+                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
             },
         });
 
         props.table.grantReadData(this.listMoviesFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.listMoviesFunction);
 
         this.listFeaturedMoviesFunction = new lambdaNodejs.NodejsFunction(
             this,
@@ -123,11 +128,13 @@ export class LambdaConstruct extends Construct {
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     TABLE_NAME: props.table.tableName,
+                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 },
             }
         );
 
         props.table.grantReadData(this.listFeaturedMoviesFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.listFeaturedMoviesFunction);
 
         this.getMovieFunction = new lambdaNodejs.NodejsFunction(this, 'GetMovieHandler', {
             functionName: 'blockbuster-theatre-get-movie-lambda',
@@ -138,10 +145,12 @@ export class LambdaConstruct extends Construct {
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
+                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
             },
         });
 
         props.table.grantReadData(this.getMovieFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.getMovieFunction);
 
         this.listMovieCollectionsFunction = new lambdaNodejs.NodejsFunction(
             this,
@@ -174,12 +183,14 @@ export class LambdaConstruct extends Construct {
                 environment: {
                     TABLE_NAME: props.table.tableName,
                     COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
+                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 },
             }
         );
 
         props.table.grantReadData(this.getMovieCollectionFunction);
         props.collectionsTable.grantReadData(this.getMovieCollectionFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.getMovieCollectionFunction);
 
         this.exportMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ExportMoviesHandler', {
             functionName: 'blockbuster-theatre-export-movies-handler',
@@ -222,12 +233,14 @@ export class LambdaConstruct extends Construct {
                 environment: {
                     TABLE_NAME: props.table.tableName,
                     OFFERS_TABLE_NAME: props.offersTable.tableName,
+                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 },
             }
         );
 
         props.table.grantReadData(this.listFilmSelectionsFunction);
         props.offersTable.grantReadData(this.listFilmSelectionsFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.listFilmSelectionsFunction);
 
         this.getTicketPricingFunction = new lambdaNodejs.NodejsFunction(
             this,
@@ -357,10 +370,20 @@ export class LambdaConstruct extends Construct {
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
+                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
+                TABLE_NAME: props.table.tableName,
+                PRICING_TABLE_NAME: props.pricingTable.tableName,
+                OFFERS_TABLE_NAME: props.offersTable.tableName,
             },
         });
 
         props.bookingsTable.grantReadData(this.listBookingsFunction);
+        props.legacyBookingsTable.grantReadData(this.listBookingsFunction);
+        props.showtimeRegistryTable.grantReadData(this.listBookingsFunction);
+        props.table.grantReadData(this.listBookingsFunction);
+        props.pricingTable.grantReadData(this.listBookingsFunction);
+        props.offersTable.grantReadData(this.listBookingsFunction);
 
         // Booking creation validates the movie and showtime, which needs the pricing lookups.
         this.createBookingFunction = new lambdaNodejs.NodejsFunction(this, 'CreateBookingHandler', {
@@ -375,6 +398,8 @@ export class LambdaConstruct extends Construct {
                 PRICING_TABLE_NAME: props.pricingTable.tableName,
                 OFFERS_TABLE_NAME: props.offersTable.tableName,
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
+                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
             },
         });
 
@@ -382,6 +407,8 @@ export class LambdaConstruct extends Construct {
         props.pricingTable.grantReadData(this.createBookingFunction);
         props.offersTable.grantReadData(this.createBookingFunction);
         props.bookingsTable.grantWriteData(this.createBookingFunction);
+        props.legacyBookingsTable.grantReadData(this.createBookingFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.createBookingFunction);
 
         this.guestBookedSeatsFunction = new lambdaNodejs.NodejsFunction(
             this,
@@ -395,10 +422,14 @@ export class LambdaConstruct extends Construct {
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                    LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
+                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 },
             }
         );
         props.bookingsTable.grantReadData(this.guestBookedSeatsFunction);
+        props.legacyBookingsTable.grantReadData(this.guestBookedSeatsFunction);
+        props.showtimeRegistryTable.grantReadData(this.guestBookedSeatsFunction);
 
         this.guestBookingFunction = new lambdaNodejs.NodejsFunction(
             this,
@@ -415,8 +446,12 @@ export class LambdaConstruct extends Construct {
                     PRICING_TABLE_NAME: props.pricingTable.tableName,
                     OFFERS_TABLE_NAME: props.offersTable.tableName,
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                    LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
+                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
+                    BOOKING_REFERENCES_TABLE_NAME: props.bookingReferencesTable.tableName,
                     GUEST_CONVERSION_TOKENS_TABLE_NAME:
                         props.guestConversionTokensTable.tableName,
+                    BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
                 },
             }
         );
@@ -424,7 +459,11 @@ export class LambdaConstruct extends Construct {
         props.pricingTable.grantReadData(this.guestBookingFunction);
         props.offersTable.grantReadData(this.guestBookingFunction);
         props.bookingsTable.grantWriteData(this.guestBookingFunction);
+        props.legacyBookingsTable.grantReadData(this.guestBookingFunction);
+        props.showtimeRegistryTable.grantReadData(this.guestBookingFunction);
+        props.bookingReferencesTable.grantWriteData(this.guestBookingFunction);
         props.guestConversionTokensTable.grantWriteData(this.guestBookingFunction);
+        props.bookingEmailIdentity.grantSendEmail(this.guestBookingFunction);
 
         this.guestConversionFunction = new lambdaNodejs.NodejsFunction(
             this,
@@ -438,6 +477,8 @@ export class LambdaConstruct extends Construct {
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                    LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
+                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                     GUEST_CONVERSION_TOKENS_TABLE_NAME:
                         props.guestConversionTokensTable.tableName,
                     USER_POOL_ID: props.userPool.userPoolId,
@@ -446,6 +487,8 @@ export class LambdaConstruct extends Construct {
             }
         );
         props.bookingsTable.grantReadWriteData(this.guestConversionFunction);
+        props.legacyBookingsTable.grantReadWriteData(this.guestConversionFunction);
+        props.showtimeRegistryTable.grantReadData(this.guestConversionFunction);
         props.guestConversionTokensTable.grantReadWriteData(this.guestConversionFunction);
         this.guestConversionFunction.addToRolePolicy(
             new iam.PolicyStatement({
