@@ -28,7 +28,7 @@ export async function sendBookingConfirmationEmail(
         Destination: { ToAddresses: [confirmation.customer.email] },
         Content: {
             Simple: {
-                Subject: { Data: `Booking reservation confirmation - ${confirmation.bookingRef}` },
+                Subject: { Data: `Booking confirmation - ${confirmation.bookingRef}` },
                 Body: {
                     Text: { Data: formatBookingConfirmationEmailBody(confirmation) },
                     Html: {
