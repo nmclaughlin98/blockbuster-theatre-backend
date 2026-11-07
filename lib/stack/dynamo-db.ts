@@ -118,5 +118,3 @@ export class DatabaseConstruct extends Construct {
         );
     }
 }
-
-bk_ff375cbd-850f-4f0f-91f3-7ce5758af00b
