@@ -41,14 +41,9 @@ function createNodejsFunction(
         throw new Error(`Function ${id} must have a name to configure its log group.`);
     }
 
-    const logGroup = new logs.LogGroup(scope, `${id}LogGroup`, {
-        logGroupName: `/aws/lambda/${props.functionName}`,
-        retention: logs.RetentionDays.ONE_WEEK,
-    });
-
     return new lambdaNodejs.NodejsFunction(scope, id, {
         ...props,
-        logGroup,
+        logRetention: logs.RetentionDays.ONE_WEEK,
     });
 }
 

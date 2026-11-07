@@ -209,7 +209,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 21);
+        template.resourceCountIs('AWS::IAM::Policy', 22);
         template.hasResourceProperties('AWS::SES::EmailIdentity', {
             EmailIdentity: 'niallmclaughlin1998@gmail.com',
         });
