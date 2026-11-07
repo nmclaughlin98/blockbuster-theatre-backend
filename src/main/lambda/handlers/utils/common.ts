@@ -33,6 +33,8 @@ export function intEnv(name: string, fallback: number): number {
  * @returns The API Gateway response.
  */
 export function json(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
+    const level: LogLevel = statusCode >= 500 ? 'ERROR' : statusCode >= 400 ? 'WARN' : 'INFO';
+    log(level, 'API response completed.', { statusCode });
     return { statusCode, headers, body: JSON.stringify(body) };
 }
 

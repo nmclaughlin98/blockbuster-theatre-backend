@@ -104,6 +104,24 @@ describe('LambdaConstruct', () => {
         });
     });
 
+    it('should retain CloudWatch logs for one week for every Lambda function', () => {
+        const template = Template.fromStack(stack);
+        template.resourceCountIs('AWS::Logs::LogGroup', 21);
+        template.hasResourceProperties('AWS::Logs::LogGroup', {
+            RetentionInDays: 7,
+        });
+    });
+
+    it('should allow every Lambda role to write CloudWatch logs', () => {
+        const template = Template.fromStack(stack);
+        const roles = Object.values(template.findResources('AWS::IAM::Role'));
+        const loggingRoles = roles.filter((role) =>
+            JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
+        );
+
+        expect(loggingRoles).toHaveLength(21);
+    });
+
     it('should use Node.js 24.x runtime', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {

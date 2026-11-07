@@ -1,5 +1,9 @@
 # Booking Data API
 
+## Lambda logging
+
+All Lambda functions use CloudWatch Logs with a seven-day retention period and the standard Lambda execution permissions for writing logs. API responses are logged by status only: successful responses at `INFO`, client errors at `WARN`, and server errors at `ERROR`; response bodies are not included. Booking confirmation also temporarily logs the resolved maximum-ticket value and whether it came from Parameter Store or the fallback.
+
 ## Public featured movie endpoints
 
 `GET /movies/newest` returns movies ordered by release date, newest first, excluding records where `isComingSoon` is `true`. Legacy records without an `isComingSoon` field are included.

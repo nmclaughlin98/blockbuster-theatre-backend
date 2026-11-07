@@ -4,6 +4,7 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ses from 'aws-cdk-lib/aws-ses';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
@@ -29,6 +30,26 @@ interface LambdaConstructProps {
     userPoolClient: cognito.IUserPoolClient;
     bookingEmailIdentity: ses.IEmailIdentity;
     lambdaConfig?: MovieImportLambdaConfig;
+}
+
+function createNodejsFunction(
+    scope: Construct,
+    id: string,
+    props: lambdaNodejs.NodejsFunctionProps
+): lambdaNodejs.NodejsFunction {
+    if (!props.functionName) {
+        throw new Error(`Function ${id} must have a name to configure its log group.`);
+    }
+
+    const logGroup = new logs.LogGroup(scope, `${id}LogGroup`, {
+        logGroupName: `/aws/lambda/${props.functionName}`,
+        retention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    return new lambdaNodejs.NodejsFunction(scope, id, {
+        ...props,
+        logGroup,
+    });
 }
 
 export class LambdaConstruct extends Construct {
@@ -69,7 +90,7 @@ export class LambdaConstruct extends Construct {
             maxTicketsParameterName
         );
 
-        this.addMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
+        this.addMoviesFunction = createNodejsFunction(this, 'AddMoviesHandler', {
             functionName: 'blockbuster-theatre-add-movies-handler',
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/AddMovies/add-movies-handler.ts'),
@@ -91,7 +112,7 @@ export class LambdaConstruct extends Construct {
 
         props.table.grantReadWriteData(this.addMoviesFunction);
 
-        this.updateMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'UpdateMoviesHandler', {
+        this.updateMoviesFunction = createNodejsFunction(this, 'UpdateMoviesHandler', {
             functionName: 'blockbuster-theatre-update-movies-handler',
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/UpdateMovies/update-movies-handler.ts'),
@@ -107,7 +128,7 @@ export class LambdaConstruct extends Construct {
 
         props.table.grantReadWriteData(this.updateMoviesFunction);
 
-        this.listMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ListMoviesHandler', {
+        this.listMoviesFunction = createNodejsFunction(this, 'ListMoviesHandler', {
             functionName: 'blockbuster-theatre-list-movies-handler',
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ListMovies/list-movies-handler.ts'),
@@ -123,7 +144,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadData(this.listMoviesFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.listMoviesFunction);
 
-        this.listFeaturedMoviesFunction = new lambdaNodejs.NodejsFunction(
+        this.listFeaturedMoviesFunction = createNodejsFunction(
             this,
             'ListFeaturedMoviesHandler',
             {
@@ -143,7 +164,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadData(this.listFeaturedMoviesFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.listFeaturedMoviesFunction);
 
-        this.getMovieFunction = new lambdaNodejs.NodejsFunction(this, 'GetMovieHandler', {
+        this.getMovieFunction = createNodejsFunction(this, 'GetMovieHandler', {
             functionName: 'blockbuster-theatre-get-movie-lambda',
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/GetMovie/get-movie-handler.ts'),
@@ -159,7 +180,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadData(this.getMovieFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.getMovieFunction);
 
-        this.listMovieCollectionsFunction = new lambdaNodejs.NodejsFunction(
+        this.listMovieCollectionsFunction = createNodejsFunction(
             this,
             'ListMovieCollectionsHandler',
             {
@@ -177,7 +198,7 @@ export class LambdaConstruct extends Construct {
 
         props.collectionsTable.grantReadData(this.listMovieCollectionsFunction);
 
-        this.getMovieCollectionFunction = new lambdaNodejs.NodejsFunction(
+        this.getMovieCollectionFunction = createNodejsFunction(
             this,
             'GetMovieCollectionHandler',
             {
@@ -199,7 +220,7 @@ export class LambdaConstruct extends Construct {
         props.collectionsTable.grantReadData(this.getMovieCollectionFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.getMovieCollectionFunction);
 
-        this.exportMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'ExportMoviesHandler', {
+        this.exportMoviesFunction = createNodejsFunction(this, 'ExportMoviesHandler', {
             functionName: 'blockbuster-theatre-export-movies-handler',
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ExportMovies/export-movies-handler.ts'),
@@ -213,7 +234,7 @@ export class LambdaConstruct extends Construct {
 
         props.table.grantReadData(this.exportMoviesFunction);
 
-        this.listTmdbIdsFunction = new lambdaNodejs.NodejsFunction(this, 'ListTmdbIdsHandler', {
+        this.listTmdbIdsFunction = createNodejsFunction(this, 'ListTmdbIdsHandler', {
             functionName: 'blockbuster-theatre-list-tmdb-ids-lambda',
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ListTmdbIds/list-tmdb-ids-handler.ts'),
@@ -227,7 +248,7 @@ export class LambdaConstruct extends Construct {
 
         props.table.grantReadData(this.listTmdbIdsFunction);
 
-        this.listFilmSelectionsFunction = new lambdaNodejs.NodejsFunction(
+        this.listFilmSelectionsFunction = createNodejsFunction(
             this,
             'ListFilmSelectionsHandler',
             {
@@ -249,7 +270,7 @@ export class LambdaConstruct extends Construct {
         props.offersTable.grantReadData(this.listFilmSelectionsFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.listFilmSelectionsFunction);
 
-        this.getTicketPricingFunction = new lambdaNodejs.NodejsFunction(
+        this.getTicketPricingFunction = createNodejsFunction(
             this,
             'GetTicketPricingHandler',
             {
@@ -271,7 +292,7 @@ export class LambdaConstruct extends Construct {
         props.pricingTable.grantReadData(this.getTicketPricingFunction);
         props.offersTable.grantReadData(this.getTicketPricingFunction);
 
-        this.validateCheckoutFunction = new lambdaNodejs.NodejsFunction(
+        this.validateCheckoutFunction = createNodejsFunction(
             this,
             'ValidateCheckoutHandler',
             {
@@ -293,7 +314,7 @@ export class LambdaConstruct extends Construct {
         props.pricingTable.grantReadData(this.validateCheckoutFunction);
         props.offersTable.grantReadData(this.validateCheckoutFunction);
 
-        this.sendBookingConfirmationFunction = new lambdaNodejs.NodejsFunction(
+        this.sendBookingConfirmationFunction = createNodejsFunction(
             this,
             'SendBookingConfirmationHandler',
             {
@@ -313,7 +334,7 @@ export class LambdaConstruct extends Construct {
         props.bookingEmailIdentity.grantSendEmail(this.sendBookingConfirmationFunction);
         maxTicketsParameter.grantRead(this.sendBookingConfirmationFunction);
 
-        this.upsertBookingOffersFunction = new lambdaNodejs.NodejsFunction(
+        this.upsertBookingOffersFunction = createNodejsFunction(
             this,
             'UpsertBookingOffersHandler',
             {
@@ -331,7 +352,7 @@ export class LambdaConstruct extends Construct {
 
         props.offersTable.grantReadWriteData(this.upsertBookingOffersFunction);
 
-        this.upsertTicketPricingFunction = new lambdaNodejs.NodejsFunction(
+        this.upsertTicketPricingFunction = createNodejsFunction(
             this,
             'UpsertTicketPricingHandler',
             {
@@ -349,7 +370,7 @@ export class LambdaConstruct extends Construct {
 
         props.pricingTable.grantReadWriteData(this.upsertTicketPricingFunction);
 
-        this.refreshMovieCollectionFunction = new lambdaNodejs.NodejsFunction(
+        this.refreshMovieCollectionFunction = createNodejsFunction(
             this,
             'RefreshMovieCollectionHandler',
             {
@@ -370,7 +391,7 @@ export class LambdaConstruct extends Construct {
 
         props.collectionsTable.grantReadWriteData(this.refreshMovieCollectionFunction);
 
-        this.listBookingsFunction = new lambdaNodejs.NodejsFunction(this, 'ListBookingsHandler', {
+        this.listBookingsFunction = createNodejsFunction(this, 'ListBookingsHandler', {
             functionName: 'blockbuster-theatre-list-bookings-handler',
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ListBookings/list-bookings-handler.ts'),
@@ -395,7 +416,7 @@ export class LambdaConstruct extends Construct {
         props.offersTable.grantReadData(this.listBookingsFunction);
 
         // Booking creation validates the movie and showtime, which needs the pricing lookups.
-        this.createBookingFunction = new lambdaNodejs.NodejsFunction(this, 'CreateBookingHandler', {
+        this.createBookingFunction = createNodejsFunction(this, 'CreateBookingHandler', {
             functionName: 'blockbuster-theatre-create-booking-handler',
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/CreateBooking/create-booking-handler.ts'),
@@ -419,7 +440,7 @@ export class LambdaConstruct extends Construct {
         props.legacyBookingsTable.grantReadData(this.createBookingFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.createBookingFunction);
 
-        this.guestBookedSeatsFunction = new lambdaNodejs.NodejsFunction(
+        this.guestBookedSeatsFunction = createNodejsFunction(
             this,
             'GuestBookedSeatsHandler',
             {
@@ -440,7 +461,7 @@ export class LambdaConstruct extends Construct {
         props.legacyBookingsTable.grantReadData(this.guestBookedSeatsFunction);
         props.showtimeRegistryTable.grantReadData(this.guestBookedSeatsFunction);
 
-        this.guestBookingFunction = new lambdaNodejs.NodejsFunction(
+        this.guestBookingFunction = createNodejsFunction(
             this,
             'GuestBookingHandler',
             {
@@ -474,7 +495,7 @@ export class LambdaConstruct extends Construct {
         props.guestConversionTokensTable.grantWriteData(this.guestBookingFunction);
         props.bookingEmailIdentity.grantSendEmail(this.guestBookingFunction);
 
-        this.guestConversionFunction = new lambdaNodejs.NodejsFunction(
+        this.guestConversionFunction = createNodejsFunction(
             this,
             'GuestConversionHandler',
             {
