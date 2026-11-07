@@ -482,6 +482,7 @@ export class LambdaConstruct extends Construct {
                     GUEST_CONVERSION_TOKENS_TABLE_NAME:
                         props.guestConversionTokensTable.tableName,
                     BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
                 },
             }
         );
@@ -494,6 +495,7 @@ export class LambdaConstruct extends Construct {
         props.bookingReferencesTable.grantWriteData(this.guestBookingFunction);
         props.guestConversionTokensTable.grantWriteData(this.guestBookingFunction);
         props.bookingEmailIdentity.grantSendEmail(this.guestBookingFunction);
+        maxTicketsParameter.grantRead(this.guestBookingFunction);
 
         this.guestConversionFunction = createNodejsFunction(
             this,

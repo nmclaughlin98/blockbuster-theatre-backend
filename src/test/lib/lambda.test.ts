@@ -421,6 +421,14 @@ describe('LambdaConstruct', () => {
                 ]),
             }),
         });
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-guest-booking-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
+                }),
+            },
+        });
     });
 
     it('should allow the booking confirmation handler to read the max-ticket parameter', () => {

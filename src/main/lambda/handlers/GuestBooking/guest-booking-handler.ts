@@ -7,6 +7,7 @@ export const handler = async (
     event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
+    log('INFO', 'Guest booking request received.', { requestId });
     if (!event.body) return json(400, { message: 'A JSON request body is required.' });
 
     let request: unknown;
@@ -20,7 +21,12 @@ export const handler = async (
     }
 
     try {
-        return json(201, await createGuestBooking(request));
+        const booking = await createGuestBooking(request);
+        log('INFO', 'Guest booking created.', {
+            requestId,
+            bookingId: booking.bookingId,
+        });
+        return json(201, booking);
     } catch (error: unknown) {
         if (error instanceof ShowtimeIdError) {
             return json(error.statusCode, { message: error.message });

@@ -5,6 +5,7 @@ import {
     TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
+import { getMaxTickets } from '../Shared/max-tickets-service';
 import { PricingServiceError, validateCheckout } from '../Shared/pricing-service';
 import { sendBookingConfirmationEmail } from '../SendBookingConfirmation/booking-confirmation-service';
 import { log } from '../utils/common';
@@ -169,6 +170,7 @@ function tokenHash(token: string): string {
 
 export async function createGuestBooking(value: unknown): Promise<Record<string, unknown>> {
     const request = parseRequest(value);
+    const maxTickets = await getMaxTickets();
     const screening = await resolveShowtimeId(request.showtimeId);
     if (screening.date !== request.date) {
         throw new GuestBookingError(400, 'date must match the date embedded in showtimeId.');
@@ -180,6 +182,12 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
             throw new GuestBookingError(
                 400,
                 'Ticket quantities must add up to the selected seat count.'
+            );
+        }
+        if (ticketCount > maxTickets) {
+            throw new GuestBookingError(
+                400,
+                `A maximum of ${maxTickets} tickets can be booked at once.`
             );
         }
     }
