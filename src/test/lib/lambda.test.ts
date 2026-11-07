@@ -106,8 +106,8 @@ describe('LambdaConstruct', () => {
 
     it('should retain CloudWatch logs for one week for every Lambda function', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::Logs::LogGroup', 21);
-        template.hasResourceProperties('AWS::Logs::LogGroup', {
+        template.resourceCountIs('Custom::LogRetention', 21);
+        template.hasResourceProperties('Custom::LogRetention', {
             RetentionInDays: 7,
         });
     });
@@ -119,7 +119,7 @@ describe('LambdaConstruct', () => {
             JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
         );
 
-        expect(loggingRoles).toHaveLength(21);
+        expect(loggingRoles).toHaveLength(22);
     });
 
     it('should use Node.js 24.x runtime', () => {
@@ -233,7 +233,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(21);
+        expect(Object.values(functions)).toHaveLength(22);
         expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
     });
 
