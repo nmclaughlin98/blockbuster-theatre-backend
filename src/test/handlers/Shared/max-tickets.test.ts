@@ -1,6 +1,6 @@
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { mockClient } from 'aws-sdk-client-mock';
-import { getMaxTickets } from '../../../main/lambda/handlers/Shared/max-tickets';
+import { getMaxTickets } from '../../../main/lambda/handlers/Shared/max-tickets-service';
 
 const ssmMock = mockClient(SSMClient);
 const parameterName = '/blockbuster-theatre/booking-configuration/max-tickets-value';

@@ -1,7 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import type { BookingConfirmationEmail } from './booking-confirmation-email';
 import { sendBookingConfirmationEmail } from './booking-confirmation-service';
-import { getMaxTickets } from '../Shared/max-tickets';
+import { getMaxTickets } from '../Shared/max-tickets-service';
 import { json, log } from '../utils/common';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
