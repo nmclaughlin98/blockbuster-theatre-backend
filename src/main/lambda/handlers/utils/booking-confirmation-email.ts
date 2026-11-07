@@ -72,15 +72,15 @@ export function formatBookingConfirmationEmailHtml(
   const details: Array<[string, string]> = [
     ['SHOWTIME', `${formatScreeningDate(booking.date, booking.time)}`],
     ['SCREEN', `Screen ${booking.screen}`],
-    ['SEAT NUMBERS', booking.seats.join(', ')],
-    ['TOTAL', `£${booking.totalPrice.toFixed(2)}`],
+    [`Seat${booking.seats.length === 1 ? '' : 's'}`, booking.seats.join(', ')],
     ['GUEST NAME', `${booking.customer.firstName} ${booking.customer.surname}`],
     ['TICKET BREAKDOWN', `${booking.tickets} ${booking.tickets === 1 ? 'Ticket' : 'Tickets'}`],
+    ['TOTAL', `£${booking.totalPrice.toFixed(2)}`],
   ];
   const detailCell = ([label, value]: [string, string]) => `
-        <td width="50%" valign="top" style="width:50%;padding:11px 12px 9px 0;">
-          <div class="ticket-label" style="margin:0 0 5px;color:#8ea6c8;-webkit-text-fill-color:#8ea6c8;font-family:Arial,sans-serif;font-size:10px;font-weight:bold;letter-spacing:1px;">${escapeHtml(label)}</div>
-          <div class="ticket-text" style="margin:0;color:#f8fafc;-webkit-text-fill-color:#f8fafc;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:1.4;">${escapeHtml(value)}</div>
+        <td class="ticket-detail-cell" width="50%" valign="top">
+          <div class="ticket-label">${escapeHtml(label)}</div>
+          <div class="ticket-text">${escapeHtml(value)}</div>
         </td>`;
   const detailRows = Array.from({ length: Math.ceil(details.length / 2) }, (_, index) => `
         <tr>
@@ -93,92 +93,275 @@ export function formatBookingConfirmationEmailHtml(
 
   return `<!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="supported-color-schemes" content="dark">
   <style>
-    :root { color-scheme: dark; supported-color-schemes: dark; }
+    :root {
+      color-scheme: dark;
+      supported-color-schemes: dark;
+    }
+
+    body.email-background {
+      margin: 0;
+      padding: 0;
+      color: #f8fafc;
+      color-scheme: dark;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .email-preheader {
+      display: none;
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      color: #0c0d12;
+    }
+
+    table.email-background {
+      color-scheme: dark;
+    }
+
+    .email-content {
+      padding: 28px 12px;
+    }
+
+    .ticket-card {
+      width: 100%;
+      max-width: 600px;
+      background-color: #343744;
+      border: 1px solid #303030;
+      border-radius: 16px;
+      overflow: hidden;
+      color-scheme: dark;
+    }
+
+    .ticket-header {
+      padding: 17px 20px;
+      background-color: #ff334b;
+      background-image: linear-gradient(#ff334b, #B31E35);
+    }
+
+    .ticket-brand {
+      font-family: Impact, 'Arial Narrow', Arial, sans-serif;
+      font-size: 25px;
+      letter-spacing: 1px;
+      color: #ffffff;
+      -webkit-text-fill-color: #ffffff;
+    }
+
+    .ticket-demo-badge {
+      display: inline-block;
+      padding: 10px 15px;
+      border-radius: 999px;
+      background-color: #b31e35;
+      background-image: linear-gradient(#b31e35, #b31e35);
+      color: #ffffff;
+      -webkit-text-fill-color: #ffffff;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.6px;
+    }
+
+    .ticket-title-cell {
+      padding: 20px 18px 6px;
+    }
+
+    .ticket-title {
+      margin: 0;
+      color: #f8fafc;
+      -webkit-text-fill-color: #f8fafc;
+      font-family: Impact, 'Arial Narrow', Arial, sans-serif;
+      font-size: 36px;
+      font-weight: normal;
+      line-height: 1.25;
+    }
+
+    .ticket-details-cell {
+      padding: 0 18px 12px;
+    }
+
+    .ticket-detail-cell {
+      width: 50%;
+      padding: 11px 12px 9px 0;
+    }
+
+    .ticket-label {
+      margin: 0 0 5px;
+      color: #8ea6c8;
+      -webkit-text-fill-color: #8ea6c8;
+      font-family: Arial, sans-serif;
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    .ticket-text {
+      margin: 0;
+      color: #f8fafc;
+      -webkit-text-fill-color: #f8fafc;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1.4;
+    }
+
+    .ticket-divider {
+      padding: 0 0 5px;
+      border-top: 2px dashed #2f354d;
+      font-size: 0;
+      line-height: 0;
+    }
+
+    .ticket-qr-cell {
+      padding: 8px 18px 4px;
+    }
+
+    .ticket-qr-panel {
+      background-color: #ffffff;
+      background-image: linear-gradient(#ffffff, #ffffff);
+      border-radius: 6px;
+      color-scheme: light;
+    }
+
+    .ticket-qr-image-cell {
+      padding: 10px;
+    }
+
+    .ticket-qr-image {
+      display: block;
+      width: 144px;
+      height: 144px;
+      border: 0;
+    }
+
+    .ticket-reference {
+      padding: 12px 18px 7px;
+      color: #b6c7e1;
+      -webkit-text-fill-color: #b6c7e1;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+    }
+
+    .ticket-muted {
+      padding: 12px 18px;
+      border-top: 1px solid #2f354d;
+      color: #94a3b8;
+      -webkit-text-fill-color: #94a3b8;
+      font-size: 10px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
     @media (prefers-color-scheme: dark) {
-      body, .email-background { background-color:#0c0d12 !important; color:#f8fafc !important; }
-      .ticket-card { background-color:#343744 !important; }
-      .ticket-header { background-color:#ff334b !important; }
-      .ticket-demo-warning { background-color:#2a1820 !important; color:#ffb2bd !important; }
-      .ticket-demo-badge { background-color:#b31e35 !important; color:#ffffff !important; }
-      .ticket-text { color:#f8fafc !important; }
-      .ticket-muted { color:#94a3b8 !important; }
-      .ticket-label { color:#8ea6c8 !important; }
-      .ticket-reference { color:#b6c7e1 !important; }
-      .ticket-qr-panel { background-color:#ffffff !important; }
+
+      body,
+      .email-background {
+        color: #f8fafc !important;
+      }
+
+      .ticket-card {
+        background-color: #181b29 !important;
+      }
+
+      .ticket-header {
+        background-image: linear-gradient(#ff334b, #B31E35);
+      }
+
+      .ticket-demo-warning {
+        background-color: #2a1820 !important;
+        color: #ffb2bd !important;
+      }
+
+      .ticket-demo-badge {
+        background-color: #b31e35 !important;
+        color: #ffffff !important;
+      }
+
+      .ticket-text {
+        color: #f8fafc !important;
+      }
+
+      .ticket-muted {
+        color: #94a3b8 !important;
+      }
+
+      .ticket-label {
+        color: #8ea6c8 !important;
+      }
+
+      .ticket-reference {
+        color: #b6c7e1 !important;
+      }
+
+      .ticket-qr-panel {
+        background-color: #ffffff !important;
+      }
     }
   </style>
   <title>Booking Confirmation</title>
 </head>
-<body class="email-background" style="margin:0;padding:0;background-color:#0c0d12;background-image:linear-gradient(#0c0d12,#0c0d12);color:#f8fafc;color-scheme:dark;font-family:Arial,Helvetica,sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0c0d12;">Your Blockbuster Theatre booking details and reference.</div>
-  <table class="email-background" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0c0d12" style="background-color:#0c0d12;background-image:linear-gradient(#0c0d12,#0c0d12);color-scheme:dark;">
+
+<body class="email-background">
+  <div class="email-preheader">Your Blockbuster Theatre booking details and reference.</div>
+  <table class="email-background" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
     <tr>
-      <td align="center" style="padding:28px 12px;">
-        <table class="ticket-card" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" bgcolor="#343744" style="width:100%;max-width:600px;background-color:#343744;background-image:linear-gradient(#343744,#343744);border:1px solid #454957;border-radius:16px;overflow:hidden;color-scheme:dark;">
+      <td class="email-content" align="center">
+        <table class="ticket-card" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0">
           <tr>
-            <td class="ticket-header" bgcolor="#ff334b" style="padding:17px 20px;background-color:#ff334b;background-image:linear-gradient(#ff334b,#ff334b);">
+            <td class="ticket-header">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:17px;letter-spacing:1px;color:#ffffff;-webkit-text-fill-color:#ffffff;">BLOCKBUSTER THEATRE</td>
-                  <td align="right"><span class="ticket-demo-badge" style="display:inline-block;padding:6px 9px;border-radius:999px;background-color:#b31e35;background-image:linear-gradient(#b31e35,#b31e35);color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:9px;font-weight:bold;letter-spacing:0.6px;">Booking Confirmed</span></td>
+                  <td class="ticket-brand">BLOCKBUSTER<br />THEATRE</td>
+                  <td align="right"><span class="ticket-demo-badge">BOOKING CONFIRMED</span></td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:20px 18px 6px;">
-              <h1 class="ticket-text" style="margin:0;color:#f8fafc;-webkit-text-fill-color:#f8fafc;font-family:Impact,'Arial Narrow',Arial,sans-serif;font-size:36px;font-weight:normal;line-height:1.25;">${movieTitle}</h1>
+            <td class="ticket-title-cell">
+              <h1 class="ticket-title">${movieTitle}</h1>
             </td>
           </tr>
           <tr>
-            <td style="padding:10px 18px 14px;">
-              <table class="ticket-demo-warning" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#2a1820" style="background-color:#2a1820;background-image:linear-gradient(#2a1820,#2a1820);border:1px solid #71303b;border-radius:8px;">
-                <tr>
-                  <td align="center" style="padding:9px 11px;color:#ffb2bd;-webkit-text-fill-color:#ffb2bd;font-size:10px;font-weight:bold;letter-spacing:0.4px;line-height:1.5;text-align:center;">UNPAID RESERVATION - NO PAYMENT WAS PROCESSED. This confirmation does not grant admission.</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:0 18px 12px;">
+            <td class="ticket-details-cell">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 ${detailRows}
               </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:0 0 1px;border-top:1px dashed #737887;font-size:0;line-height:0;">&nbsp;</td>
+            <td class="ticket-divider">&nbsp;</td>
           </tr>
           <tr>
-            <td class="ticket-reference" align="center" style="padding:12px 18px 7px;color:#b6c7e1;-webkit-text-fill-color:#b6c7e1;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;">REF: ${bookingRef}</td>
-          </tr>
-          <tr>
-            <td align="center" style="padding:8px 18px 4px;">
-              <table class="ticket-qr-panel" role="presentation" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="background-color:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);border-radius:6px;color-scheme:light;">
+            <td class="ticket-qr-cell" align="center">
+              <table class="ticket-qr-panel" role="presentation" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td align="center" style="padding:10px;"><img src="cid:booking-reference-qr" width="144" height="144" alt="QR code encoding reference ${bookingRef} only" style="display:block;width:144px;height:144px;border:0;"></td>
+                  <td class="ticket-qr-image-cell" align="center"><img class="ticket-qr-image"
+                      src="cid:booking-reference-qr" width="144" height="144"
+                      alt="QR code encoding reference ${bookingRef} only"></td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td class="ticket-muted" align="center" style="padding:3px 18px 16px;color:#94a3b8;-webkit-text-fill-color:#94a3b8;font-size:9px;font-weight:bold;letter-spacing:1px;">REFERENCE ONLY - NOT VALID FOR ENTRY</td>
+            <td class="ticket-reference" align="center">REF: ${bookingRef}</td>
           </tr>
           <tr>
           </tr>
           <tr>
-            <td class="ticket-muted" style="padding:12px 18px;border-top:1px solid #4a4e5b;color:#94a3b8;-webkit-text-fill-color:#94a3b8;font-size:10px;line-height:1.5;text-align:center;">No payment was taken, no reservation was created, and no valid ticket was issued.</td>
+            <td class="ticket-muted">No payment was taken, no reservation was created, and no valid ticket was issued.
+            </td>
           </tr>
         </table>
       </td>
     </tr>
   </table>
 </body>
+
 </html>`;
 }
