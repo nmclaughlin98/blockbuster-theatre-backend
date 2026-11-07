@@ -31,3 +31,5 @@ export const movieImportLambdaConfig: MovieImportLambdaConfig = {
 };
 
 export const movieUpdateMaxBatch = 25;
+
+export const maxTicketsParameterName = '/blockbuster-theatre/booking-configuration/max-tickets-value';

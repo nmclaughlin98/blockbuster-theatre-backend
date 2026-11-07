@@ -5,6 +5,7 @@ import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { LambdaConstruct } from '../../../lib/stack';
 import {
+    maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
 } from '../../../lib/stack/lambda';
@@ -398,6 +399,28 @@ describe('LambdaConstruct', () => {
                             'dynamodb:BatchGetItem',
                             'dynamodb:BatchWriteItem',
                         ]),
+                    }),
+                ]),
+            }),
+        });
+    });
+
+    it('should allow the booking confirmation handler to read the max-ticket parameter', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-booking-confirmation-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
+                }),
+            },
+        });
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: Match.arrayWith(['ssm:GetParameter']),
+                        Resource: Match.anyValue(),
                     }),
                 ]),
             }),

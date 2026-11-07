@@ -13,7 +13,7 @@ import type {
     PricingRecord,
     PricingTier,
     ScreenedShowtime,
-} from '../interfaces';
+} from '../../lib/interfaces';
 import { isMovieRecord, isMovieShowtimes } from '../utils/movie-validation';
 import { addShowtimeIds } from '../utils/showtime-ids';
 

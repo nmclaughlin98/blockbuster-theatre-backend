@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import type { BookingConfirmationEmail } from './booking-confirmation-email';
 import { sendBookingConfirmationEmail } from './booking-confirmation-service';
+import { getMaxTickets } from '../Shared/max-tickets';
 import { json, log } from '../utils/common';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -28,7 +29,10 @@ function parseSeats(value: unknown): string[] | undefined {
     return seats;
 }
 
-function parseConfirmation(value: unknown): BookingConfirmationEmail | undefined {
+function parseConfirmation(
+    value: unknown,
+    maxTickets: number
+): BookingConfirmationEmail | undefined {
     if (!isRecord(value) || !isRecord(value.customer)) return undefined;
 
     const bookingRef = value.bookingRef;
@@ -61,7 +65,7 @@ function parseConfirmation(value: unknown): BookingConfirmationEmail | undefined
         || typeof tickets !== 'number'
         || !Number.isInteger(tickets)
         || tickets < 1
-        || tickets > 10
+        || tickets > maxTickets
         || seats.length !== tickets
         || new Set(seats).size !== seats.length
         || typeof totalPrice !== 'number'
@@ -106,7 +110,18 @@ export const handler = async (
         return json(400, { message: 'Request body must contain valid JSON.' });
     }
 
-    const confirmation = parseConfirmation(request);
+    let maxTickets: number;
+    try {
+        maxTickets = await getMaxTickets();
+    } catch (error: unknown) {
+        log('ERROR', 'Failed to load maximum ticket limit', {
+            requestId,
+            error: error instanceof Error ? error.name : 'Unknown error',
+        });
+        return json(500, { message: 'Unable to validate booking confirmation details.' });
+    }
+
+    const confirmation = parseConfirmation(request, maxTickets);
     if (!confirmation) {
         return json(400, { message: 'Booking confirmation details are invalid.' });
     }

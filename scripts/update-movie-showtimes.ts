@@ -5,7 +5,7 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
-import type { MovieShowtimes } from '../src/main/lambda/handlers/interfaces';
+import type { MovieShowtimes } from '../src/main/lambda/lib/interfaces';
 import { generateShowtimes } from '../src/main/lambda/handlers/utils/showtime-schedule';
 
 export { generateShowtimes } from '../src/main/lambda/handlers/utils/showtime-schedule';

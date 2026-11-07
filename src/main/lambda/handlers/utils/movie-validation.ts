@@ -12,7 +12,7 @@ import type {
     TmdbReleaseDates,
     TmdbVideo,
     TmdbVideos,
-} from '../interfaces';
+} from '../../lib/interfaces';
 
 type UnknownRecord = Record<string, unknown>;
 

@@ -5,7 +5,7 @@ import {
     TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
-import type { BookingRecord } from '../interfaces';
+import type { BookingRecord } from '../../lib/interfaces';
 import { PricingServiceError, resolvePricing, type ShowtimeSelection } from '../Shared/pricing-service';
 import { createShowtimeId } from '../utils/showtime-ids';
 

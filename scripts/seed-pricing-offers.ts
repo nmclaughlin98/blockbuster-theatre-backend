@@ -4,7 +4,7 @@ import {
     PutCommand,
     QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
-import type { OfferRecord, PricingTier } from '../src/main/lambda/handlers/interfaces';
+import type { OfferRecord, PricingTier } from '../src/main/lambda/lib/interfaces';
 import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
 import { isOfferRecord } from '../src/main/lambda/handlers/Shared/pricing-service';
 import { isMovieRecord } from '../src/main/lambda/handlers/utils/movie-validation';

@@ -3,11 +3,13 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ses from 'aws-cdk-lib/aws-ses';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import {
     lambdaSettings,
+    maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
     type MovieImportLambdaConfig,
@@ -61,6 +63,11 @@ export class LambdaConstruct extends Construct {
     constructor(scope: Construct, id: string, props: LambdaConstructProps) {
         super(scope, id);
         const lambdaConfig = props.lambdaConfig ?? cfg;
+        const maxTicketsParameter = ssm.StringParameter.fromStringParameterName(
+            this,
+            'MaxTicketsParameter',
+            maxTicketsParameterName
+        );
 
         this.addMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
             functionName: 'blockbuster-theatre-add-movies-handler',
@@ -298,11 +305,13 @@ export class LambdaConstruct extends Construct {
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
                 },
             }
         );
 
         props.bookingEmailIdentity.grantSendEmail(this.sendBookingConfirmationFunction);
+        maxTicketsParameter.grantRead(this.sendBookingConfirmationFunction);
 
         this.upsertBookingOffersFunction = new lambdaNodejs.NodejsFunction(
             this,

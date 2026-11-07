@@ -23,7 +23,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
 
         // 2. Instantiate Lambda & pass DB table
         const lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {
-            table: database.table,
+            table: database.movieCatalogueTable,
             pricingTable: database.pricingTable,
             offersTable: database.offersTable,
             collectionsTable: database.collectionsTable,

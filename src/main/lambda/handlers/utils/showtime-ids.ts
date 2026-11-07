@@ -5,7 +5,7 @@ import {
     TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
-import type { MovieShowtimes, ScreenedShowtime } from '../interfaces';
+import type { MovieShowtimes, ScreenedShowtime } from '../../lib/interfaces';
 
 const DAYS = [
     'Monday',

@@ -1,8 +1,10 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { mockClient } from 'aws-sdk-client-mock';
 
 const sesMock = mockClient(SESv2Client);
+const ssmMock = mockClient(SSMClient);
 const { handler } = require('../../../main/lambda/handlers/SendBookingConfirmation/send-booking-confirmation-handler') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
@@ -57,6 +59,8 @@ function createEvent(body: string, isBase64Encoded = false): APIGatewayProxyEven
 describe('booking confirmation email handler', () => {
     beforeEach(() => {
         sesMock.reset();
+        ssmMock.reset();
+        delete process.env.MAX_TICKETS_PARAMETER_NAME;
         process.env.BOOKING_EMAIL_FROM = 'niallmclaughlin1998@gmail.com';
     });
 
@@ -120,6 +124,40 @@ describe('booking confirmation email handler', () => {
 
         expect(result.statusCode).toBe(400);
         expect(sesMock.calls()).toHaveLength(0);
+    });
+
+    it('uses 10 as the fallback maximum ticket count', async () => {
+        const overLimitBooking = {
+            ...booking,
+            tickets: 11,
+            seats: Array.from({ length: 11 }, (_, index) => `A${index + 1}`),
+        };
+
+        const result = await handler(createEvent(JSON.stringify(overLimitBooking)));
+
+        expect(result.statusCode).toBe(400);
+        expect(ssmMock.calls()).toHaveLength(0);
+        expect(sesMock.calls()).toHaveLength(0);
+    });
+
+    it('uses the maximum ticket count configured in Parameter Store', async () => {
+        const parameterName = '/blockbuster-theatre/booking-configuration/max-tickets-value';
+        process.env.MAX_TICKETS_PARAMETER_NAME = parameterName;
+        ssmMock.on(GetParameterCommand, { Name: parameterName }).resolves({
+            Parameter: { Value: '11' },
+        });
+        sesMock.on(SendEmailCommand).resolves({});
+        const elevenTickets = {
+            ...booking,
+            tickets: 11,
+            seats: Array.from({ length: 11 }, (_, index) => `A${index + 1}`),
+        };
+
+        const result = await handler(createEvent(JSON.stringify(elevenTickets)));
+
+        expect(result.statusCode).toBe(200);
+        expect(ssmMock.calls()).toHaveLength(1);
+        expect(sesMock.calls()).toHaveLength(1);
     });
 
     it('returns a client error for invalid JSON', async () => {

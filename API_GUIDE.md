@@ -16,8 +16,8 @@ Both endpoints are public and accept the same optional pagination parameters as 
 {
   "bookingRef": "BBT-123456",
   "customer": {
-    "firstName": "Niall",
-    "surname": "McLaughlin",
+    "firstName": "John",
+    "surname": "Doe",
     "email": "guest@example.com",
     "phone": ""
   },
@@ -34,6 +34,8 @@ Both endpoints are public and accept the same optional pagination parameters as 
 The stack creates an SES email identity for `niallmclaughlin1998@gmail.com`. After deployment, open the SES verification message sent to that mailbox and confirm the identity before sending. New SES accounts are commonly in the sandbox: recipients must also be verified until SES production access is granted in `eu-west-2`.
 
 The endpoint is intended for the deployed demo booking flow and is not available through the local API adapter. It accepts the client-provided booking summary and does not persist or independently verify a booking or price. Do not treat the email as proof of payment or a confirmed seat reservation.
+
+The maximum accepted ticket count is read from the AWS Systems Manager Parameter Store string parameter `/blockbuster-theatre/booking-configuration/max-tickets-value`. If the parameter is not configured or does not exist, the handler uses a limit of 10. The booking-confirmation Lambda role has read access to this parameter.
 
 Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
 

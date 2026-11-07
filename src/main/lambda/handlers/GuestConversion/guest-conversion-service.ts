@@ -12,6 +12,7 @@ import {
     TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
+import { GuestConversionTokenRecord } from '../../lib/interfaces/GuestConversionTokenRecord';
 
 const cognitoClient = new CognitoIdentityProviderClient({
     region: process.env.AWS_REGION ?? 'eu-west-2',
@@ -30,17 +31,6 @@ export class GuestConversionError extends Error {
         super(message);
         this.name = 'GuestConversionError';
     }
-}
-
-interface GuestConversionTokenRecord {
-    tokenHash: string;
-    bookingId: string;
-    showtimeId?: string;
-    showingId?: string;
-    customerEmail: string;
-    expiresAt: number;
-    consumedAt?: string;
-    userId?: string;
 }
 
 function isGuestConversionTokenRecord(
