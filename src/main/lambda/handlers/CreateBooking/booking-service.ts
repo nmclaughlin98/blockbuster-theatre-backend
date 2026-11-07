@@ -16,7 +16,7 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 const SEAT_ID_PATTERN = /^[A-G](?:[1-9]|1[01])$/;
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const MAX_SEATS_PER_BOOKING = 10;
+const MAX_SEATS_PER_BOOKING = 30;
 
 type UnknownRecord = Record<string, unknown>;
 

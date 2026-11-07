@@ -13,7 +13,7 @@ import { parseShowtimeId, resolveShowtimeId } from '../utils/showtime-ids';
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const SEAT_ID_PATTERN = /^[A-G](?:[1-9]|1[01])$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_SEATS_PER_BOOKING = 10;
+const MAX_SEATS_PER_BOOKING = 30;
 const CONVERSION_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 
 type UnknownRecord = Record<string, unknown>;
@@ -255,61 +255,61 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
     for (let attempt = 0; attempt < 5; attempt += 1) {
         const candidate = `BBT-${randomInt(100000, 1000000)}`;
         const transactionItems = [
-                    ...request.seats.map((seatId) => ({
-                        Put: {
-                            TableName: bookingsTableName,
-                            Item: {
-                                showtimeId: request.showtimeId,
-                                seatId,
-                                recordType: 'SEAT',
-                                bookingId,
-                                date: request.date,
-                                bookedAt,
-                            },
-                            ConditionExpression: 'attribute_not_exists(seatId)',
-                        },
-                    })),
-                    {
-                        Put: {
-                            TableName: bookingsTableName,
-                            Item: { ...booking, bookingRef: candidate },
-                            ConditionExpression: 'attribute_not_exists(seatId)',
-                        },
+            ...request.seats.map((seatId) => ({
+                Put: {
+                    TableName: bookingsTableName,
+                    Item: {
+                        showtimeId: request.showtimeId,
+                        seatId,
+                        recordType: 'SEAT',
+                        bookingId,
+                        date: request.date,
+                        bookedAt,
                     },
-                    {
-                        Put: {
-                            TableName: tokenTableName,
-                            Item: {
-                                tokenHash: tokenHash(conversionToken),
-                                bookingId,
-                                showtimeId: request.showtimeId,
-                                customerEmail: request.email,
-                                expiresAt,
-                            },
-                            ConditionExpression: 'attribute_not_exists(tokenHash)',
-                        },
+                    ConditionExpression: 'attribute_not_exists(seatId)',
+                },
+            })),
+            {
+                Put: {
+                    TableName: bookingsTableName,
+                    Item: { ...booking, bookingRef: candidate },
+                    ConditionExpression: 'attribute_not_exists(seatId)',
+                },
+            },
+            {
+                Put: {
+                    TableName: tokenTableName,
+                    Item: {
+                        tokenHash: tokenHash(conversionToken),
+                        bookingId,
+                        showtimeId: request.showtimeId,
+                        customerEmail: request.email,
+                        expiresAt,
                     },
-                    {
-                        Put: {
-                            TableName: bookingReferencesTableName,
-                            Item: {
-                                bookingRef: candidate,
-                                bookingId,
-                                showtimeId: request.showtimeId,
-                                date: request.date,
-                                createdAt: bookedAt,
-                            },
-                            ConditionExpression: 'attribute_not_exists(bookingRef)',
-                        },
+                    ConditionExpression: 'attribute_not_exists(tokenHash)',
+                },
+            },
+            {
+                Put: {
+                    TableName: bookingReferencesTableName,
+                    Item: {
+                        bookingRef: candidate,
+                        bookingId,
+                        showtimeId: request.showtimeId,
+                        date: request.date,
+                        createdAt: bookedAt,
                     },
-                    ...request.seats.map((seatId) => ({
-                        ConditionCheck: {
-                            TableName: legacyBookingsTableName,
-                            Key: { showingId: legacyShowingId, seatId },
-                            ConditionExpression: 'attribute_not_exists(seatId)',
-                        },
-                    })),
-                ];
+                    ConditionExpression: 'attribute_not_exists(bookingRef)',
+                },
+            },
+            ...request.seats.map((seatId) => ({
+                ConditionCheck: {
+                    TableName: legacyBookingsTableName,
+                    Key: { showingId: legacyShowingId, seatId },
+                    ConditionExpression: 'attribute_not_exists(seatId)',
+                },
+            })),
+        ];
         try {
             await docClient.send(
                 new TransactWriteCommand({ TransactItems: transactionItems })
