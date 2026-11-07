@@ -87,6 +87,7 @@ describe('booking confirmation email handler', () => {
         expect(html).toContain('background-image:linear-gradient(#343744,#343744)');
         expect(html).toContain('background-image:linear-gradient(#ffffff,#ffffff)');
         expect(html).toContain('color-scheme:light');
+        expect(html).not.toMatch(/\sstyle=/);
         expect(html).toContain('#ff334b');
         expect(html).toContain('&lt;Movie &amp; More&gt;');
         expect(html).toContain('DATE &amp; SHOWTIME');
