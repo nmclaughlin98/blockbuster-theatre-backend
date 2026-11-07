@@ -3,7 +3,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 
 export class DatabaseConstruct extends Construct {
-    public readonly table: dynamodb.Table;
+    public readonly movieCatalogueTable: dynamodb.Table;
     public readonly pricingTable: dynamodb.Table;
     public readonly offersTable: dynamodb.Table;
     public readonly collectionsTable: dynamodb.Table;
@@ -16,7 +16,7 @@ export class DatabaseConstruct extends Construct {
     constructor(scope: Construct, id: string) {
         super(scope, id);
 
-        this.table = new dynamodb.Table(this, 'BlockbusterTheatreMovies', {
+        this.movieCatalogueTable = new dynamodb.Table(this, 'BlockbusterTheatreMovies', {
             // Use a new physical name so CloudFormation can replace the old key schema safely.
             tableName: 'blockbuster-theatre-movie-catalogue',
             partitionKey: { name: 'tmdbId', type: dynamodb.AttributeType.STRING },
@@ -40,14 +40,14 @@ export class DatabaseConstruct extends Construct {
             removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
-        this.table.addGlobalSecondaryIndex({
+        this.movieCatalogueTable.addGlobalSecondaryIndex({
             indexName: 'GSI1',
             partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
         });
 
-        this.table.addGlobalSecondaryIndex({
+        this.movieCatalogueTable.addGlobalSecondaryIndex({
             indexName: 'GSI2',
             partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'score', type: dynamodb.AttributeType.NUMBER },

@@ -5,7 +5,7 @@ import type {
     MovieSummary,
     TmdbCrewMember,
     TmdbMovieResponse,
-} from '../interfaces';
+} from '../../lib/interfaces';
 import { generateShowtimes } from './showtime-schedule';
 import { addShowtimeIds } from './showtime-ids';
 import { TMDB_MOVIE_METADATA_OVERRIDES } from './movie-metadata-overrides';

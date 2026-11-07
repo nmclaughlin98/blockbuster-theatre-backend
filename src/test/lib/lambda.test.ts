@@ -5,6 +5,7 @@ import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { LambdaConstruct } from '../../../lib/stack';
 import {
+    maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
 } from '../../../lib/stack/lambda';
@@ -101,6 +102,24 @@ describe('LambdaConstruct', () => {
         template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-add-movies-handler',
         });
+    });
+
+    it('should retain CloudWatch logs for one week for every Lambda function', () => {
+        const template = Template.fromStack(stack);
+        template.resourceCountIs('AWS::Logs::LogGroup', 21);
+        template.hasResourceProperties('AWS::Logs::LogGroup', {
+            RetentionInDays: 7,
+        });
+    });
+
+    it('should allow every Lambda role to write CloudWatch logs', () => {
+        const template = Template.fromStack(stack);
+        const roles = Object.values(template.findResources('AWS::IAM::Role'));
+        const loggingRoles = roles.filter((role) =>
+            JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
+        );
+
+        expect(loggingRoles).toHaveLength(21);
     });
 
     it('should use Node.js 24.x runtime', () => {
@@ -398,6 +417,28 @@ describe('LambdaConstruct', () => {
                             'dynamodb:BatchGetItem',
                             'dynamodb:BatchWriteItem',
                         ]),
+                    }),
+                ]),
+            }),
+        });
+    });
+
+    it('should allow the booking confirmation handler to read the max-ticket parameter', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-booking-confirmation-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
+                }),
+            },
+        });
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: Match.arrayWith(['ssm:GetParameter']),
+                        Resource: Match.anyValue(),
                     }),
                 ]),
             }),

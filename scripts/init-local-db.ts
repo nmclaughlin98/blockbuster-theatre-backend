@@ -11,8 +11,8 @@ import {
     GetCommand,
     PutCommand,
 } from '@aws-sdk/lib-dynamodb';
-import { createDynamoDBClient } from '../src/main/lambda/handlers/dynamodb-client';
-import type { MovieRecord } from '../src/main/lambda/handlers/interfaces';
+import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
+import type { MovieRecord } from '../src/main/lambda/lib/interfaces';
 import { pricingRecords } from './pricing-records';
 
 const endpoint = 'http://127.0.0.1:8000';
