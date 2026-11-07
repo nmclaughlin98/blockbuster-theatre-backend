@@ -5,7 +5,7 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import type { MovieShowtimes } from '../src/main/lambda/handlers/interfaces';
-import { createDynamoDBClient } from '../src/main/lambda/handlers/dynamodb-client';
+import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
 import { isScreenedShowtime } from '../src/main/lambda/handlers/utils/movie-validation';
 import { randomScreenForShowtime } from '../src/main/lambda/handlers/utils/showtime-schedule';
 

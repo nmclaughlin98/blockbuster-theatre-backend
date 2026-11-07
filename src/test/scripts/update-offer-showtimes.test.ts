@@ -5,7 +5,7 @@ import {
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-import { randomScreenForShowtime } from '../../../src/main/lambda/handlers/utils/showtime-schedule';
+import { randomScreenForShowtime } from '../../main/lambda/handlers/utils/showtime-schedule';
 import { updateOfferShowtimes } from '../../../scripts/update-offer-showtimes';
 
 const dynamoMock = mockClient(DynamoDBDocumentClient);

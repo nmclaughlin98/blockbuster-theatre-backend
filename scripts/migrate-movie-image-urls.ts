@@ -4,7 +4,7 @@ import {
     UpdateCommand,
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
-import { createDynamoDBClient } from '../src/main/lambda/handlers/dynamodb-client';
+import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
 import { originalTmdbImageUrl } from '../src/main/lambda/handlers/utils/movie-projection';
 
 type ImageField = 'poster' | 'still';
