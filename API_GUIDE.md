@@ -402,11 +402,13 @@ The endpoint returns the same booking details as the guest endpoint, except for 
 ```json
 {
   "conversionToken": "cnv_tok_<opaque-random-token>",
-  "password": "SuperSecretPassword123!"
+  "password": "SuperSecretPassword123!",
+  "firstName": "Niall",
+  "surname": "McLaughlin"
 }
 ```
 
-The password is set and hashed by the existing Cognito user pool; it is never stored or logged by the application. On success, the one-time token is consumed, the booking is associated with the Cognito user ID, and the endpoint returns HTTP 200:
+The first name and surname must match the name on the guest booking and are saved as the Cognito `given_name` and `family_name` attributes. Older clients may omit both name fields; the service will derive them from the guest booking. The password is set and hashed by the existing Cognito user pool; it is never stored or logged by the application. On success, the one-time token is consumed, the booking is associated with the Cognito user ID, and the endpoint returns HTTP 200:
 
 ```json
 {

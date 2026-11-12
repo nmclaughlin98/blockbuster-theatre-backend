@@ -71,14 +71,23 @@ function hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
 }
 
-function parseRequest(value: unknown): { conversionToken: string; password: string } {
+interface GuestConversionRequest {
+    conversionToken: string;
+    password: string;
+    firstName?: string;
+    surname?: string;
+}
+
+function parseRequest(value: unknown): GuestConversionRequest {
     if (
         !isRecord(value) ||
-        Object.keys(value).some((key) => !['conversionToken', 'password'].includes(key))
+        Object.keys(value).some(
+            (key) => !['conversionToken', 'password', 'firstName', 'surname'].includes(key)
+        )
     ) {
         throw new GuestConversionError(
             400,
-            'Only conversionToken and password are accepted.'
+            'Only conversionToken, password, firstName, and surname are accepted.'
         );
     }
     if (
@@ -93,7 +102,30 @@ function parseRequest(value: unknown): { conversionToken: string; password: stri
             'Password must be 12-256 characters and include uppercase, lowercase, numeric, and symbol characters.'
         );
     }
-    return { conversionToken: value.conversionToken, password: value.password };
+    const firstName = value.firstName;
+    const surname = value.surname;
+    const hasFirstName = firstName !== undefined;
+    const hasSurname = surname !== undefined;
+    if (
+        hasFirstName !== hasSurname ||
+        (hasFirstName &&
+            (typeof firstName !== 'string' ||
+                !firstName.trim() ||
+                firstName.trim().length > 100 ||
+                typeof surname !== 'string' ||
+                !surname.trim() ||
+                surname.trim().length > 100))
+    ) {
+        throw new GuestConversionError(400, 'A valid firstName and surname are required.');
+    }
+    return {
+        conversionToken: value.conversionToken,
+        password: value.password,
+        ...(typeof firstName === 'string' && typeof surname === 'string' && {
+            firstName: firstName.trim(),
+            surname: surname.trim(),
+        }),
+    };
 }
 
 async function authenticateExistingUser(
@@ -197,6 +229,22 @@ export async function convertGuestAccount(value: unknown): Promise<{
     ) {
         throw new GuestConversionError(410, 'Guest booking for this token is unavailable.');
     }
+    const guestNameParts = typeof booking.customerName === 'string'
+        ? booking.customerName.trim().split(/\s+/)
+        : [];
+    const firstName = request.firstName ?? guestNameParts.shift() ?? '';
+    const surname = request.surname ?? (guestNameParts.join(' ') || 'Guest');
+    const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ');
+    if (
+        !firstName ||
+        !surname ||
+        (request.firstName !== undefined &&
+            normalizeName(`${firstName} ${surname}`) !== normalizeName(
+                typeof booking.customerName === 'string' ? booking.customerName : ''
+            ))
+    ) {
+        throw new GuestConversionError(400, 'The account name must match the guest booking details.');
+    }
 
     let createdUserId: string | undefined;
     let auth: { accessToken: string; refreshToken: string };
@@ -208,6 +256,8 @@ export async function convertGuestAccount(value: unknown): Promise<{
                 MessageAction: 'SUPPRESS',
                 UserAttributes: [
                     { Name: 'email', Value: tokenRecord.customerEmail },
+                    { Name: 'given_name', Value: firstName },
+                    { Name: 'family_name', Value: surname },
                 ],
             })
         );

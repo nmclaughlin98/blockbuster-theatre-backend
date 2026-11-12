@@ -184,6 +184,7 @@ function mockConversionRecords(overrides: Record<string, unknown> = {}): void {
         Item: {
             recordType: 'BOOKING',
             customerEmail: 'customer@example.com',
+            customerName: 'Niall McLaughlin',
         },
     });
 }
@@ -492,7 +493,12 @@ describe('guest account conversion', () => {
         ddbMock.on(TransactWriteCommand).resolves({});
 
         const result = await guestConversionHandler(
-            event({ conversionToken, password: 'SuperSecretPassword123!' })
+            event({
+                conversionToken,
+                password: 'SuperSecretPassword123!',
+                firstName: 'Niall',
+                surname: 'McLaughlin',
+            })
         );
 
         expect(result).toMatchObject({ statusCode: 200 });
@@ -504,6 +510,10 @@ describe('guest account conversion', () => {
         });
         expect(cognitoMock.commandCalls(AdminSetUserPasswordCommand)[0].args[0].input)
             .toMatchObject({ Permanent: true });
+        expect(cognitoMock.commandCalls(AdminCreateUserCommand)[0].args[0].input.UserAttributes)
+            .toContainEqual({ Name: 'given_name', Value: 'Niall' });
+        expect(cognitoMock.commandCalls(AdminCreateUserCommand)[0].args[0].input.UserAttributes)
+            .toContainEqual({ Name: 'family_name', Value: 'McLaughlin' });
         expect(cognitoMock.commandCalls(AdminInitiateAuthCommand)[0].args[0].input)
             .toMatchObject({ AuthFlow: 'ADMIN_USER_PASSWORD_AUTH' });
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
@@ -515,6 +525,22 @@ describe('guest account conversion', () => {
         });
         expect(JSON.stringify(transaction)).not.toContain('SuperSecretPassword123!');
         expect(JSON.stringify(transaction)).not.toContain(conversionToken);
+    });
+
+    it('rejects a name that does not match the guest booking details', async () => {
+        mockConversionRecords();
+
+        const result = await guestConversionHandler(
+            event({
+                conversionToken,
+                password: 'SuperSecretPassword123!',
+                firstName: 'Other',
+                surname: 'Person',
+            })
+        );
+
+        expect(result).toMatchObject({ statusCode: 400 });
+        expect(cognitoMock.calls()).toHaveLength(0);
     });
 
     it('rejects an invalid token without calling Cognito', async () => {
