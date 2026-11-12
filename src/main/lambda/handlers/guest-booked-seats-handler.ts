@@ -3,14 +3,22 @@ import { GuestBookingError, listGuestBookedSeats } from './guest-booking-service
 import { json, log } from './utils/common';
 import { ShowtimeIdError } from './utils/showtime-ids';
 
+const ACCOUNT_BOOKED_SEATS_ROUTE_KEY = 'GET /api/v1/bookings/account';
+
 export const handler = async (
     event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
+    const isAccountRequest = event.routeKey === ACCOUNT_BOOKED_SEATS_ROUTE_KEY;
+    const userId = event.requestContext.authorizer?.jwt?.claims?.sub;
+    if (isAccountRequest && (typeof userId !== 'string' || !userId.trim())) {
+        return json(401, { message: 'A valid Cognito user is required.' });
+    }
     try {
         const result = await listGuestBookedSeats(
             event.queryStringParameters?.showtimeId,
-            event.queryStringParameters?.date
+            event.queryStringParameters?.date,
+            isAccountRequest ? userId : undefined
         );
         return json(200, result);
     } catch (error: unknown) {

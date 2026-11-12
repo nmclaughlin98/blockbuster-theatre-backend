@@ -413,21 +413,26 @@ export async function createGuestBooking(
 
 export async function listGuestBookedSeats(
     showtimeId: string | undefined,
-    date: string | undefined
-): Promise<{ showtimeId: string; date: string; bookedSeats: string[] }> {
+    date: string | undefined,
+    userId?: string
+): Promise<{ showtimeId: string; date: string; bookedSeats: string[]; myBookedSeats?: string[] }> {
+    if (userId !== undefined && !userId.trim()) {
+        throw new GuestBookingError(400, 'userId must be a non-empty Cognito subject.');
+    }
     const screening = await resolveShowtimeId(showtimeId);
     if (date !== screening.date) {
         throw new GuestBookingError(400, 'date must match the date embedded in showtimeId.');
     }
     const legacyShowingId = `${screening.movieId}#${screening.date}#${screening.time}`;
     const seats: string[] = [];
+    const mySeats: string[] = [];
     for (const [tableName, keyName, keyValue, filterExpression, filterValue] of [
         [
             requiredEnvironmentVariable('BOOKINGS_TABLE_NAME'),
             'showtimeId',
             screening.showtimeId,
-            'recordType = :seat',
-            'SEAT',
+            userId === undefined ? 'recordType = :seat' : undefined,
+            userId === undefined ? 'SEAT' : undefined,
         ],
         [
             requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME'),
@@ -448,13 +453,42 @@ export async function listGuestBookedSeats(
                         ':key': keyValue,
                         ...(filterValue && { ':seat': filterValue }),
                     },
-                    ProjectionExpression: 'seatId',
+                    ProjectionExpression: userId === undefined || keyName !== 'showtimeId'
+                        ? 'seatId'
+                        : '#seatId, #recordType, #userId, #seats',
+                    ...(userId !== undefined && keyName === 'showtimeId' && {
+                        ExpressionAttributeNames: {
+                            '#seatId': 'seatId',
+                            '#recordType': 'recordType',
+                            '#userId': 'userId',
+                            '#seats': 'seats',
+                        },
+                    }),
                     ConsistentRead: true,
                     ExclusiveStartKey: exclusiveStartKey,
                 })
             );
             for (const item of result.Items ?? []) {
-                if (typeof item.seatId === 'string') seats.push(item.seatId);
+                if (
+                    (
+                        userId === undefined
+                        || keyName !== 'showtimeId'
+                        || item.recordType === 'SEAT'
+                    )
+                    && typeof item.seatId === 'string'
+                ) {
+                    seats.push(item.seatId);
+                }
+                if (
+                    userId !== undefined
+                    && item.recordType === 'BOOKING'
+                    && item.userId === userId
+                    && Array.isArray(item.seats)
+                ) {
+                    mySeats.push(...item.seats.filter(
+                        (seat): seat is string => typeof seat === 'string'
+                    ));
+                }
             }
             exclusiveStartKey = result.LastEvaluatedKey;
         } while (exclusiveStartKey);
@@ -464,5 +498,8 @@ export async function listGuestBookedSeats(
         showtimeId: screening.showtimeId,
         date: screening.date,
         bookedSeats: [...new Set(seats)].sort(),
+        ...(userId !== undefined && {
+            myBookedSeats: [...new Set(mySeats)].filter((seat) => seats.includes(seat)).sort(),
+        }),
     };
 }

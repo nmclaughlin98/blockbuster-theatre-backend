@@ -121,6 +121,17 @@ function accountBookingEvent(body: unknown, userId?: string): APIGatewayProxyEve
     } as unknown as APIGatewayProxyEventV2;
 }
 
+function accountBookedSeatsEvent(query: Record<string, string>, userId?: string): APIGatewayProxyEventV2 {
+    return {
+        ...event(undefined, query),
+        routeKey: 'GET /api/v1/bookings/account',
+        requestContext: {
+            requestId: 'account-booked-seats-test',
+            ...(userId && { authorizer: { jwt: { claims: { sub: userId } } } }),
+        },
+    } as unknown as APIGatewayProxyEventV2;
+}
+
 function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> {
     if (typeof result === 'string') throw new Error('Expected a structured response.');
     return JSON.parse(result.body as string) as Record<string, unknown>;
@@ -333,6 +344,58 @@ describe('unpaid guest bookings', () => {
             KeyConditionExpression: 'showingId = :key',
             ExpressionAttributeValues: { ':key': legacyShowingId },
         });
+    });
+
+    it('returns all unavailable seats and only the authenticated user seats', async () => {
+        ddbMock.on(QueryCommand, { TableName: 'test-bookings' }).resolves({
+            Items: [
+                { seatId: 'F10', recordType: 'SEAT' },
+                { seatId: 'F11', recordType: 'SEAT' },
+                {
+                    seatId: 'BOOKING#account',
+                    recordType: 'BOOKING',
+                    userId: 'cognito-sub-123',
+                    seats: ['F10'],
+                },
+                {
+                    seatId: 'BOOKING#other-account',
+                    recordType: 'BOOKING',
+                    userId: 'another-sub',
+                    seats: ['F11'],
+                },
+            ],
+        });
+        ddbMock.on(QueryCommand, { TableName: 'test-legacy-bookings' }).resolves({ Items: [] });
+
+        const result = await bookedSeatsHandler(
+            accountBookedSeatsEvent({ showtimeId, date }, 'cognito-sub-123')
+        );
+
+        expect(result).toMatchObject({ statusCode: 200 });
+        expect(responseBody(result)).toEqual({
+            showtimeId,
+            date,
+            bookedSeats: ['F10', 'F11'],
+            myBookedSeats: ['F10'],
+        });
+        expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
+            TableName: 'test-bookings',
+            KeyConditionExpression: 'showtimeId = :key',
+            ExpressionAttributeValues: { ':key': showtimeId },
+            ExpressionAttributeNames: {
+                '#userId': 'userId',
+                '#seats': 'seats',
+            },
+        });
+    });
+
+    it('requires an authenticated Cognito subject for account seat details', async () => {
+        const result = await bookedSeatsHandler(
+            accountBookedSeatsEvent({ showtimeId, date })
+        );
+
+        expect(result).toMatchObject({ statusCode: 401 });
+        expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
     });
 
     it('rejects an unknown showtime ID before pricing or writing', async () => {

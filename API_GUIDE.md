@@ -327,6 +327,19 @@ Catalogue showtimes repeat weekly. Both schedule endpoints accept an optional `?
 
 The lookup uses the same `showtimeId` and date identity as the guest booking endpoint. Invalid or unknown IDs and dates return HTTP 400; storage errors return HTTP 500.
 
+Signed-in customers can use `GET /api/v1/bookings/account` with the same query parameters and a Cognito access token. This protected route returns the same `bookedSeats` list plus `myBookedSeats`, containing only the seats associated with the authenticated Cognito subject:
+
+```json
+{
+  "showtimeId": "559924_2026-11-01_1215",
+  "date": "2026-11-01",
+  "bookedSeats": ["F10", "F11"],
+  "myBookedSeats": ["F10"]
+}
+```
+
+The route does not return booking details or other customers' identities.
+
 ### Make an unpaid guest booking
 
 `POST /api/v1/bookings/guest`
