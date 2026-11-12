@@ -167,7 +167,13 @@ function tokenHash(token: string): string {
     return createHash('sha256').update(token).digest('hex');
 }
 
-export async function createGuestBooking(value: unknown): Promise<Record<string, unknown>> {
+export async function createGuestBooking(
+    value: unknown,
+    userId?: string
+): Promise<Record<string, unknown>> {
+    if (userId !== undefined && !userId.trim()) {
+        throw new GuestBookingError(400, 'userId must be a non-empty Cognito subject.');
+    }
     const request = parseRequest(value);
     const screening = await resolveShowtimeId(request.showtimeId);
     if (screening.date !== request.date) {
@@ -211,9 +217,17 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
     }
 
     const bookingId = `bk_${randomUUID()}`;
-    const conversionToken = `cnv_tok_${randomBytes(32).toString('base64url')}`;
     const now = Math.floor(Date.now() / 1000);
-    const expiresAt = now + CONVERSION_TOKEN_TTL_SECONDS;
+    const bookingOwnership = userId === undefined
+        ? {
+            kind: 'guest' as const,
+            conversionToken: `cnv_tok_${randomBytes(32).toString('base64url')}`,
+            expiresAt: now + CONVERSION_TOKEN_TTL_SECONDS,
+            conversionTokenTableName: requiredEnvironmentVariable(
+                'GUEST_CONVERSION_TOKENS_TABLE_NAME'
+            ),
+        }
+        : { kind: 'account' as const, userId };
     const bookedAt = new Date().toISOString();
     const legacyShowingId = `${screening.movieId}#${request.date}#${screening.time}`;
     const bookingsTableName = requiredEnvironmentVariable('BOOKINGS_TABLE_NAME');
@@ -221,7 +235,6 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
     const bookingReferencesTableName = requiredEnvironmentVariable(
         'BOOKING_REFERENCES_TABLE_NAME'
     );
-    const tokenTableName = requiredEnvironmentVariable('GUEST_CONVERSION_TOKENS_TABLE_NAME');
     const bookingKey = { showtimeId: request.showtimeId, seatId: `BOOKING#${bookingId}` };
     const storedTickets = checkout.tickets.map((ticket) => ({
         tierId: ticket.tierId,
@@ -247,69 +260,75 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
         currency: checkout.currency,
         customerEmail: request.email,
         customerName: request.customerName,
-        conversionTokenHash: tokenHash(conversionToken),
+        ...(bookingOwnership.kind === 'guest'
+            ? { conversionTokenHash: tokenHash(bookingOwnership.conversionToken) }
+            : { userId: bookingOwnership.userId }),
         bookedAt,
     };
 
     let bookingRef: string | undefined;
     for (let attempt = 0; attempt < 5; attempt += 1) {
         const candidate = `BBT-${randomInt(100000, 1000000)}`;
+        const bookingReferenceIndex =
+            request.seats.length + (bookingOwnership.kind === 'guest' ? 2 : 1);
         const transactionItems = [
-                    ...request.seats.map((seatId) => ({
-                        Put: {
-                            TableName: bookingsTableName,
-                            Item: {
-                                showtimeId: request.showtimeId,
-                                seatId,
-                                recordType: 'SEAT',
-                                bookingId,
-                                date: request.date,
-                                bookedAt,
-                            },
-                            ConditionExpression: 'attribute_not_exists(seatId)',
-                        },
-                    })),
-                    {
-                        Put: {
-                            TableName: bookingsTableName,
-                            Item: { ...booking, bookingRef: candidate },
-                            ConditionExpression: 'attribute_not_exists(seatId)',
-                        },
+            ...request.seats.map((seatId) => ({
+                Put: {
+                    TableName: bookingsTableName,
+                    Item: {
+                        showtimeId: request.showtimeId,
+                        seatId,
+                        recordType: 'SEAT',
+                        bookingId,
+                        date: request.date,
+                        bookedAt,
                     },
-                    {
-                        Put: {
-                            TableName: tokenTableName,
-                            Item: {
-                                tokenHash: tokenHash(conversionToken),
-                                bookingId,
-                                showtimeId: request.showtimeId,
-                                customerEmail: request.email,
-                                expiresAt,
-                            },
-                            ConditionExpression: 'attribute_not_exists(tokenHash)',
+                    ConditionExpression: 'attribute_not_exists(seatId)',
+                },
+            })),
+            {
+                Put: {
+                    TableName: bookingsTableName,
+                    Item: { ...booking, bookingRef: candidate },
+                    ConditionExpression: 'attribute_not_exists(seatId)',
+                },
+            },
+            ...(bookingOwnership.kind === 'guest'
+                ? [{
+                    Put: {
+                        TableName: bookingOwnership.conversionTokenTableName,
+                        Item: {
+                            tokenHash: tokenHash(bookingOwnership.conversionToken),
+                            bookingId,
+                            showtimeId: request.showtimeId,
+                            customerEmail: request.email,
+                            expiresAt: bookingOwnership.expiresAt,
                         },
+                        ConditionExpression: 'attribute_not_exists(tokenHash)',
                     },
-                    {
-                        Put: {
-                            TableName: bookingReferencesTableName,
-                            Item: {
-                                bookingRef: candidate,
-                                bookingId,
-                                showtimeId: request.showtimeId,
-                                date: request.date,
-                                createdAt: bookedAt,
-                            },
-                            ConditionExpression: 'attribute_not_exists(bookingRef)',
-                        },
+                }]
+                : []),
+            {
+                Put: {
+                    TableName: bookingReferencesTableName,
+                    Item: {
+                        bookingRef: candidate,
+                        bookingId,
+                        showtimeId: request.showtimeId,
+                        date: request.date,
+                        createdAt: bookedAt,
                     },
-                    ...request.seats.map((seatId) => ({
-                        ConditionCheck: {
-                            TableName: legacyBookingsTableName,
-                            Key: { showingId: legacyShowingId, seatId },
-                            ConditionExpression: 'attribute_not_exists(seatId)',
-                        },
-                    })),
-                ];
+                    ConditionExpression: 'attribute_not_exists(bookingRef)',
+                },
+            },
+            ...request.seats.map((seatId) => ({
+                ConditionCheck: {
+                    TableName: legacyBookingsTableName,
+                    Key: { showingId: legacyShowingId, seatId },
+                    ConditionExpression: 'attribute_not_exists(seatId)',
+                },
+            })),
+        ];
         try {
             await docClient.send(
                 new TransactWriteCommand({ TransactItems: transactionItems })
@@ -327,7 +346,7 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
                 reasons?.slice(0, request.seats.length).some(
                     (reason) => reason.Code === 'ConditionalCheckFailed'
                 ) ||
-                reasons?.slice(request.seats.length + 3).some(
+                reasons?.slice(bookingReferenceIndex + 1).some(
                     (reason) => reason.Code === 'ConditionalCheckFailed'
                 );
             if (seatConflict) {
@@ -336,7 +355,7 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
                     'One or more selected seats are no longer available.'
                 );
             }
-            if (reasons?.[request.seats.length + 2]?.Code === 'ConditionalCheckFailed') {
+            if (reasons?.[bookingReferenceIndex]?.Code === 'ConditionalCheckFailed') {
                 continue;
             }
             throw error;
@@ -382,8 +401,12 @@ export async function createGuestBooking(value: unknown): Promise<Record<string,
         currency: checkout.currency,
         customerEmail: request.email,
         date: request.date,
-        conversionToken,
-        conversionTokenExpiresAt: new Date(expiresAt * 1000).toISOString(),
+        ...(bookingOwnership.kind === 'guest' && {
+            conversionToken: bookingOwnership.conversionToken,
+            conversionTokenExpiresAt: new Date(
+                bookingOwnership.expiresAt * 1000
+            ).toISOString(),
+        }),
         confirmationEmailSent,
     };
 }

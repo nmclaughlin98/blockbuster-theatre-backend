@@ -376,6 +376,12 @@ Invalid guest details, seats, ticket tiers, date, or showtime return HTTP 400. U
 
 The active booking table is keyed by `showtimeId` and `seatId`. It stores one booking record with the selected seat and ticket arrays; separate seat-lock records in the same table are reserved atomically with the booking and prevent double-booking. The previous `showingId` table is retained for compatibility and existing bookings are checked there before reserving seats. The conversion token is randomly generated, stored only as a SHA-256 hash, expires after 24 hours, and can only be consumed once.
 
+### Make an unpaid booking associated with an account
+
+`POST /api/v1/bookings/account` requires a Cognito access token in the `Authorization: Bearer <token>` header. Send the same booking body as the guest endpoint. API Gateway verifies the token, and the backend stores the verified Cognito `sub` as the booking's `userId`; any `userId` included in the request body is rejected. Account bookings do not create a guest conversion token.
+
+The endpoint returns the same booking details as the guest endpoint, except for `conversionToken` and `conversionTokenExpiresAt`.
+
 ### Convert a guest booking to an account
 
 `POST /api/v1/auth/convert-guest`

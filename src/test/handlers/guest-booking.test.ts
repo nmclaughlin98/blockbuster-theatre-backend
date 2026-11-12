@@ -110,6 +110,17 @@ function event(body?: unknown, query?: Record<string, string>): APIGatewayProxyE
     } as unknown as APIGatewayProxyEventV2;
 }
 
+function accountBookingEvent(body: unknown, userId?: string): APIGatewayProxyEventV2 {
+    return {
+        ...event(body),
+        routeKey: 'POST /api/v1/bookings/account',
+        requestContext: {
+            requestId: 'account-booking-test',
+            ...(userId && { authorizer: { jwt: { claims: { sub: userId } } } }),
+        },
+    } as unknown as APIGatewayProxyEventV2;
+}
+
 function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> {
     if (typeof result === 'string') throw new Error('Expected a structured response.');
     return JSON.parse(result.body as string) as Record<string, unknown>;
@@ -254,6 +265,45 @@ describe('unpaid guest bookings', () => {
         expect(result).toMatchObject({ statusCode: 201 });
         expect(responseBody(result).totalAmount).toBe(15.5);
         expect(cognitoMock.calls()).toHaveLength(0);
+    });
+
+    it('associates account bookings with the verified Cognito subject without a conversion token', async () => {
+        mockPricing();
+        ddbMock.on(TransactWriteCommand).resolves({});
+
+        const result = await guestBookingHandler(
+            accountBookingEvent(validGuestPayload(), 'cognito-sub-123')
+        );
+
+        expect(result).toMatchObject({ statusCode: 201 });
+        const response = responseBody(result);
+        expect(response.conversionToken).toBeUndefined();
+        expect(response.conversionTokenExpiresAt).toBeUndefined();
+
+        const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
+        const writes = transaction.TransactItems?.map((item) => item.Put?.Item).filter(Boolean);
+        expect(transaction.TransactItems).toHaveLength(6);
+        expect(writes).toContainEqual(
+            expect.objectContaining({ recordType: 'BOOKING', userId: 'cognito-sub-123' })
+        );
+        expect(writes?.some((item) => item && 'tokenHash' in item)).toBe(false);
+    });
+
+    it('rejects account bookings without an authenticated Cognito subject', async () => {
+        const result = await guestBookingHandler(accountBookingEvent(validGuestPayload()));
+
+        expect(result).toMatchObject({ statusCode: 401 });
+        expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    });
+
+    it('does not accept a client-supplied userId as booking ownership', async () => {
+        const payload = { ...validGuestPayload(), userId: 'attacker-sub' };
+        const result = await guestBookingHandler(
+            accountBookingEvent(payload, 'cognito-sub-123')
+        );
+
+        expect(result).toMatchObject({ statusCode: 400 });
+        expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
 
     it('uses the same showtimeId and date for booked-seat lookup and reservation', async () => {

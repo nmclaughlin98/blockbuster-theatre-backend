@@ -280,6 +280,13 @@ export class ApiGatewayConstruct extends Construct {
         });
 
         this.httpApi.addRoutes({
+            path: '/api/v1/bookings/account',
+            methods: [apigw2.HttpMethod.POST],
+            integration: guestBookingIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
             path: '/api/v1/auth/convert-guest',
             methods: [apigw2.HttpMethod.POST],
             integration: guestConversionIntegration,
