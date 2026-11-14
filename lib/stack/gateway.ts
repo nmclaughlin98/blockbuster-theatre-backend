@@ -26,6 +26,7 @@ interface ApiGatewayConstructProps {
     guestBookedSeatsFunction: lambda.IFunction;
     guestBookingFunction: lambda.IFunction;
     guestConversionFunction: lambda.IFunction;
+    downloadTicketFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 }
 
@@ -143,6 +144,10 @@ export class ApiGatewayConstruct extends Construct {
         const guestConversionIntegration = new integrations.HttpLambdaIntegration(
             'GuestConversionIntegration',
             props.guestConversionFunction
+        );
+        const downloadTicketIntegration = new integrations.HttpLambdaIntegration(
+            'DownloadTicketIntegration',
+            props.downloadTicketFunction
         );
 
         this.httpApi.addRoutes({
@@ -283,6 +288,13 @@ export class ApiGatewayConstruct extends Construct {
             path: '/api/v1/auth/convert-guest',
             methods: [apigw2.HttpMethod.POST],
             integration: guestConversionIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/bookings/{bookingId}/ticket',
+            methods: [apigw2.HttpMethod.GET],
+            integration: downloadTicketIntegration,
+            authorizer: props.jwtAuthorizer,
         });
     }
 }

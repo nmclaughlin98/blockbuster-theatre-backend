@@ -51,6 +51,7 @@ export class LambdaConstruct extends Construct {
     public readonly guestBookedSeatsFunction: lambdaNodejs.NodejsFunction;
     public readonly guestBookingFunction: lambdaNodejs.NodejsFunction;
     public readonly guestConversionFunction: lambdaNodejs.NodejsFunction;
+    public readonly downloadTicketFunction: lambdaNodejs.NodejsFunction;
 
     /**
      * Creates the movie import, update, list, and detail Lambda functions with table permissions.
@@ -501,5 +502,22 @@ export class LambdaConstruct extends Construct {
                 resources: [props.userPool.userPoolArn],
             })
         );
+
+        this.downloadTicketFunction = new lambdaNodejs.NodejsFunction(
+            this,
+            'DownloadTicketHandler',
+            {
+                functionName: 'blockbuster-theatre-download-ticket-handler',
+                runtime: lambdaSettings.runtime,
+                entry: path.join(__dirname, './handlers/download-ticket-handler.ts'),
+                handler: 'handler',
+                memorySize: lambdaSettings.default.memorySize,
+                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+                environment: {
+                    BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                },
+            }
+        );
+        props.bookingsTable.grantReadData(this.downloadTicketFunction);
     }
 }
