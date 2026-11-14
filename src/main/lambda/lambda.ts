@@ -62,6 +62,8 @@ export class LambdaConstruct extends Construct {
     constructor(scope: Construct, id: string, props: LambdaConstructProps) {
         super(scope, id);
         const lambdaConfig = props.lambdaConfig ?? cfg;
+        // PDFKit resolves its fonts and other assets relative to its installed package.
+        const pdfKitBundling = { nodeModules: ['pdfkit'] };
 
         this.addMoviesFunction = new lambdaNodejs.NodejsFunction(this, 'AddMoviesHandler', {
             functionName: 'blockbuster-theatre-add-movies-handler',
@@ -295,6 +297,7 @@ export class LambdaConstruct extends Construct {
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/send-booking-confirmation-handler.ts'),
                 handler: 'handler',
+                bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
@@ -419,6 +422,7 @@ export class LambdaConstruct extends Construct {
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/guest-booked-seats-handler.ts'),
                 handler: 'handler',
+                bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
@@ -440,6 +444,7 @@ export class LambdaConstruct extends Construct {
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/guest-booking-handler.ts'),
                 handler: 'handler',
+                bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
@@ -511,6 +516,7 @@ export class LambdaConstruct extends Construct {
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/download-ticket-handler.ts'),
                 handler: 'handler',
+                bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {

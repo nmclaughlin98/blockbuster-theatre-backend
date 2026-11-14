@@ -3,6 +3,8 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
+import { execFileSync } from 'child_process';
+import * as path from 'path';
 import { LambdaConstruct } from '../../../lib/stack';
 import {
     movieImportLambdaConfig as cfg,
@@ -363,6 +365,69 @@ describe('LambdaConstruct', () => {
         expect(construct.guestBookedSeatsFunction).toBeDefined();
         expect(construct.guestBookingFunction).toBeDefined();
         expect(construct.guestConversionFunction).toBeDefined();
+    });
+
+    it('packages loadable PDF-dependent handlers and the fonts needed to render tickets', () => {
+        const resources = Template.fromStack(stack).toJSON().Resources as Record<string, {
+            Type: string;
+            Properties?: { FunctionName?: string; Code?: { S3Key?: string } };
+        }>;
+        const functionNames = [
+            'blockbuster-theatre-booking-confirmation-handler',
+            'blockbuster-theatre-guest-booked-seats-handler',
+            'blockbuster-theatre-guest-booking-handler',
+            'blockbuster-theatre-download-ticket-handler',
+        ];
+        const assetPaths = functionNames.map((name) => {
+            const resource = Object.values(resources).find(
+                (item) => item.Type === 'AWS::Lambda::Function'
+                    && item.Properties?.FunctionName === name
+            );
+            const key = resource?.Properties?.Code?.S3Key;
+            if (!key?.endsWith('.zip') || !process.env.CDK_OUTDIR) {
+                throw new Error(`Missing asset for ${name}`);
+            }
+            return path.resolve(process.env.CDK_OUTDIR, `asset.${key.slice(0, -4)}`);
+        });
+
+        execFileSync(process.execPath, ['-e', `
+            const path = require('path');
+            Promise.all(process.argv.slice(1).map(async (asset, index) => {
+                const { handler } = require(path.join(asset, 'index.js'));
+                if (typeof handler !== 'function') {
+                    throw new Error('Missing handler');
+                }
+                if (index === 1) {
+                    const response = await handler({
+                        routeKey: 'GET /api/v1/bookings/account/history',
+                        requestContext: { requestId: 'bundle-smoke-test' },
+                    });
+                    if (response.statusCode !== 401) throw new Error('Unexpected account response');
+                }
+                const resolved = require.resolve('pdfkit', { paths: [asset] });
+                if (!resolved.startsWith(path.join(asset, 'node_modules', 'pdfkit') + path.sep)) {
+                    throw new Error('PDFKit is missing from the asset');
+                }
+                const PDFDocument = require(resolved);
+                const doc = new PDFDocument();
+                const chunks = [];
+                doc.on('data', chunk => chunks.push(chunk));
+                const finished = new Promise((resolve, reject) => {
+                    doc.on('error', reject);
+                    doc.on('end', resolve);
+                });
+                doc.font('Helvetica-Bold').text('Ticket');
+                doc.font('Courier').text('Reference');
+                doc.end();
+                await finished;
+                if (!Buffer.concat(chunks).subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+                    throw new Error('Invalid PDF');
+                }
+            })).catch(error => {
+                console.error(error);
+                process.exitCode = 1;
+            });
+        `, ...assetPaths], { stdio: 'pipe', timeout: 30000 });
     });
 
     it('should configure booking functions with least-privilege table access', () => {
