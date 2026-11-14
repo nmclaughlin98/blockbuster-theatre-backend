@@ -1,5 +1,5 @@
-name: 1. Build and Package
-run-name: 'Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
+name: 1. Build and Package 🔨
+run-name: '🔨 Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
 
 on:
   push:

@@ -1,5 +1,5 @@
-name: 2. Deploy Stack
-run-name: 'Deploy Stack (${{ github.event.workflow_run.head_branch || github.ref_name }} Build #${{ github.event.workflow_run.run_number || inputs.build_number }})'
+name: 2. Deploy Stack 🚀
+run-name: '🚀 Deploy Stack (${{ github.event.workflow_run.head_branch || github.ref_name }} Build #${{ github.event.workflow_run.run_number || inputs.build_number }})'
 
 on:
   workflow_run:
