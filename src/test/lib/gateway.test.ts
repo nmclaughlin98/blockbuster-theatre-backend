@@ -43,6 +43,7 @@ describe('ApiGatewayConstruct', () => {
             guestBookedSeatsFunction: mockFunction,
             guestBookingFunction: mockFunction,
             guestConversionFunction: mockFunction,
+            downloadTicketFunction: mockFunction,
             jwtAuthorizer,
         });
     });
@@ -67,7 +68,7 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 25);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 26);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/guest',
             AuthorizationType: 'NONE',
@@ -83,6 +84,11 @@ describe('ApiGatewayConstruct', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/account/history',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /bookings/{bookingId}/ticket',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });

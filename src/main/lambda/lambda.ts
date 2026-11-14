@@ -521,9 +521,11 @@ export class LambdaConstruct extends Construct {
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                    LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                 },
             }
         );
         props.bookingsTable.grantReadData(this.downloadTicketFunction);
+        props.legacyBookingsTable.grantReadData(this.downloadTicketFunction);
     }
 }

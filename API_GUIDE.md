@@ -423,6 +423,12 @@ The endpoint returns the same booking details as the guest endpoint, except for 
 
 The endpoint returns both past and upcoming bookings; clients can categorize them using the theatre's Europe/London time zone. Unlinked guest bookings are not included. `guestName` is the name stored on the booking, and `ticketCount` is the sum of its ticket quantities. Older bookings may not have a `bookingRef`, `movieId`, `guestName`, `ticketCount`, `totalAmount`, or `currency`.
 
+### Download an account booking ticket
+
+`GET /bookings/{bookingId}/ticket` requires a Cognito access token in the `Authorization: Bearer <token>` header. It returns a PDF for a booking owned by the authenticated account, including linked guest bookings. Missing or other users' bookings return 404. The user-bookings index is eventually consistent, so a newly created or linked booking may not be immediately available. Older bookings without the details needed to generate a ticket cannot be downloaded.
+
+The PDF represents an unpaid reservation; this endpoint does not process payment or validate admission.
+
 ### Convert a guest booking to an account
 
 `POST /api/v1/auth/convert-guest`

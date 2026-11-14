@@ -112,6 +112,36 @@ describe('BackendStack', () => {
         });
     });
 
+    it('grants the ticket handler read access to both booking tables and their indexes', () => {
+        const template = Template.fromStack(stack);
+        const currentTable = Match.stringLikeRegexp('MoviesDatabaseBlockbusterTheatreBookingsByShowtime');
+        const legacyTable = Match.stringLikeRegexp('MoviesDatabaseBlockbusterTheatreBookings[A-F0-9]+');
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-download-ticket-handler',
+            Environment: {
+                Variables: {
+                    BOOKINGS_TABLE_NAME: { Ref: currentTable },
+                    LEGACY_BOOKINGS_TABLE_NAME: { Ref: legacyTable },
+                },
+            },
+        });
+        for (const table of [currentTable, legacyTable]) {
+            template.hasResourceProperties('AWS::IAM::Policy', {
+                Roles: [{ Ref: Match.stringLikeRegexp('DownloadTicketHandlerServiceRole') }],
+                PolicyDocument: Match.objectLike({
+                    Statement: Match.arrayWith([Match.objectLike({
+                        Effect: 'Allow',
+                        Action: Match.arrayWith(['dynamodb:Query', 'dynamodb:GetItem']),
+                        Resource: Match.arrayWith([
+                            { 'Fn::GetAtt': [table, 'Arn'] },
+                            { 'Fn::Join': ['', [{ 'Fn::GetAtt': [table, 'Arn'] }, '/index/*']] },
+                        ]),
+                    })]),
+                }),
+            });
+        }
+    });
+
     it('should create Lambda function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
