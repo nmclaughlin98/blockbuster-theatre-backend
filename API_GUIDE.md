@@ -395,6 +395,28 @@ The active booking table is keyed by `showtimeId` and `seatId`. It stores one bo
 
 The endpoint returns the same booking details as the guest endpoint, except for `conversionToken` and `conversionTokenExpiresAt`.
 
+### List account bookings
+
+`GET /api/v1/bookings/account/history` requires a Cognito access token in the `Authorization: Bearer <token>` header. It returns bookings associated with the verified Cognito subject, including converted guest bookings. The `UserBookings` indexes are eventually consistent, so a newly created or converted booking may not appear immediately.
+
+```json
+{
+  "bookings": [
+    {
+      "bookingId": "bk_990123",
+      "bookingRef": "BBT-883214",
+      "movieTitle": "Bohemian Rhapsody",
+      "date": "2026-11-01",
+      "time": "12:15",
+      "screen": "5",
+      "seats": ["F10", "F11"]
+    }
+  ]
+}
+```
+
+The endpoint returns both past and upcoming bookings; clients can categorize them using the theatre's Europe/London time zone. Unlinked guest bookings are not included. Older converted bookings may not have a `bookingRef`.
+
 ### Convert a guest booking to an account
 
 `POST /api/v1/auth/convert-guest`
