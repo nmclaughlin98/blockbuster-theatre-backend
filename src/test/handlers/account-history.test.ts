@@ -37,6 +37,19 @@ const booking = {
     seats: ['A1'],
 };
 
+const storedDetails = {
+    customerName: 'Alex Smith',
+    tickets: [{ tierId: 'adult', quantity: 1 }],
+    totalAmount: 15.5,
+    currency: 'GBP',
+};
+const returnedDetails = {
+    guestName: 'Alex Smith',
+    ticketCount: 1,
+    totalAmount: 15.5,
+    currency: 'GBP',
+};
+
 beforeEach(() => ddb.reset());
 
 test('requires a verified account', async () => {
@@ -48,10 +61,10 @@ test('requires a verified account', async () => {
 test('queries both user indexes through all pages and returns only booking fields', async () => {
     ddb.on(QueryCommand, { TableName: 'current-bookings' })
         .resolvesOnce({
-            Items: [{ ...booking, customerEmail: 'private@example.com', conversionTokenHash: 'secret' }],
+            Items: [{ ...booking, ...storedDetails, customerEmail: 'private@example.com', conversionTokenHash: 'secret' }],
             LastEvaluatedKey: { showtimeId: 'show1', seatId: 'BOOKING#1', userId: 'user-1', bookedAt: 'now' },
         })
-        .resolvesOnce({ Items: [{ ...booking, bookingId: 'bk_2' }] });
+        .resolvesOnce({ Items: [{ ...booking, ...storedDetails, bookingId: 'bk_2', totalAmount: 0 }] });
     const { bookingRef: _bookingRef, movieId: _movieId, ...legacyBooking } = booking;
     ddb.on(QueryCommand, { TableName: 'legacy-bookings' })
         .resolves({ Items: [{ ...legacyBooking, bookingId: 'bk_legacy' }] });
@@ -59,7 +72,11 @@ test('queries both user indexes through all pages and returns only booking field
     const result = await handler(event('user-1'));
     expect(typeof result === 'string' ? undefined : result.statusCode).toBe(200);
     expect(typeof result === 'string' ? undefined : result.headers?.['Cache-Control']).toBe('no-store');
-    expect(body(result)).toEqual({ bookings: [booking, { ...booking, bookingId: 'bk_2' }, { ...legacyBooking, bookingId: 'bk_legacy' }] });
+    expect(body(result)).toEqual({ bookings: [
+        { ...booking, ...returnedDetails },
+        { ...booking, ...returnedDetails, bookingId: 'bk_2', totalAmount: 0 },
+        { ...legacyBooking, bookingId: 'bk_legacy' },
+    ] });
     const calls = ddb.commandCalls(QueryCommand);
     expect(calls).toHaveLength(3);
     for (const call of calls) {
@@ -83,4 +100,32 @@ test('rejects a malformed movie ID', async () => {
     ddb.on(QueryCommand).resolves({ Items: [{ ...booking, movieId: 'invalid' }] });
     const result = await handler(event('user-1'));
     expect(typeof result === 'string' ? undefined : result.statusCode).toBe(500);
+});
+
+test.each([
+    ['customer name', { customerName: ' ' }],
+    ['ticket quantities', { tickets: [{ quantity: 2 }] }],
+    ['ticket data', { tickets: [{ quantity: '1' }] }],
+    ['total', { totalAmount: -1 }],
+    ['currency', { currency: 'gbp' }],
+])('rejects invalid %s in account history', async (_label, invalidDetails) => {
+    ddb.on(QueryCommand).resolves({ Items: [{ ...booking, ...storedDetails, ...invalidDetails }] });
+    const result = await handler(event('user-1'));
+    expect(typeof result === 'string' ? undefined : result.statusCode).toBe(500);
+});
+
+test('sums ticket quantities across tiers', async () => {
+    ddb.on(QueryCommand, { TableName: 'current-bookings' }).resolves({
+        Items: [{
+            ...booking,
+            ...storedDetails,
+            seats: ['A1', 'A2', 'A3'],
+            tickets: [{ quantity: 2 }, { quantity: 1 }],
+        }],
+    });
+    ddb.on(QueryCommand, { TableName: 'legacy-bookings' }).resolves({ Items: [] });
+    const result = await handler(event('user-1'));
+    expect(body(result)).toEqual({ bookings: [
+        { ...booking, ...returnedDetails, seats: ['A1', 'A2', 'A3'], ticketCount: 3 },
+    ] });
 });

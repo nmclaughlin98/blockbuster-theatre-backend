@@ -406,17 +406,22 @@ The endpoint returns the same booking details as the guest endpoint, except for 
     {
       "bookingId": "bk_990123",
       "bookingRef": "BBT-883214",
+      "movieId": "424694",
       "movieTitle": "Bohemian Rhapsody",
       "date": "2026-11-01",
       "time": "12:15",
       "screen": "5",
-      "seats": ["F10", "F11"]
+      "seats": ["F10", "F11"],
+      "guestName": "Alex Smith",
+      "ticketCount": 2,
+      "totalAmount": 15.5,
+      "currency": "GBP"
     }
   ]
 }
 ```
 
-The endpoint returns both past and upcoming bookings; clients can categorize them using the theatre's Europe/London time zone. Unlinked guest bookings are not included. Older bookings may not have a `bookingRef` or `movieId`.
+The endpoint returns both past and upcoming bookings; clients can categorize them using the theatre's Europe/London time zone. Unlinked guest bookings are not included. `guestName` is the name stored on the booking, and `ticketCount` is the sum of its ticket quantities. Older bookings may not have a `bookingRef`, `movieId`, `guestName`, `ticketCount`, `totalAmount`, or `currency`.
 
 ### Convert a guest booking to an account
 
