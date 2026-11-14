@@ -6,6 +6,7 @@ const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 export async function listAccountBookings(userId: string): Promise<Array<{
     bookingId: string;
     bookingRef?: string;
+    movieId?: string;
     movieTitle: string;
     date: string;
     time: string;
@@ -36,6 +37,8 @@ export async function listAccountBookings(userId: string): Promise<Array<{
                 if (typeof item.bookingId !== 'string' || !item.bookingId
                     || (item.bookingRef !== undefined
                         && (typeof item.bookingRef !== 'string' || !item.bookingRef))
+                    || (item.movieId !== undefined
+                        && (typeof item.movieId !== 'string' || !/^\d+$/.test(item.movieId)))
                     || typeof item.movieTitle !== 'string' || !item.movieTitle
                     || typeof item.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(item.date)
                     || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== item.date
@@ -48,6 +51,7 @@ export async function listAccountBookings(userId: string): Promise<Array<{
                 bookings.push({
                     bookingId: item.bookingId,
                     ...(item.bookingRef !== undefined && { bookingRef: item.bookingRef }),
+                    ...(item.movieId !== undefined && { movieId: item.movieId }),
                     movieTitle: item.movieTitle,
                     date: item.date,
                     time: item.time,

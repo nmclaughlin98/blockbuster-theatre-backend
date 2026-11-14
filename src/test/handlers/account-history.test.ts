@@ -29,6 +29,7 @@ function body(result: APIGatewayProxyResultV2): Record<string, unknown> {
 const booking = {
     bookingId: 'bk_1',
     bookingRef: 'BBT-123456',
+    movieId: '1003596',
     movieTitle: 'Example',
     date: '2030-01-01',
     time: '12:15',
@@ -51,7 +52,7 @@ test('queries both user indexes through all pages and returns only booking field
             LastEvaluatedKey: { showtimeId: 'show1', seatId: 'BOOKING#1', userId: 'user-1', bookedAt: 'now' },
         })
         .resolvesOnce({ Items: [{ ...booking, bookingId: 'bk_2' }] });
-    const { bookingRef: _bookingRef, ...legacyBooking } = booking;
+    const { bookingRef: _bookingRef, movieId: _movieId, ...legacyBooking } = booking;
     ddb.on(QueryCommand, { TableName: 'legacy-bookings' })
         .resolves({ Items: [{ ...legacyBooking, bookingId: 'bk_legacy' }] });
 
@@ -76,4 +77,10 @@ test('reports invalid booking data rather than returning an empty history', asyn
     const result = await handler(event('user-1'));
     expect(typeof result === 'string' ? undefined : result.statusCode).toBe(500);
     expect(body(result)).toEqual({ message: 'Unable to list account bookings.' });
+});
+
+test('rejects a malformed movie ID', async () => {
+    ddb.on(QueryCommand).resolves({ Items: [{ ...booking, movieId: 'invalid' }] });
+    const result = await handler(event('user-1'));
+    expect(typeof result === 'string' ? undefined : result.statusCode).toBe(500);
 });

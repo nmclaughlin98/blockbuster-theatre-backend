@@ -366,6 +366,7 @@ Success returns HTTP 201:
 {
   "bookingId": "bk_990123",
   "bookingRef": "BBT-883214",
+  "movieId": "424694",
   "showtimeId": "559924_2026-11-01_1215",
   "movieTitle": "Bohemian Rhapsody",
   "date": "2026-11-01",
@@ -415,7 +416,7 @@ The endpoint returns the same booking details as the guest endpoint, except for 
 }
 ```
 
-The endpoint returns both past and upcoming bookings; clients can categorize them using the theatre's Europe/London time zone. Unlinked guest bookings are not included. Older converted bookings may not have a `bookingRef`.
+The endpoint returns both past and upcoming bookings; clients can categorize them using the theatre's Europe/London time zone. Unlinked guest bookings are not included. Older bookings may not have a `bookingRef` or `movieId`.
 
 ### Convert a guest booking to an account
 
