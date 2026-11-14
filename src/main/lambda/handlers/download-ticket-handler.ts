@@ -126,7 +126,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
             isBase64Encoded: true,
             headers: {
                 'Content-Type': 'application/pdf',
-                'Content-Disposition': `attachment; filename="${details.bookingRef.replace(/[^a-zA-Z0-9_-]/g, '-')}.pdf"`,
+                'Content-Disposition': `attachment; filename="${details.movieTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_${details.bookingRef.replace(/[^a-zA-Z0-9_-]/g, '-')}.pdf"`,
                 'Content-Length': String(pdf.length),
                 'Cache-Control': 'no-store',
             },

@@ -25,7 +25,7 @@ const booking = {
     bookingId: 'bk_1',
     userId: 'user-1',
     bookingRef: 'BBT-123456',
-    movieTitle: 'Example',
+    movieTitle: 'Example Movie',
     date: '2030-01-01',
     time: '12:15',
     screen: '1',
@@ -76,7 +76,7 @@ test('downloads an owned booking using the JWT subject and real stored ticket fi
     expect(result.isBase64Encoded).toBe(true);
     expect(result.headers).toEqual(expect.objectContaining({
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="BBT-123456.pdf"',
+        'Content-Disposition': 'attachment; filename="Example_Movie_BBT-123456.pdf"',
         'Cache-Control': 'no-store',
     }));
     const pdf = Buffer.from(result.body!, 'base64');
@@ -84,7 +84,7 @@ test('downloads an owned booking using the JWT subject and real stored ticket fi
     expect(result.headers?.['Content-Length']).toBe(String(pdf.length));
     expect(generate).toHaveBeenCalledWith({
         bookingRef: 'BBT-123456',
-        movieTitle: 'Example',
+        movieTitle: 'Example Movie',
         date: '2030-01-01',
         time: '12:15',
         screen: '1',
