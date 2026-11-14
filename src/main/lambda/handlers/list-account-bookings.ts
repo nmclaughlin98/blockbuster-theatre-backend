@@ -97,7 +97,10 @@ export async function listAccountBookings(userId: string): Promise<Array<{
             if (typeof item.customerName === 'string') booking.customerName = item.customerName;
             if (typeof item.totalAmount === 'number') booking.totalAmount = item.totalAmount;
             if (typeof item.currency === 'string') booking.currency = item.currency;
-            if (Array.isArray(item.seats)) booking.seats = item.seats;
+            // For BOOKING records, the seats are already in an array in the record
+            if (Array.isArray(item.seats) && booking.seats.length === 0) {
+                booking.seats = item.seats;
+            }
         }
 
         exclusiveStartKey = result.LastEvaluatedKey;
