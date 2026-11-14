@@ -15,194 +15,194 @@ export interface TicketPdfInput {
 }
 
 const COLORS = {
-  dark: '#181b29',
-  red: '#ff334b',
-  redDark: '#B31E35',
+  card: '#191b29',
+  red: '#d83b4b',
   text: '#f8fafc',
-  textMuted: '#8ea6c8',
-  border: '#2f354d',
+  textMuted: '#78849b',
+  border: '#363b4b',
   white: '#ffffff',
+  page: '#f1f2f4',
 };
 
-/**
- * Generate a PDF ticket buffer in 9:16 aspect ratio (270×480 points).
- * This creates an in-memory PDF suitable for downloads and email attachments.
- */
+const PAGE_WIDTH = 390;
+const PAGE_HEIGHT = 483;
+const CARD_INSET = 4;
+const CARD_RADIUS = 16;
+const PADDING = 16;
+
 export async function generateTicketPdf(input: TicketPdfInput): Promise<Buffer> {
-  // QR code encodes the booking reference
   const qrCodeBuffer = await QRCode.toBuffer(input.bookingRef, {
     errorCorrectionLevel: 'M',
-    margin: 0, // No margin; we'll add space via positioning
-    width: 200, // Physical pixel size
+    margin: 0,
+    width: 200,
     color: {
       dark: '#0c0d12',
-      light: '#ffffff',
+      light: COLORS.white,
     },
   });
 
-  // 9:16 aspect ratio: 270pt × 480pt (or 360×640pt at 1.33x scale)
-  const pageWidth = 270;
-  const pageHeight = 480;
-
-  // Create PDF document with exact dimensions
   const doc = new PDFDocument({
-    size: [pageWidth, pageHeight],
+    size: [PAGE_WIDTH, PAGE_HEIGHT],
     margin: 0,
     bufferPages: true,
   });
 
-  const buffer = await new Promise<Buffer>((resolve, reject) => {
+  return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
 
-    doc.on('data', (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-
-    doc.on('end', () => {
-      resolve(Buffer.concat(chunks));
-    });
-
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Build the PDF content
     try {
-      buildTicketContent(doc, input, qrCodeBuffer, pageWidth, pageHeight);
+      buildTicketContent(doc, input, qrCodeBuffer);
       doc.end();
     } catch (error) {
       reject(error);
     }
   });
-
-  return buffer;
 }
 
 function buildTicketContent(
   doc: PDFKit.PDFDocument,
   input: TicketPdfInput,
-  qrCodeBuffer: Buffer,
-  pageWidth: number,
-  pageHeight: number
+  qrCodeBuffer: Buffer
 ): void {
-  const padding = 12;
-  const contentWidth = pageWidth - 2 * padding;
-  let y = padding;
+  const cardX = CARD_INSET;
+  const cardY = CARD_INSET;
+  const cardWidth = PAGE_WIDTH - CARD_INSET * 2;
+  const cardHeight = PAGE_HEIGHT - CARD_INSET * 2;
+  const contentWidth = cardWidth - PADDING * 2;
 
-  // ===== HEADER (Red banner with Blockbuster branding) =====
-  doc.rect(0, 0, pageWidth, 48)
-    .fillAndStroke(COLORS.red, COLORS.red);
+  doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT).fill(COLORS.page);
+  doc.roundedRect(cardX, cardY, cardWidth, cardHeight, CARD_RADIUS)
+    .fillAndStroke(COLORS.card, COLORS.border);
 
-  doc.font('Helvetica-Bold', 11)
+  const headerHeight = 68;
+  doc.roundedRect(cardX, cardY, cardWidth, headerHeight, CARD_RADIUS).fill(COLORS.red);
+  doc.rect(cardX, cardY + CARD_RADIUS, cardWidth, headerHeight - CARD_RADIUS).fill(COLORS.red);
+
+  doc.font('Helvetica-Bold')
+    .fontSize(18)
     .fill(COLORS.white)
-    .text('BLOCKBUSTER', padding, 8, { width: contentWidth, align: 'left' })
-    .text('THEATRE', padding, 20, { width: contentWidth, align: 'left' });
-
-  y = 48 + padding;
-
-  // ===== MOVIE TITLE =====
-  doc.font('Helvetica-Bold', 13)
-    .fill(COLORS.text)
-    .text(input.movieTitle, padding, y, {
+    .text('BLOCKBUSTER', cardX + PADDING, cardY + 16, {
       width: contentWidth,
-      align: 'left',
-      lineBreak: true,
+      characterSpacing: 1.8,
+      lineBreak: false,
+    })
+    .text('THEATRE', cardX + PADDING, cardY + 36, {
+      width: contentWidth,
+      characterSpacing: 1.8,
+      lineBreak: false,
     });
 
-  const movieTitleHeight = 32; // Approximate
-  y += movieTitleHeight;
+  doc.font('Helvetica-Bold')
+    .fontSize(21)
+    .fill(COLORS.text)
+    .text(input.movieTitle, cardX + PADDING, 88, {
+      width: contentWidth,
+      height: 30,
+      ellipsis: true,
+      lineBreak: false,
+    });
 
-  // ===== DETAILS GRID (2 columns) =====
-  const colWidth = contentWidth / 2;
-  const labelFontSize = 8;
-  const valueFontSize = 11;
-  const rowHeight = 24;
-
-  const details: Array<{ label: string; value: string }> = [
-    { label: 'SHOWTIME', value: `${formatDate(input.date)} ${input.time}` },
+  const columnWidth = contentWidth / 2;
+  const details = [
+    { label: 'SHOWTIME', value: `${formatDate(input.date)} - ${input.time}` },
     { label: 'SCREEN', value: `Screen ${input.screen}` },
-    { label: 'SEAT' + (input.seats.length === 1 ? '' : 'S'), value: input.seats.join(', ') },
+    { label: input.seats.length === 1 ? 'SEAT' : 'SEATS', value: input.seats.join(', ') },
     { label: 'GUEST NAME', value: input.guestName },
     { label: 'TICKET BREAKDOWN', value: `${input.ticketCount} ${input.ticketCount === 1 ? 'Ticket' : 'Tickets'}` },
-    { label: 'TOTAL', value: `${input.currency}${input.totalAmount.toFixed(2)}` },
+    { label: 'TOTAL', value: formatCurrency(input.totalAmount, input.currency) },
   ];
 
-  // Draw detail rows (2 columns)
-  for (let i = 0; i < details.length; i += 2) {
-    const leftDetail = details[i];
-    const rightDetail = details[i + 1];
+  for (let index = 0; index < details.length; index += 2) {
+    const rowY = 137 + (index / 2) * 45;
+    const leftDetail = details[index];
+    const rightDetail = details[index + 1];
 
-    // Left column
-    doc.font('Helvetica', labelFontSize)
+    doc.font('Helvetica')
+      .fontSize(9)
       .fill(COLORS.textMuted)
-      .text(leftDetail.label, padding, y, { width: colWidth - 6, align: 'left' });
+      .text(leftDetail.label, cardX + PADDING, rowY, {
+        width: columnWidth - 8,
+        lineBreak: false,
+      });
 
-    doc.font('Helvetica-Bold', valueFontSize)
+    doc.font('Helvetica-Bold')
+      .fontSize(13)
       .fill(COLORS.text)
-      .text(leftDetail.value, padding, y + 12, { width: colWidth - 6, align: 'left' });
+      .text(leftDetail.value, cardX + PADDING, rowY + 14, {
+        width: columnWidth - 8,
+        height: 18,
+        ellipsis: true,
+        lineBreak: false,
+      });
 
-    // Right column
-    if (rightDetail) {
-      doc.font('Helvetica', labelFontSize)
-        .fill(COLORS.textMuted)
-        .text(rightDetail.label, padding + colWidth, y, { width: colWidth - 6, align: 'left' });
+    doc.font('Helvetica')
+      .fontSize(9)
+      .fill(COLORS.textMuted)
+      .text(rightDetail.label, cardX + PADDING + columnWidth, rowY, {
+        width: columnWidth - 8,
+        lineBreak: false,
+      });
 
-      doc.font('Helvetica-Bold', valueFontSize)
-        .fill(COLORS.text)
-        .text(rightDetail.value, padding + colWidth, y + 12, { width: colWidth - 6, align: 'left' });
-    }
-
-    y += rowHeight;
+    doc.font('Helvetica-Bold')
+      .fontSize(13)
+      .fill(COLORS.text)
+      .text(rightDetail.value, cardX + PADDING + columnWidth, rowY + 14, {
+        width: columnWidth - 8,
+        height: 18,
+        ellipsis: true,
+        lineBreak: false,
+      });
   }
 
-  // ===== PERFORATION LINE =====
-  y += 6;
-  const dashPattern = [4, 4];
-  doc.moveTo(padding, y)
-    .lineTo(pageWidth - padding, y)
+  const dividerY = 282;
+  doc.moveTo(cardX, dividerY)
+    .lineTo(cardX + cardWidth, dividerY)
     .dash(4, { space: 4 })
     .stroke(COLORS.border);
   doc.undash();
 
-  y += 12;
+  const qrPanelSize = 144;
+  const qrPanelX = (PAGE_WIDTH - qrPanelSize) / 2;
+  const qrPanelY = 300;
+  const qrSize = 88;
+  doc.roundedRect(qrPanelX, qrPanelY, qrPanelSize, qrPanelSize, 7).fill(COLORS.white);
+  doc.image(qrCodeBuffer, (PAGE_WIDTH - qrSize) / 2, qrPanelY + (qrPanelSize - qrSize) / 2, {
+    width: qrSize,
+    height: qrSize,
+  });
 
-  // ===== QR CODE (in white container) =====
-  const qrSize = 140;
-  const qrX = (pageWidth - qrSize) / 2;
-  const qrY = y;
-
-  // White background box for QR
-  doc.rect(qrX - 6, qrY - 6, qrSize + 12, qrSize + 12)
-    .fill(COLORS.white);
-
-  // Embed QR code image
-  doc.image(qrCodeBuffer, qrX, qrY, { width: qrSize, height: qrSize });
-
-  y = qrY + qrSize + 12;
-
-  // ===== BOOKING REFERENCE =====
-  doc.font('Courier', 9)
+  doc.font('Courier')
+    .fontSize(9)
     .fill(COLORS.textMuted)
-    .text(`REF: ${input.bookingRef}`, padding, y, {
+    .text(`REF: ${input.bookingRef}`, cardX + PADDING, 458, {
       width: contentWidth,
       align: 'center',
+      characterSpacing: 1.4,
+      lineBreak: false,
     });
+}
 
-  // PDF complete; no bottom margin or whitespace
+function formatCurrency(amount: number, currency: string): string {
+  const symbols: Record<string, string> = {
+    GBP: '£',
+    USD: '$',
+    EUR: '€',
+  };
+  const symbol = symbols[currency] ?? `${currency} `;
+  return `${symbol}${amount.toFixed(2)}`;
 }
 
 function formatDate(dateString: string): string {
-  // Input: YYYY-MM-DD
-  // Output: Mon 14 Nov
-  try {
-    const date = new Date(`${dateString}T00:00:00Z`);
-    return new Intl.DateTimeFormat('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      timeZone: 'UTC',
-    })
-      .format(date)
-      .replace(/,/g, ''); // Remove commas if any
-  } catch {
-    return dateString;
-  }
+  const date = new Date(`${dateString}T00:00:00Z`);
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date).replace(/,/g, '');
 }
