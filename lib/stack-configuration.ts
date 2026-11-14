@@ -60,6 +60,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             guestBookedSeatsFunction: lambdaServices.guestBookedSeatsFunction,
             guestBookingFunction: lambdaServices.guestBookingFunction,
             guestConversionFunction: lambdaServices.guestConversionFunction,
+            downloadTicketFunction: lambdaServices.downloadTicketFunction,
             jwtAuthorizer: authentication.jwtAuthorizer,
         });
 
