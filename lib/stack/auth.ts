@@ -25,7 +25,7 @@ export class AuthenticationConstruct extends Construct {
 
         this.userPool = new cognito.UserPool(this, 'MovieUsers', {
             userPoolName: 'blockbuster-theatre-users',
-            selfSignUpEnabled: false,
+            selfSignUpEnabled: true,
             signInAliases: { email: true },
             autoVerify: { email: true },
             accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
