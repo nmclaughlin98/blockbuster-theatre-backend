@@ -34,7 +34,7 @@ npm run synth
 
 The API supports:
 
-- `GET /movies` and `GET /movies/{id}` for the movie catalogue. The list endpoint is paginated.
+- `GET /movies` and `GET /movies/{id}` for the movie catalogue. The list endpoint returns visible movies and provides a continuation token when needed.
 - `GET /collections/{id}` for a TMDB list and its movies currently in the catalogue.
 - `GET /film-selections` for active movie and offer booking selections.
 - `GET /ticket-pricing` for pricing resolved by movie or offer, weekday, and showtime.

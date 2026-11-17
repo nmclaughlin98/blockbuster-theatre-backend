@@ -1,12 +1,18 @@
 # Booking Data API
 
+## Movie catalogue
+
+`GET /movies` returns movie summaries in descending release-date index order. Records with `visible: false` are excluded; legacy records without `visible` are included with `visible: true`. All existing summary fields are retained.
+
+Without a `limit`, the endpoint combines DynamoDB pages, up to 20 queries or a 4 MiB serialized Lambda proxy response budget. It returns `{ "movies": [...], "nextToken": null }` when complete; otherwise, pass `nextToken` to retrieve the remainder. An explicit `limit` (1–100) retains the existing per-DynamoDB-query pagination behavior, so a page may contain fewer visible movies than requested. Clients must follow non-null tokens.
+
 ## Public featured movie endpoints
 
 `GET /movies/newest` returns movies ordered by release date, newest first, excluding records where `isComingSoon` is `true`. Legacy records without an `isComingSoon` field are included.
 
 `GET /movies/top-picks` returns movies ordered by TMDB score (`score`) from highest to lowest. This endpoint does not filter coming-soon records.
 
-Both endpoints are public and accept the same optional pagination parameters as `GET /movies`: `limit` (1–100, default 50) and `nextToken` from the prior response. They return `{ "movies": [...], "nextToken": "..." }`, with `nextToken: null` when no additional page is available.
+Both endpoints are public and accept `limit` (1–100, default 50) and `nextToken` from the prior response. They return `{ "movies": [...], "nextToken": "..." }`, with `nextToken: null` when no additional page is available.
 
 ## Demo booking confirmation email
 
