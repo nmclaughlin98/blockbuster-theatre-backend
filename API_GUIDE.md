@@ -461,6 +461,10 @@ The first name and surname must match the name on the guest booking and are save
 
 Invalid request or password returns HTTP 400, an unknown token returns HTTP 404, an already-consumed token returns HTTP 409, an expired (24-hour) token returns HTTP 410, and unexpected Cognito or storage failures return HTTP 500. Passwords, conversion tokens, and Cognito tokens are not logged.
 
+### Account creation date claim
+
+The Cognito user pool's dedicated V1 pre-token generation trigger adds `member_since` to ID tokens as the ISO 8601 UTC value of Cognito's `UserCreateDate`. The claim is not added to access tokens or to the guest-conversion HTTP response. Existing clients can obtain it from an ID token issued at sign-in or refresh. The trigger calls `AdminGetUser` on each token issuance; a lookup failure or missing creation date prevents token issuance rather than returning an incorrect claim. This call can contribute to Cognito monthly active user billing.
+
 ### Existing booking endpoints
 
 The existing `GET /bookings` and `POST /bookings` routes remain available for compatibility with the original booking model. New guest booking clients should use the versioned `/api/v1/bookings/guest` routes above so seat lookup and reservation share the same `showtimeId` and date.

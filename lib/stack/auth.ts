@@ -1,7 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
 import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Construct } from 'constructs';
+import * as path from 'path';
+import { lambdaSettings } from './lambda';
 
 export class AuthenticationConstruct extends Construct {
     public readonly userPool: cognito.UserPool;
@@ -31,6 +35,29 @@ export class AuthenticationConstruct extends Construct {
                 requireSymbols: true,
                 requireUppercase: true,
             },
+        });
+
+        const preTokenFunction = new lambdaNodejs.NodejsFunction(this, 'PreTokenGenerationHandler', {
+            functionName: 'blockbuster-theatre-pre-token-generation-handler',
+            runtime: lambdaSettings.runtime,
+            entry: path.join(__dirname, '../../src/main/lambda/handlers/pre-token-generation-handler.ts'),
+            handler: 'handler',
+            memorySize: lambdaSettings.default.memorySize,
+            timeout: cdk.Duration.seconds(5),
+        });
+        this.userPool.addTrigger(
+            cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
+            preTokenFunction,
+            cognito.LambdaVersion.V1_0
+        );
+
+        // A separate policy avoids making the function depend on the user pool it triggers.
+        new iam.Policy(this, 'PreTokenGenerationUserReadPolicy', {
+            roles: [preTokenFunction.role!],
+            statements: [new iam.PolicyStatement({
+                actions: ['cognito-idp:AdminGetUser'],
+                resources: [this.userPool.userPoolArn],
+            })],
         });
 
         const userPoolDomain = this.userPool.addDomain('CognitoDomain', {
