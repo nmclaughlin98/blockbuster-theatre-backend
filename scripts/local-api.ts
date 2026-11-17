@@ -90,21 +90,21 @@ function loadHandler(path: string): LocalHandler {
 }
 
 const handlers = {
-    listMovies: loadHandler('../src/main/lambda/handlers/list-movies-handler'),
-    getMovie: loadHandler('../src/main/lambda/handlers/get-movie-handler'),
-    listFilmSelections: loadHandler('../src/main/lambda/handlers/list-film-selections-handler'),
-    getTicketPricing: loadHandler('../src/main/lambda/handlers/get-ticket-pricing-handler'),
-    validateCheckout: loadHandler('../src/main/lambda/handlers/validate-checkout-handler'),
-    upsertTicketPricing: loadHandler('../src/main/lambda/handlers/upsert-ticket-pricing-handler'),
-    upsertBookingOffers: loadHandler('../src/main/lambda/handlers/upsert-booking-offers-handler'),
-    listMovieCollections: loadHandler('../src/main/lambda/handlers/list-movie-collections-handler'),
-    getMovieCollection: loadHandler('../src/main/lambda/handlers/get-movie-collection-handler'),
-    refreshMovieCollection: loadHandler('../src/main/lambda/handlers/refresh-movie-collection-handler'),
-    listBookings: loadHandler('../src/main/lambda/handlers/list-bookings-handler'),
-    createBooking: loadHandler('../src/main/lambda/handlers/create-booking-handler'),
-    guestBookedSeats: loadHandler('../src/main/lambda/handlers/guest-booked-seats-handler'),
-    guestBooking: loadHandler('../src/main/lambda/handlers/guest-booking-handler'),
-    guestConversion: loadHandler('../src/main/lambda/handlers/guest-conversion-handler'),
+    listMovies: loadHandler('../src/main/lambda/handlers/ListMovies/list-movies-handler'),
+    getMovie: loadHandler('../src/main/lambda/handlers/GetMovie/get-movie-handler'),
+    listFilmSelections: loadHandler('../src/main/lambda/handlers/ListFilmSelections/list-film-selections-handler'),
+    getTicketPricing: loadHandler('../src/main/lambda/handlers/GetTicketPricing/get-ticket-pricing-handler'),
+    validateCheckout: loadHandler('../src/main/lambda/handlers/ValidateCheckout/validate-checkout-handler'),
+    upsertTicketPricing: loadHandler('../src/main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler'),
+    upsertBookingOffers: loadHandler('../src/main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler'),
+    listMovieCollections: loadHandler('../src/main/lambda/handlers/ListMovieCollections/list-movie-collections-handler'),
+    getMovieCollection: loadHandler('../src/main/lambda/handlers/GetMovieCollection/get-movie-collection-handler'),
+    refreshMovieCollection: loadHandler('../src/main/lambda/handlers/RefreshMovieCollection/refresh-movie-collection-handler'),
+    listBookings: loadHandler('../src/main/lambda/handlers/ListBookings/list-bookings-handler'),
+    createBooking: loadHandler('../src/main/lambda/handlers/CreateBooking/create-booking-handler'),
+    guestBookedSeats: loadHandler('../src/main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler'),
+    guestBooking: loadHandler('../src/main/lambda/handlers/GuestBooking/guest-booking-handler'),
+    guestConversion: loadHandler('../src/main/lambda/handlers/GuestConversion/guest-conversion-handler'),
 };
 
 function corsHeaders(origin: string | undefined): Record<string, string> {

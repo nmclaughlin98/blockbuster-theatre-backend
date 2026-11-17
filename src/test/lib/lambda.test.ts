@@ -7,6 +7,7 @@ import { execFileSync } from 'child_process';
 import * as path from 'path';
 import { LambdaConstruct } from '../../../lib/stack';
 import {
+    maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
 } from '../../../lib/stack/lambda';
@@ -103,6 +104,24 @@ describe('LambdaConstruct', () => {
         template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-add-movies-handler',
         });
+    });
+
+    it('should retain CloudWatch logs for one week for every Lambda function', () => {
+        const template = Template.fromStack(stack);
+        template.resourceCountIs('Custom::LogRetention', 22);
+        template.hasResourceProperties('Custom::LogRetention', {
+            RetentionInDays: 7,
+        });
+    });
+
+    it('should allow every Lambda role to write CloudWatch logs', () => {
+        const template = Template.fromStack(stack);
+        const roles = Object.values(template.findResources('AWS::IAM::Role'));
+        const loggingRoles = roles.filter((role) =>
+            JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
+        );
+
+        expect(loggingRoles).toHaveLength(23);
     });
 
     it('should use Node.js 24.x runtime', () => {
@@ -216,8 +235,10 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(21);
-        expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
+        expect(Object.values(functions)).toHaveLength(23);
+        for (const fn of Object.values(functions)) {
+            expect(fn.Properties).not.toHaveProperty('ReservedConcurrentExecutions');
+        }
     });
 
     it('should set reserved concurrency when explicitly configured', () => {
@@ -463,6 +484,36 @@ describe('LambdaConstruct', () => {
                             'dynamodb:BatchGetItem',
                             'dynamodb:BatchWriteItem',
                         ]),
+                    }),
+                ]),
+            }),
+        });
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-guest-booking-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
+                }),
+            },
+        });
+    });
+
+    it('should allow the booking confirmation handler to read the max-ticket parameter', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-booking-confirmation-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
+                }),
+            },
+        });
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: Match.arrayWith(['ssm:GetParameter']),
+                        Resource: Match.anyValue(),
                     }),
                 ]),
             }),

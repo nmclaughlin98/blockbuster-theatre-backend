@@ -77,8 +77,8 @@ describe('DatabaseConstruct', () => {
     });
 
     it('should export table property', () => {
-        expect(construct.table).toBeDefined();
-        expect(construct.table).toHaveProperty('tableName');
+        expect(construct.movieCatalogueTable).toBeDefined();
+        expect(construct.movieCatalogueTable).toHaveProperty('tableName');
     });
 
     it('should retain the movie table when the stack is removed or replaced', () => {

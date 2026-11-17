@@ -3,6 +3,7 @@ import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { lambdaSettings } from './lambda';
@@ -40,10 +41,11 @@ export class AuthenticationConstruct extends Construct {
         const preTokenFunction = new lambdaNodejs.NodejsFunction(this, 'PreTokenGenerationHandler', {
             functionName: 'blockbuster-theatre-pre-token-generation-handler',
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, '../../src/main/lambda/handlers/pre-token-generation-handler.ts'),
+            entry: path.join(__dirname, '../../src/main/lambda/handlers/PreTokenGeneration/pre-token-generation-handler.ts'),
             handler: 'handler',
             memorySize: lambdaSettings.default.memorySize,
             timeout: cdk.Duration.seconds(5),
+            logRetention: logs.RetentionDays.ONE_WEEK,
         });
         this.userPool.addTrigger(
             cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,

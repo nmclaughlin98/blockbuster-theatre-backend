@@ -1,4 +1,4 @@
-import type { PricingRecord } from '../src/main/lambda/handlers/interfaces';
+import type { PricingRecord } from '../src/main/lambda/lib/interfaces';
 
 export const pricingRecords: PricingRecord[] = [
     {

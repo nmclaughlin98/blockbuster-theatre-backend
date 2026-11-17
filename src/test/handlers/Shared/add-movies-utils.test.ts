@@ -1,0 +1,271 @@
+import {
+    intEnv,
+    json,
+    log,
+    mapWithConcurrency,
+    normalizeMovieIds,
+} from '../../../main/lambda/handlers/utils/common';
+import {
+    projectMovieDetail,
+    projectMovieSummary,
+    projectTmdb,
+} from '../../../main/lambda/handlers/utils/movie-projection';
+import { generateShowtimes } from '../../../main/lambda/handlers/utils/showtime-schedule';
+
+describe('add movies utilities', () => {
+    describe('intEnv', () => {
+        const envName = 'ADD_MOVIES_TEST_INTEGER';
+        const originalValue = process.env[envName];
+
+        afterEach(() => {
+            if (originalValue === undefined) {
+                delete process.env[envName];
+            } else {
+                process.env[envName] = originalValue;
+            }
+        });
+
+        it('uses the fallback when unset and parses positive integers', () => {
+            delete process.env[envName];
+            expect(intEnv(envName, 4)).toBe(4);
+
+            process.env[envName] = '12';
+            expect(intEnv(envName, 4)).toBe(12);
+        });
+
+        it('rejects non-positive and non-integer values', () => {
+            process.env[envName] = '0';
+            expect(() => intEnv(envName, 4)).toThrow(`Invalid env var ${envName}=0`);
+
+            process.env[envName] = '1.5';
+            expect(() => intEnv(envName, 4)).toThrow(`Invalid env var ${envName}=1.5`);
+        });
+    });
+
+    describe('json', () => {
+        it('returns JSON with the expected API headers', () => {
+            expect(json(201, { created: true })).toEqual({
+                statusCode: 201,
+                headers: expect.objectContaining({
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                }),
+                body: '{"created":true}',
+            });
+        });
+    });
+
+    describe('log', () => {
+        it.each([
+            ['INFO', 'log'],
+            ['WARN', 'warn'],
+            ['ERROR', 'error'],
+        ] as const)('writes %s messages to console.%s', (level, method) => {
+            const write = jest.spyOn(console, method).mockImplementation(() => undefined);
+
+            log(level, 'test message', { requestId: 'request-1' });
+
+            expect(write).toHaveBeenCalledTimes(1);
+            expect(JSON.parse(write.mock.calls[0][0] as string)).toMatchObject({
+                level,
+                message: 'test message',
+                requestId: 'request-1',
+            });
+        });
+    });
+
+    describe('normalizeMovieIds', () => {
+        it('trims and deduplicates IDs and reports invalid values', () => {
+            expect(normalizeMovieIds([' 123 ', 123, '', 'abc'])).toEqual({
+                ids: ['123', 'abc'],
+                invalid: ['abc'],
+            });
+        });
+    });
+
+    describe('projectTmdb', () => {
+        it('maps TMDB data into the movie record shape', () => {
+            const movie = projectTmdb({
+                id: 42,
+                title: 'A Movie!',
+                genres: [{ name: 'Drama' }],
+                vote_average: 8.25,
+                runtime: 120,
+                release_date: new Date().toISOString().slice(0, 10),
+                overview: 'A synopsis',
+                poster_path: '/poster.jpg',
+                backdrop_path: '/backdrop.jpg',
+                credits: {
+                    cast: [{ name: 'Actor One' }],
+                    crew: [{ name: 'Director One', job: 'Director' }],
+                },
+            });
+
+            expect(movie).toMatchObject({
+                slug: 'a-movie',
+                sortTitle: 'A Movie!',
+                movieId: 42,
+                title: 'A Movie!',
+                genres: ['Drama'],
+                mainGenre: 'Drama',
+                score: 8.3,
+                starring: ['Actor One'],
+                director: 'Director One',
+                synopsis: 'A synopsis',
+                poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
+                still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
+            });
+            expect(Object.keys(movie.showtimes).length).toBeGreaterThan(0);
+            expect(Object.keys(movie.showtimes).length).toBeLessThanOrEqual(7);
+            for (const showings of Object.values(movie.showtimes)) {
+                expect(showings.length).toBeGreaterThanOrEqual(2);
+                expect(showings.length).toBeLessThanOrEqual(4);
+                expect(
+                    showings.every(
+                        ({ screen, time }) =>
+                            ['1', '2', '3', '4', '5'].includes(screen) &&
+                            /^\d{2}:\d{2}$/.test(time)
+                    )
+                ).toBe(true);
+            }
+        });
+
+        it('applies metadata overrides by TMDB ID', () => {
+            const movie = projectTmdb({
+                id: 1895,
+                title: 'Star Wars: Episode III - Revenge of the Sith',
+            });
+
+            expect(movie).toMatchObject({
+                title: 'Star Wars: Episode III - Revenge of the Sith',
+                slug: 'star-wars-revenge-of-the-sith',
+                sortTitle: 'Star Wars 03 - Revenge of the Sith',
+            });
+        });
+
+        it('collapses repeated separators in generated slugs', () => {
+            const movie = projectTmdb({
+                id: 999,
+                title: 'Star Wars: Episode III - Revenge of the Sith',
+            });
+
+            expect(movie.slug).toBe('star-wars-episode-iii-revenge-of-the-sith');
+            expect(movie.slug).not.toContain('---');
+        });
+
+        it('uses ordinary titles as sort titles for movies without overrides', () => {
+            expect(projectTmdb({ id: 999, title: 'A New Film' }).sortTitle).toBe('A New Film');
+        });
+
+        it('supports sort-only overrides for franchise spin-offs', () => {
+            const movie = projectTmdb({
+                id: 330459,
+                title: 'Rogue One: A Star Wars Story',
+            });
+
+            expect(movie).toMatchObject({
+                title: 'Rogue One: A Star Wars Story',
+                sortTitle: 'Star Wars 03.5 - Rogue One',
+            });
+        });
+
+        it('includes up to three directors', () => {
+            const movie = projectTmdb({
+                id: 8,
+                credits: {
+                    crew: [
+                        { name: 'Director One', job: 'Director' },
+                        { name: 'Director Two', job: 'Director' },
+                        { name: 'Director Three', job: 'Director' },
+                        { name: 'Director Four', job: 'Director' },
+                    ],
+                },
+            });
+
+            expect(movie.director).toBe('Director One, Director Two, Director Three');
+        });
+
+        it('supplies defaults when optional TMDB fields are missing', () => {
+            expect(projectTmdb({ id: 7, vote_average: 0 })).toMatchObject({
+                slug: '7',
+                movieId: 7,
+                title: 'Untitled',
+                genres: [],
+                mainGenre: 'Uncategorized',
+                score: 0,
+                runtime: 0,
+                releaseDate: '',
+                starring: [],
+                director: 'Unknown',
+                synopsis: '',
+                still: '',
+                poster: '',
+            });
+        });
+
+        describe('movie image projections', () => {
+            it('returns TMDB poster and still URLs at original resolution', async () => {
+                const { movieId, ...movieData } = projectTmdb({
+                    id: 42,
+                    title: 'A Movie',
+                });
+                const movie = {
+                    ...movieData,
+                    tmdbId: String(movieId),
+                    poster: 'https://image.tmdb.org/t/p/w500/poster.jpg',
+                    still: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+                    showtimes: {},
+                };
+
+                expect(projectMovieSummary(movie)).toMatchObject({
+                    poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
+                    still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
+                });
+                expect(await projectMovieDetail(movie)).toMatchObject({
+                    poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
+                    still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
+                });
+            });
+
+            describe('generateShowtimes validation', () => {
+                it('rejects invalid release dates and non-finite scores', () => {
+                    expect(() => generateShowtimes(
+                        '42',
+                        'not-a-date',
+                        7,
+                        new Date('2026-01-01T00:00:00.000Z')
+                    )).toThrow('Invalid movie release date: not-a-date');
+                    expect(() => generateShowtimes(
+                        '42',
+                        '2025-01-01',
+                        Number.NaN,
+                        new Date('2026-01-01T00:00:00.000Z')
+                    )).toThrow('Movie 42 has an invalid score.');
+                });
+            });
+        });
+    });
+
+    describe('mapWithConcurrency', () => {
+        it('returns mapped results in input order', async () => {
+            const results = await mapWithConcurrency([30, 10, 20], 2, async (delay) => {
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                return delay;
+            });
+
+            expect(results).toEqual([30, 10, 20]);
+        });
+
+        it('returns an empty result for an empty input', async () => {
+            await expect(mapWithConcurrency([], 2, async (value) => value)).resolves.toEqual([]);
+        });
+
+        it('propagates worker errors', async () => {
+            await expect(
+                mapWithConcurrency([1], 1, async () => {
+                    throw new Error('worker failed');
+                })
+            ).rejects.toThrow('worker failed');
+        });
+    });
+});
