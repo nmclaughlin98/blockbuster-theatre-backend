@@ -449,17 +449,19 @@ export class LambdaConstruct extends Construct {
                 handler: 'handler',
                 bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
-                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+                timeout: cdk.Duration.seconds(25),
                 environment: {
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
                     LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                     SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
+                    BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
                 },
             }
         );
-        props.bookingsTable.grantReadData(this.guestBookedSeatsFunction);
-        props.legacyBookingsTable.grantReadData(this.guestBookedSeatsFunction);
+        props.bookingsTable.grantReadWriteData(this.guestBookedSeatsFunction);
+        props.legacyBookingsTable.grantReadWriteData(this.guestBookedSeatsFunction);
         props.showtimeRegistryTable.grantReadData(this.guestBookedSeatsFunction);
+        props.bookingEmailIdentity.grantSendEmail(this.guestBookedSeatsFunction);
 
         this.guestBookingFunction = createNodejsFunction(
             this,

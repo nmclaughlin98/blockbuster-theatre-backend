@@ -44,6 +44,21 @@ describe('DatabaseConstruct', () => {
             KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
             BillingMode: 'PAY_PER_REQUEST',
         });
+
+    });
+
+    it('indexes guest email on both booking tables', () => {
+        const template = Template.fromStack(stack);
+        for (const TableName of ['blockbuster-theatre-bookings', 'blockbuster-theatre-bookings-by-showtime']) {
+            template.hasResourceProperties('AWS::DynamoDB::Table', {
+                TableName,
+                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
+                    IndexName: 'CustomerEmailBookings',
+                    KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
+                    Projection: { ProjectionType: 'ALL' },
+                })]),
+            });
+        }
     });
 
     it('should have string type for id attribute', () => {

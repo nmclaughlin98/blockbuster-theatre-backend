@@ -72,7 +72,7 @@ test('queries both user indexes through all pages and returns only booking field
     const result = await handler(event('user-1'));
     expect(typeof result === 'string' ? undefined : result.statusCode).toBe(200);
     expect(typeof result === 'string' ? undefined : result.headers?.['Cache-Control']).toBe('no-store');
-    expect(body(result)).toEqual({ bookings: [
+    expect(body(result)).toEqual({ newlyLinkedBookings: [], bookings: [
         { ...booking, ...returnedDetails },
         { ...booking, ...returnedDetails, bookingId: 'bk_2', totalAmount: 0 },
         { ...legacyBooking, bookingId: 'bk_legacy' },
@@ -125,7 +125,7 @@ test('sums ticket quantities across tiers', async () => {
     });
     ddb.on(QueryCommand, { TableName: 'legacy-bookings' }).resolves({ Items: [] });
     const result = await handler(event('user-1'));
-    expect(body(result)).toEqual({ bookings: [
+    expect(body(result)).toEqual({ newlyLinkedBookings: [], bookings: [
         { ...booking, ...returnedDetails, seats: ['A1', 'A2', 'A3'], ticketCount: 3 },
     ] });
 });

@@ -79,7 +79,7 @@ describe('BackendStack', () => {
                     { AttributeName: 'showingId', KeyType: 'HASH' },
                     { AttributeName: 'seatId', KeyType: 'RANGE' },
                 ],
-                GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
+                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
             }),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
@@ -89,7 +89,7 @@ describe('BackendStack', () => {
                 { AttributeName: 'showtimeId', KeyType: 'HASH' },
                 { AttributeName: 'seatId', KeyType: 'RANGE' },
             ],
-            GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
+            GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-showtime-registry',

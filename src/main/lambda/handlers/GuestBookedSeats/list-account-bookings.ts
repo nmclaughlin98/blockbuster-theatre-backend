@@ -1,9 +1,10 @@
 import { DynamoDBDocumentClient, QueryCommand, type QueryCommandOutput } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
+import type { LinkedBooking } from './link-guest-bookings';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 
-export async function listAccountBookings(userId: string): Promise<Array<{
+export async function listAccountBookings(userId: string, newlyLinked: LinkedBooking[] = []): Promise<Array<{
     bookingId: string;
     bookingRef?: string;
     movieId?: string;
@@ -18,8 +19,9 @@ export async function listAccountBookings(userId: string): Promise<Array<{
     currency?: string;
 }>> {
     const tableName = process.env.BOOKINGS_TABLE_NAME;
-    if (!tableName) {
-        throw new Error('BOOKINGS_TABLE_NAME is not configured.');
+    const legacyTableName = process.env.LEGACY_BOOKINGS_TABLE_NAME;
+    if (!tableName || !legacyTableName) {
+        throw new Error('Booking tables are not configured.');
     }
 
     const bookingMap = new Map<string, {
@@ -68,43 +70,44 @@ export async function listAccountBookings(userId: string): Promise<Array<{
         exclusiveStartKey = result.LastEvaluatedKey;
     } while (exclusiveStartKey);
 
-    // Also query BOOKING records (for guest bookings)
-    exclusiveStartKey = undefined;
-    do {
-        const result: QueryCommandOutput = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            IndexName: 'UserBookings',
-            KeyConditionExpression: 'userId = :userId',
-            FilterExpression: 'recordType = :booking',
-            ExpressionAttributeValues: { ':userId': userId, ':booking': 'BOOKING' },
-            ExclusiveStartKey: exclusiveStartKey,
-        }));
+    function addBooking(item: Record<string, unknown>) {
+        if (typeof item.bookingId !== 'string' || !item.bookingId) return;
 
-        for (const item of result.Items ?? []) {
-            if (typeof item.bookingId !== 'string' || !item.bookingId) continue;
-
-            if (!bookingMap.has(item.bookingId)) {
-                bookingMap.set(item.bookingId, { seats: [] });
-            }
-
-            const booking = bookingMap.get(item.bookingId)!;
-            if (typeof item.movieTitle === 'string') booking.movieTitle = item.movieTitle;
-            if (typeof item.date === 'string') booking.date = item.date;
-            if (typeof item.time === 'string') booking.time = item.time;
-            if (typeof item.screen === 'string') booking.screen = item.screen;
-            if (typeof item.movieId === 'string') booking.movieId = item.movieId;
-            if (typeof item.bookingRef === 'string') booking.bookingRef = item.bookingRef;
-            if (typeof item.customerName === 'string') booking.customerName = item.customerName;
-            if (typeof item.totalAmount === 'number') booking.totalAmount = item.totalAmount;
-            if (typeof item.currency === 'string') booking.currency = item.currency;
-            // For BOOKING records, the seats are already in an array in the record
-            if (Array.isArray(item.seats) && booking.seats.length === 0) {
-                booking.seats = item.seats;
-            }
+        if (!bookingMap.has(item.bookingId)) {
+            bookingMap.set(item.bookingId, { seats: [] });
         }
 
-        exclusiveStartKey = result.LastEvaluatedKey;
-    } while (exclusiveStartKey);
+        const booking = bookingMap.get(item.bookingId)!;
+        if (typeof item.movieTitle === 'string') booking.movieTitle = item.movieTitle;
+        if (typeof item.date === 'string') booking.date = item.date;
+        if (typeof item.time === 'string') booking.time = item.time;
+        if (typeof item.screen === 'string') booking.screen = item.screen;
+        if (typeof item.movieId === 'string') booking.movieId = item.movieId;
+        if (typeof item.bookingRef === 'string') booking.bookingRef = item.bookingRef;
+        if (typeof item.customerName === 'string') booking.customerName = item.customerName;
+        if (typeof item.totalAmount === 'number') booking.totalAmount = item.totalAmount;
+        if (typeof item.currency === 'string') booking.currency = item.currency;
+        if (Array.isArray(item.seats) && booking.seats.length === 0) {
+            booking.seats = item.seats;
+        }
+    }
+
+    for (const item of newlyLinked) addBooking(item);
+    for (const name of [tableName, legacyTableName]) {
+        exclusiveStartKey = undefined;
+        do {
+            const result: QueryCommandOutput = await docClient.send(new QueryCommand({
+                TableName: name,
+                IndexName: 'UserBookings',
+                KeyConditionExpression: 'userId = :userId',
+                FilterExpression: 'recordType = :booking',
+                ExpressionAttributeValues: { ':userId': userId, ':booking': 'BOOKING' },
+                ExclusiveStartKey: exclusiveStartKey,
+            }));
+            for (const item of result.Items ?? []) addBooking(item);
+            exclusiveStartKey = result.LastEvaluatedKey;
+        } while (exclusiveStartKey);
+    }
 
     // Validate and transform to output format
     const bookings = [];

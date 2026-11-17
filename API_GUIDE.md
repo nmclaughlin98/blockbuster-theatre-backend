@@ -410,10 +410,15 @@ The endpoint returns the same booking details as the guest endpoint, except for 
 
 ### List account bookings
 
-`GET /api/v1/bookings/account/history` requires a Cognito access token in the `Authorization: Bearer <token>` header. It returns bookings associated with the verified Cognito subject, including converted guest bookings. The `UserBookings` indexes are eventually consistent, so a newly created or converted booking may not appear immediately.
+`GET /api/v1/bookings/account/history` accepts a Cognito token in the `Authorization: Bearer <token>` header. Send an ID token to enable automatic guest-booking linking: only an ID token with `email_verified: true` and an email can initiate the sweep. Access tokens and unverified emails still return account history but do not initiate linking. Guest checkout does not check whether an account exists.
+
+The sweep matches normalized `customerEmail` against `CustomerEmailBookings` indexes on both booking tables. It conditionally assigns only unowned booking records to the verified subject, sets `claimedAt` and `claimMethod`, and removes the guest conversion-token hash. A competing conversion or claim cannot overwrite the owner. The existing guest credential is a conversion token, not a guest ticket-view link; it cannot be used after linking. Indexes are eventually consistent, so a recently created guest booking may be discovered on a later fetch. Newly claimed bookings are included immediately in the claiming response even before the `UserBookings` index catches up.
+
+`newlyLinkedBookings` contains booking references claimed by this request and is empty on subsequent requests. One consolidated SES email is attempted for each nonempty sweep. Delivery is best effort: if SES fails, the response includes `linkNotificationSent: false`, the failure is logged, and no retry is scheduled. A request interrupted after committing a claim may not deliver its one-time response metadata to the browser. Account history and ticket availability otherwise remain subject to `UserBookings` index propagation.
 
 ```json
 {
+  "newlyLinkedBookings": [],
   "bookings": [
     {
       "bookingId": "bk_990123",

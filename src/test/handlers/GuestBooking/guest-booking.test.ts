@@ -186,6 +186,7 @@ function mockConversionRecords(overrides: Record<string, unknown> = {}): void {
             recordType: 'BOOKING',
             customerEmail: 'customer@example.com',
             customerName: 'Niall McLaughlin',
+            conversionTokenHash: tokenHash,
         },
     });
 }
@@ -582,6 +583,8 @@ describe('guest account conversion', () => {
             showtimeId,
             seatId: 'BOOKING#bk_123',
         });
+        expect(transaction.TransactItems?.[1].Update?.ConditionExpression)
+            .toContain('conversionTokenHash = :tokenHash AND (attribute_not_exists(userId) OR userId = :null)');
         expect(JSON.stringify(transaction)).not.toContain('SuperSecretPassword123!');
         expect(JSON.stringify(transaction)).not.toContain(conversionToken);
     });
@@ -599,6 +602,22 @@ describe('guest account conversion', () => {
         );
 
         expect(result).toMatchObject({ statusCode: 400 });
+        expect(cognitoMock.calls()).toHaveLength(0);
+    });
+
+    it('rejects a token after the booking was claimed without invoking Cognito', async () => {
+        mockConversionRecords();
+        ddbMock.on(GetCommand, { TableName: 'test-bookings' }).resolves({
+            Item: {
+                recordType: 'BOOKING',
+                customerEmail: 'customer@example.com',
+                userId: 'another-user',
+            },
+        });
+        const result = await guestConversionHandler(
+            event({ conversionToken, password: 'SuperSecretPassword123!' })
+        );
+        expect(result).toMatchObject({ statusCode: 410 });
         expect(cognitoMock.calls()).toHaveLength(0);
     });
 

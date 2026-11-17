@@ -215,7 +215,9 @@ export async function convertGuestAccount(value: unknown): Promise<{
     if (
         !booking ||
         booking.recordType !== 'BOOKING' ||
-        booking.customerEmail !== tokenRecord.customerEmail
+        booking.customerEmail !== tokenRecord.customerEmail ||
+        booking.conversionTokenHash !== tokenHash ||
+        (booking.userId !== undefined && booking.userId !== null)
     ) {
         throw new GuestConversionError(410, 'Guest booking for this token is unavailable.');
     }
@@ -320,11 +322,13 @@ export async function convertGuestAccount(value: unknown): Promise<{
                             Key: bookingKey,
                             UpdateExpression: 'SET userId = :userId',
                             ConditionExpression:
-                                'recordType = :booking AND customerEmail = :email',
+                                'recordType = :booking AND customerEmail = :email AND conversionTokenHash = :tokenHash AND (attribute_not_exists(userId) OR userId = :null)',
                             ExpressionAttributeValues: {
                                 ':userId': userId,
                                 ':booking': 'BOOKING',
                                 ':email': tokenRecord.customerEmail,
+                                ':tokenHash': tokenHash,
+                                ':null': null,
                             },
                         },
                     },

@@ -3,9 +3,16 @@ import { GuestBookingError, listGuestBookedSeats } from '../GuestBooking/guest-b
 import { json, log, type OptionalJwtEvent } from '../utils/common';
 import { ShowtimeIdError } from '../utils/showtime-ids';
 import { listAccountBookings } from './list-account-bookings';
+import { linkGuestBookings } from './link-guest-bookings';
 
 const ACCOUNT_BOOKED_SEATS_ROUTE_KEY = 'GET /api/v1/bookings/account';
 const ACCOUNT_HISTORY_ROUTE_KEY = 'GET /api/v1/bookings/account/history';
+
+export interface AccountBookingHistoryResponse {
+    bookings: Awaited<ReturnType<typeof listAccountBookings>>;
+    newlyLinkedBookings: string[];
+    linkNotificationSent?: false;
+}
 
 export const handler = async (
     event: OptionalJwtEvent
@@ -19,10 +26,23 @@ export const handler = async (
     }
     try {
         if (event.routeKey === ACCOUNT_HISTORY_ROUTE_KEY && typeof userId === 'string') {
+            const claims = event.requestContext.authorizer?.jwt?.claims;
+            const email = claims?.email;
+            const verified = claims?.email_verified;
+            const linked = claims?.token_use === 'id'
+                && typeof email === 'string' && email.trim()
+                && (verified === true || verified === 'true')
+                ? await linkGuestBookings(userId, email.trim().toLowerCase())
+                : { bookings: [], notificationSent: true };
+            const body: AccountBookingHistoryResponse = {
+                bookings: await listAccountBookings(userId, linked.bookings),
+                newlyLinkedBookings: linked.bookings.map((booking) => booking.bookingRef),
+                ...(linked.notificationSent ? {} : { linkNotificationSent: false }),
+            };
             return {
                 statusCode: 200,
                 headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-                body: JSON.stringify({ bookings: await listAccountBookings(userId) }),
+                body: JSON.stringify(body),
             };
         }
         const result = await listGuestBookedSeats(
