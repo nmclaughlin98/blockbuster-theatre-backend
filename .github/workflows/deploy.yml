@@ -299,8 +299,33 @@ jobs:
         env:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
+          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
         run: |
-          npx cdk deploy --app cdk-out --require-approval never
+          PARAMETERS=()
+          if [ "$DEPLOY_ENVIRONMENT" = "dev" ]; then
+            REQUIRED_PARAMETERS=$(node -e '
+              const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
+              for (const name of ["ProdUserPoolId", "ProdUserPoolClientId"]) {
+                if (template.Parameters?.[name]) console.log(name);
+              }
+            ')
+            if [ -n "$REQUIRED_PARAMETERS" ]; then
+              OUTPUTS=$(aws cloudformation describe-stacks --stack-name BlockbusterTheatreBackendStack --output json)
+              while IFS= read -r PARAMETER; do
+                case "$PARAMETER" in
+                  ProdUserPoolId) OUTPUT_KEY=UserPoolId ;;
+                  ProdUserPoolClientId) OUTPUT_KEY=UserPoolClientId ;;
+                esac
+                VALUE=$(jq -er --arg key "$OUTPUT_KEY" \
+                  '.Stacks[0].Outputs[] | select(.OutputKey == $key) | .OutputValue | strings | select(length > 0)' <<< "$OUTPUTS") || {
+                  echo "Error: Production stack output $OUTPUT_KEY is missing."
+                  exit 1
+                }
+                PARAMETERS+=(--parameters "${PARAMETER}=${VALUE}")
+              done <<< "$REQUIRED_PARAMETERS"
+            fi
+          fi
+          npx cdk deploy --app cdk-out --require-approval never "${PARAMETERS[@]}"
 
       - name: Write Deploy Summary
         if: always()

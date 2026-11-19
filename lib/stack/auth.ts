@@ -4,16 +4,10 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { lambdaSettings } from './lambda';
-import {
-    PROD_USER_POOL_CLIENT_ID_PARAMETER,
-    PROD_USER_POOL_ID_PARAMETER,
-    resourceName,
-    type EnvironmentName,
-} from './environment';
+import { resourceName, type EnvironmentName } from './environment';
 
 interface AuthenticationConstructProps {
     envName?: EnvironmentName;
@@ -43,15 +37,15 @@ export class AuthenticationConstruct extends Construct {
         const envName = props.envName ?? 'prod';
         if (envName === 'dev') {
             const userPoolId = props.prodUserPoolId
-                ?? ssm.StringParameter.valueForStringParameter(
-                    this,
-                    PROD_USER_POOL_ID_PARAMETER
-                );
+                ?? new cdk.CfnParameter(cdk.Stack.of(this), 'ProdUserPoolId', {
+                    type: 'String',
+                    description: 'Production Cognito user pool ID',
+                }).valueAsString;
             const userPoolClientId = props.prodUserPoolClientId
-                ?? ssm.StringParameter.valueForStringParameter(
-                    this,
-                    PROD_USER_POOL_CLIENT_ID_PARAMETER
-                );
+                ?? new cdk.CfnParameter(cdk.Stack.of(this), 'ProdUserPoolClientId', {
+                    type: 'String',
+                    description: 'Production Cognito user pool client ID',
+                }).valueAsString;
 
             this.userPool = cognito.UserPool.fromUserPoolId(this, 'ImportedProdUserPool', userPoolId);
             this.userPoolClient = cognito.UserPoolClient.fromUserPoolClientId(
