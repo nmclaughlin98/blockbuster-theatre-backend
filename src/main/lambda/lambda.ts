@@ -502,7 +502,7 @@ export class LambdaConstruct extends Construct {
         );
 
         this.manageShowtimesFunction = createNodejsFunction(this, 'ManageShowtimesHandler', {
-            functionName: 'blockbuster-theatre-manage-showtimes-handler',
+            functionName: functionName('blockbuster-theatre-manage-showtimes-handler'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ManageShowtimes/manage-showtimes-handler.ts'),
             handler: 'handler',
@@ -521,7 +521,7 @@ export class LambdaConstruct extends Construct {
         props.legacyBookingsTable.grantReadData(this.manageShowtimesFunction);
 
         this.maintainScheduleFunction = createNodejsFunction(this, 'MaintainScheduleHandler', {
-            functionName: 'blockbuster-theatre-maintain-schedule-handler',
+            functionName: functionName('blockbuster-theatre-maintain-rolling-schedule-handler'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/MaintainSchedule/maintain-schedule-handler.ts'),
             handler: 'handler',

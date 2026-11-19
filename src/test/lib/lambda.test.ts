@@ -106,6 +106,16 @@ describe('LambdaConstruct', () => {
         });
     });
 
+    it('uses a distinct, environment-scoped name for the rolling schedule handler', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-maintain-rolling-schedule-handler',
+        });
+        template.hasResourceProperties('AWS::Events::Rule', {
+            ScheduleExpression: 'rate(6 hours)',
+        });
+    });
+
     it('passes a masked deployment parameter to both TMDB handlers without embedding the key', () => {
         const template = Template.fromStack(stack);
         const json = template.toJSON();
