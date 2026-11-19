@@ -15,7 +15,11 @@ export const handler = async (
     }
 
     try {
-        const movies = await scanTable(TABLE_NAME);
+        const movies = (await scanTable(TABLE_NAME)).map((movie) => {
+            const currentMovie = { ...movie };
+            delete currentMovie.showtimes;
+            return currentMovie;
+        });
         return json(200, { movies });
     } catch (error: unknown) {
         log('ERROR', 'Failed to export movies', {

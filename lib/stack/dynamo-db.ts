@@ -119,6 +119,12 @@ export class DatabaseConstruct extends Construct {
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
+        this.showtimeRegistryTable.addGlobalSecondaryIndex({
+            indexName: 'ShowtimesByDate',
+            partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
+            projectionType: dynamodb.ProjectionType.ALL,
+        });
 
         this.bookingReferencesTable = new dynamodb.Table(this, 'BlockbusterTheatreBookingReferences', {
             tableName: 'blockbuster-theatre-booking-references',

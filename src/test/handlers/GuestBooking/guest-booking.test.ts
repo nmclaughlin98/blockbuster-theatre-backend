@@ -67,6 +67,11 @@ const registryRecord = {
     day: 'Sunday',
     screen,
     time,
+    source: 'GENERATED',
+    status: 'ACTIVE',
+    runtime: 120,
+    GSI1PK: `DATE#${date}`,
+    GSI1SK: `${screen}#${time}#424694#${showtimeId}`,
 };
 
 const movie = {
@@ -140,6 +145,9 @@ function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> 
 
 function mockPricing(): void {
     ddbMock.on(QueryCommand, { TableName: 'test-movies' }).resolves({ Items: [movie] });
+    ddbMock
+        .on(QueryCommand, { TableName: 'test-showtime-registry', IndexName: 'ShowtimesByDate' })
+        .resolves({ Items: [registryRecord] });
     ddbMock.on(GetCommand, { TableName: 'test-pricing' }).resolves({ Item: pricing });
 }
 
@@ -258,7 +266,7 @@ describe('unpaid guest bookings', () => {
         );
 
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
-        expect(transaction.TransactItems).toHaveLength(7);
+        expect(transaction.TransactItems).toHaveLength(8);
         const writes = transaction.TransactItems?.map((item) => item.Put?.Item).filter(Boolean);
         expect(writes).toEqual(
             expect.arrayContaining([
@@ -354,7 +362,7 @@ describe('unpaid guest bookings', () => {
 
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
         const writes = transaction.TransactItems?.map((item) => item.Put?.Item).filter(Boolean);
-        expect(transaction.TransactItems).toHaveLength(6);
+        expect(transaction.TransactItems).toHaveLength(7);
         expect(writes).toContainEqual(
             expect.objectContaining({ recordType: 'BOOKING', userId: 'cognito-sub-123' })
         );

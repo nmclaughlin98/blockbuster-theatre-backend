@@ -24,6 +24,7 @@ interface ApiGatewayConstructProps {
     listBookingsFunction: lambda.IFunction;
     createBookingFunction: lambda.IFunction;
     rescheduleBookingFunction: lambda.IFunction;
+    manageShowtimesFunction: lambda.IFunction;
     guestBookedSeatsFunction: lambda.IFunction;
     guestBookingFunction: lambda.IFunction;
     guestConversionFunction: lambda.IFunction;
@@ -45,6 +46,7 @@ export class ApiGatewayConstruct extends Construct {
                     apigw2.CorsHttpMethod.GET,
                     apigw2.CorsHttpMethod.POST,
                     apigw2.CorsHttpMethod.PATCH,
+                    apigw2.CorsHttpMethod.DELETE,
                     apigw2.CorsHttpMethod.OPTIONS,
                 ],
                 allowHeaders: ['Content-Type', 'Authorization'],
@@ -137,6 +139,10 @@ export class ApiGatewayConstruct extends Construct {
         const rescheduleBookingIntegration = new integrations.HttpLambdaIntegration(
             'RescheduleBookingIntegration',
             props.rescheduleBookingFunction
+        );
+        const manageShowtimesIntegration = new integrations.HttpLambdaIntegration(
+            'ManageShowtimesIntegration',
+            props.manageShowtimesFunction
         );
         const guestBookedSeatsIntegration = new integrations.HttpLambdaIntegration(
             'GuestBookedSeatsIntegration',
@@ -281,6 +287,20 @@ export class ApiGatewayConstruct extends Construct {
             path: '/bookings/reschedule-booking',
             methods: [apigw2.HttpMethod.PATCH],
             integration: rescheduleBookingIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/showtimes',
+            methods: [apigw2.HttpMethod.POST],
+            integration: manageShowtimesIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/showtimes/{showtimeId}',
+            methods: [apigw2.HttpMethod.PATCH, apigw2.HttpMethod.DELETE],
+            integration: manageShowtimesIntegration,
+            authorizer: props.jwtAuthorizer,
         });
 
         this.httpApi.addRoutes({

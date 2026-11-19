@@ -41,6 +41,7 @@ describe('ApiGatewayConstruct', () => {
             listBookingsFunction: mockFunction,
             createBookingFunction: mockFunction,
             rescheduleBookingFunction: mockFunction,
+            manageShowtimesFunction: mockFunction,
             guestBookedSeatsFunction: mockFunction,
             guestBookingFunction: mockFunction,
             guestConversionFunction: mockFunction,
@@ -69,7 +70,7 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 27);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 30);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/guest',
             AuthorizationType: 'NONE',
@@ -108,6 +109,21 @@ describe('ApiGatewayConstruct', () => {
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'PATCH /bookings/reschedule-booking',
             AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /showtimes',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'PATCH /showtimes/{showtimeId}',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'DELETE /showtimes/{showtimeId}',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/newest',

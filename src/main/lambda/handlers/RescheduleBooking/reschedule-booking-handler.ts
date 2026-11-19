@@ -87,6 +87,12 @@ function requiredBookingsTableName(): string {
     return tableName;
 }
 
+function requiredShowtimeRegistryTableName(): string {
+    const tableName = process.env.SHOWTIME_REGISTRY_TABLE_NAME;
+    if (!tableName) throw new Error('SHOWTIME_REGISTRY_TABLE_NAME is not configured.');
+    return tableName;
+}
+
 async function findBooking(
     tableName: string,
     showtimeId: string,
@@ -153,6 +159,7 @@ async function rescheduleBooking(
     }
 
     const tableName = requiredBookingsTableName();
+    const registryTableName = requiredShowtimeRegistryTableName();
     const booking = await findBooking(tableName, oldShowtimeId, bookingRef);
     if (!booking) throw new RescheduleRequestError(404, 'Booking not found.');
 
@@ -231,6 +238,16 @@ async function rescheduleBooking(
                 ConditionExpression: 'attribute_not_exists(seatId)',
             },
         })),
+        {
+            ConditionCheck: {
+                TableName: registryTableName,
+                Key: { registryKey: `SHOWTIME#${request.newShowtimeId}` },
+                ConditionExpression:
+                    'attribute_exists(registryKey) AND (attribute_not_exists(#status) OR #status = :active)',
+                ExpressionAttributeNames: { '#status': 'status' },
+                ExpressionAttributeValues: { ':active': 'ACTIVE' },
+            },
+        },
     ];
 
     await docClient.send(new TransactWriteCommand({

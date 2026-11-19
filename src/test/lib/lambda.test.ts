@@ -114,6 +114,7 @@ describe('LambdaConstruct', () => {
             Environment: {
                 Variables: {
                     BOOKINGS_TABLE_NAME: { Ref: table },
+                    SHOWTIME_REGISTRY_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestShowtimeRegistryTable') },
                 },
             },
         });
@@ -135,7 +136,7 @@ describe('LambdaConstruct', () => {
 
     it('should retain CloudWatch logs for one week for every Lambda function', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('Custom::LogRetention', 23);
+        template.resourceCountIs('Custom::LogRetention', 25);
         template.hasResourceProperties('Custom::LogRetention', {
             RetentionInDays: 7,
         });
@@ -148,7 +149,7 @@ describe('LambdaConstruct', () => {
             JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
         );
 
-        expect(loggingRoles).toHaveLength(24);
+        expect(loggingRoles).toHaveLength(26);
     });
 
     it('should use Node.js 24.x runtime', () => {
@@ -262,7 +263,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(24);
+        expect(Object.values(functions)).toHaveLength(26);
         for (const fn of Object.values(functions)) {
             expect(fn.Properties).not.toHaveProperty('ReservedConcurrentExecutions');
         }

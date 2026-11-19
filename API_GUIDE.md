@@ -59,38 +59,50 @@ npm run migrate:movie-image-urls
 npm run migrate:movie-image-urls -- --apply
 ```
 
-Newly imported movies use the same shared schedule generator as the one-time updater. Every showing has a screen from 1 to 5. Movies released more than one year ago or with a score below 5/10 are scheduled on 60% of days, with 1–2 showtimes per scheduled day. Other movies are scheduled on 85% of days, with 2–4 showtimes per scheduled day. Schedules are repeatable per movie so the preview matches the applied update.
+## Cinema screening schedule
 
-To replace every existing movie's showtimes, set the table name, AWS profile, and region, then preview the proposed schedules before applying them. The script updates only the `showtimes` attribute and follows the table's `tmdbId` and `slug` keys:
+Movie catalogue records no longer use `showtimes` as their schedule source. They store `startDate`, optional `runEndDate`, and `preSalesEligible`; scheduled screenings live in the existing `blockbuster-theatre-showtime-registry` table. Movie IDs and table keys are unchanged.
 
-```json
-{
-  "Monday": [
-    { "screen": "1", "time": "13:00" },
-    { "screen": "3", "time": "14:20" }
-  ]
-}
+`POST /movies` accepts optional `startDate`, `runEndDate`, and `preSalesEligible` fields alongside `movieIds`. `startDate` defaults to the future release date, or today for a movie already released. A future release is reported as `Coming Soon (Pre-Sales Open)` only when pre-sales are enabled and at least one upcoming screening exists; otherwise it is `Coming Soon (No Showtimes Yet)`. Released movies are `Now Showing` until after `runEndDate`, when they become `Ended`.
+
+Opening `GET /movies/{id}` lazily maintains screenings for the requested date, or today through the end of the current week plus five days. The EventBridge-triggered scheduler also refreshes this rolling window every six hours. The generator uses the existing age/score frequency rules, allows at most four screenings per movie per day, and reserves a 45-minute turnaround/trailer buffer on each screen. Manually managed and offer screenings are retained; stale past screening records are removed only when no active seat locks remain. A run end date prevents new screenings beyond that date while preserving booked screenings.
+
+JWT-protected manual screening routes use the movie ID as a query parameter:
+
+- `POST /showtimes?movieId=456` with `{ "date": "2026-12-20", "screen": "2", "time": "19:00" }` creates a screening.
+- `PATCH /showtimes/{showtimeId}?movieId=456` updates one or more of `date`, `screen`, and `time`.
+- `DELETE /showtimes/{showtimeId}?movieId=456` cancels a screening.
+
+Manual changes respect the run dates, four-screening daily cap, screen conflicts, and turnaround buffer. A screening with active bookings cannot be changed or cancelled; these requests return `409`.
+
+### Scheduling data migrations
+
+After deploying the `ShowtimesByDate` index, backfill existing registry records before relying on date-based schedule queries:
+
+```powershell
+$env:SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry"
+$env:AWS_PROFILE = "your-aws-profile"
+$env:AWS_REGION = "eu-west-2"
+npm run migrate:showtime-registry
+npm run migrate:showtime-registry -- --apply
 ```
 
-Pricing requests still select a movie showtime by its day and time.
+Legacy movie `showtimes` values are ignored by the new scheduler. Preview them before removal:
 
 ```powershell
 $env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue"
 $env:AWS_PROFILE = "your-aws-profile"
 $env:AWS_REGION = "eu-west-2"
-npm run update:movie-showtimes
-npm run update:movie-showtimes -- --apply
+npm run migrate:movie-showtimes
 ```
 
-On macOS or Linux, use Bash or Zsh `export` commands instead:
+The legacy values may contain manually customized weekly schedules. Recreate any desired screenings with the manual API before removal; the migration requires an explicit confirmation flag:
 
-```bash
-export MOVIE_TABLE_NAME="blockbuster-theatre-movie-catalogue"
-export AWS_PROFILE="your-aws-profile"
-export AWS_REGION="eu-west-2"
-npm run update:movie-showtimes
-npm run update:movie-showtimes -- --apply
+```powershell
+npm run migrate:movie-showtimes -- --apply --confirm-overrides-reviewed
 ```
+
+Offer overrides are stored separately and continue to use screened showtime objects. Migrate legacy string-only offer overrides before deploying strict offer validation:
 
 ### Migrating existing offer overrides
 
@@ -102,11 +114,11 @@ npm run update:offer-showtimes
 npm run update:offer-showtimes -- --apply
 ```
 
-Run both the movie and offer migrations before deploying the strict showtime validation. Legacy records can otherwise cause `GET /movies`, `GET /film-selections`, or `GET /ticket-pricing` to reject the affected record.
+Run `update:offer-showtimes` for legacy offer overrides. Movie schedules are now generated from rules and stored in the screening registry.
 
 ## Deprecated showtime format
 
-The former string-only schedule format is deprecated and is no longer accepted for movie schedules or offer overrides. Requests using it are rejected:
+The former string-only schedule format is deprecated and is no longer accepted for offer overrides. Requests using it are rejected:
 
 ```json
 {
@@ -114,7 +126,7 @@ The former string-only schedule format is deprecated and is no longer accepted f
 }
 ```
 
-Use screened showtime objects instead. Existing cloud movie records must be migrated with `update:movie-showtimes`; offer overrides must be migrated with `update:offer-showtimes` before endpoints that read them can validate those records.
+Use screened showtime objects for offer overrides. Movie schedules are not written to movie records.
 
 ```json
 {

@@ -4,6 +4,7 @@ import {
     GetCommand,
     QueryCommand,
     TransactWriteCommand,
+    UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
@@ -113,6 +114,33 @@ function mockShowingLookups(): void {
         .callsFake((input) => {
             const registryKey = input.Key?.registryKey;
             if (typeof registryKey !== 'string') return {};
+            const showtimeMatch = /^SHOWTIME#\d{6}_(\d{4}-\d{2}-\d{2})_(\d{4})$/.exec(
+                registryKey
+            );
+            if (showtimeMatch) {
+                const recordDate = showtimeMatch[1];
+                const time = `${showtimeMatch[2].slice(0, 2)}:${showtimeMatch[2].slice(2)}`;
+                return {
+                    Item: {
+                        registryKey,
+                        recordType: 'SHOWTIME',
+                        showtimeId: registryKey.slice('SHOWTIME#'.length),
+                        movieId: '456',
+                        date: recordDate,
+                        day: new Date(`${recordDate}T00:00:00.000Z`).toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            timeZone: 'UTC',
+                        }),
+                        screen: '3',
+                        time,
+                        source: 'GENERATED',
+                        status: 'ACTIVE',
+                        runtime: 110,
+                        GSI1PK: `DATE#${recordDate}`,
+                        GSI1SK: `3#${time}#456#${registryKey.slice('SHOWTIME#'.length)}`,
+                    },
+                };
+            }
             const match = /^SCHEDULE#456#(\d{4}-\d{2}-\d{2})#3#19:00$/.exec(registryKey);
             if (!match) return {};
             const id = `559924_${match[1]}_1900`;
@@ -124,6 +152,35 @@ function mockShowingLookups(): void {
                 },
             };
         });
+    ddbMock
+        .on(QueryCommand, { TableName: 'test-showtime-registry', IndexName: 'ShowtimesByDate' })
+        .callsFake((input) => {
+            const dateKey = input.ExpressionAttributeValues?.[':dateKey'];
+            if (typeof dateKey !== 'string') return { Items: [] };
+            const recordDate = dateKey.slice('DATE#'.length);
+            const recordShowtimeId = `559924_${recordDate}_1900`;
+            return {
+                Items: [{
+                    registryKey: `SHOWTIME#${recordShowtimeId}`,
+                    recordType: 'SHOWTIME',
+                    showtimeId: recordShowtimeId,
+                    movieId: '456',
+                    date: recordDate,
+                    day: new Date(`${recordDate}T00:00:00.000Z`).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        timeZone: 'UTC',
+                    }),
+                    screen: '3',
+                    time: '19:00',
+                    source: 'GENERATED',
+                    status: 'ACTIVE',
+                    runtime: 110,
+                    GSI1PK: dateKey,
+                    GSI1SK: `3#19:00#456#${recordShowtimeId}`,
+                }],
+            };
+        });
+    ddbMock.on(UpdateCommand).resolves({});
 }
 
 const query = { movieId: '456', date, day: 'Monday', time: '19:00' };
@@ -259,8 +316,8 @@ describe('booking handlers', () => {
 
             const items = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input
                 .TransactItems!;
-            expect(items).toHaveLength(4);
-            expect(items.map((item) => item.Put?.Item)).toEqual([
+            expect(items).toHaveLength(5);
+            expect(items.filter((item) => item.Put).map((item) => item.Put?.Item)).toEqual([
                 expect.objectContaining({
                     showtimeId,
                     seatId: 'B4',
@@ -273,6 +330,7 @@ describe('booking handlers', () => {
             ]);
             expect(items[0].Put?.TableName).toBe('test-bookings-table');
             expect(items[0].Put?.ConditionExpression).toBe('attribute_not_exists(seatId)');
+            expect(items[4].ConditionCheck?.TableName).toBe('test-showtime-registry');
         });
 
         it('books through an offer when the movie matches', async () => {

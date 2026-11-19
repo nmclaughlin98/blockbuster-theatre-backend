@@ -105,11 +105,12 @@ const handlers = {
     guestBookedSeats: loadHandler('../src/main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler'),
     guestBooking: loadHandler('../src/main/lambda/handlers/GuestBooking/guest-booking-handler'),
     guestConversion: loadHandler('../src/main/lambda/handlers/GuestConversion/guest-conversion-handler'),
+    manageShowtimes: loadHandler('../src/main/lambda/handlers/ManageShowtimes/manage-showtimes-handler'),
 };
 
 function corsHeaders(origin: string | undefined): Record<string, string> {
     const headers: Record<string, string> = {
-        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+        'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type,Authorization',
     };
     if (origin && allowedOrigins.has(origin)) {
@@ -187,6 +188,19 @@ function routeRequest(
     }
     if (method === 'POST' && pathname === '/bookings') {
         return { handler: handlers.createBooking };
+    }
+    if (method === 'POST' && pathname === '/showtimes') {
+        return { handler: handlers.manageShowtimes, requiresLocalToken: true };
+    }
+    if (method === 'PATCH' || method === 'DELETE') {
+        const showtimeMatch = /^\/showtimes\/([^/]+)$/.exec(pathname);
+        if (showtimeMatch) {
+            return {
+                handler: handlers.manageShowtimes,
+                pathParameters: { showtimeId: decodeURIComponent(showtimeMatch[1]) },
+                requiresLocalToken: true,
+            };
+        }
     }
     if (
         method === 'GET' &&

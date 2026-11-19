@@ -3,12 +3,16 @@ import {
     DynamoDBDocumentClient,
     GetCommand,
     QueryCommand,
+    ScanCommand,
     TransactWriteCommand,
+    UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
+import { generateShowtimes } from '../../../main/lambda/handlers/utils/showtime-schedule';
 
 process.env.TABLE_NAME = 'test-movies-table';
 process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
+process.env.BOOKINGS_TABLE_NAME = 'test-bookings-table';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const registry = new Map<string, Record<string, unknown>>();
@@ -34,22 +38,13 @@ const movieRecord = {
     director: 'Director Name',
     synopsis: 'A short description of the movie.',
     trailer: 'https://www.youtube-nocookie.com/embed/example',
-    showtimes: {
-        Tuesday: [
-            { screen: '2', time: '13:00' },
-            { screen: '5', time: '20:00' },
-        ],
-        Monday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-    },
 };
 
-function upcomingDay(day: number): string {
+function upcomingDate(day: string): string {
     const value = new Date();
-    value.setUTCDate(value.getUTCDate() + 1);
-    while (value.getUTCDay() !== day) value.setUTCDate(value.getUTCDate() + 1);
+    value.setUTCDate(value.getUTCDate() + 8);
+    const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    while (weekday[value.getUTCDay()] !== day) value.setUTCDate(value.getUTCDate() + 1);
     return value.toISOString().slice(0, 10);
 }
 
@@ -86,6 +81,19 @@ describe('Get movie Lambda handler', () => {
             }
             return {};
         });
+        ddbMock.on(QueryCommand).callsFake((input) => {
+            if (input.TableName === 'test-bookings-table') return { Items: [] };
+            if (input.IndexName === 'ShowtimesByDate') {
+                return {
+                    Items: [...registry.values()].filter(
+                        (item) => item.GSI1PK === input.ExpressionAttributeValues?.[':dateKey']
+                    ),
+                };
+            }
+            return { Items: [movieRecord] };
+        });
+        ddbMock.on(ScanCommand).resolves({ Items: [movieRecord] });
+        ddbMock.on(UpdateCommand).resolves({});
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -98,17 +106,20 @@ describe('Get movie Lambda handler', () => {
     it('returns the detail projection for a movie ID', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [movieRecord] });
 
-        const date = upcomingDay(1);
+        const [day, daySchedule] = Object.entries(
+            generateShowtimes(movieRecord.tmdbId, movieRecord.releaseDate, movieRecord.score)
+        )[0];
+        const date = upcomingDate(day);
         const result = await handler(createEvent('12345', date));
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result)).toEqual({
+        expect(responseBody(result)).toMatchObject({
             slug: 'example-movie',
             sortTitle: 'Example Movie',
             movieId: 12345,
             title: 'Example Movie',
             visible: true,
-            isComingSoon: true,
+            preSalesEligible: false,
             genres: ['Adventure', 'Drama'],
             mainGenre: 'Adventure',
             rating: 'PG',
@@ -121,22 +132,16 @@ describe('Get movie Lambda handler', () => {
             director: 'Director Name',
             synopsis: 'A short description of the movie.',
             trailer: 'https://www.youtube-nocookie.com/embed/example',
-            showtimes: {
-                Monday: [
-                    {
-                        screen: '1',
-                        time: '11:00',
-                        date,
-                        showtimeId: expect.stringMatching(new RegExp(`^\\d{6}_${date}_1100$`)),
-                    },
-                    {
-                        screen: '3',
-                        time: '19:00',
-                        date,
-                        showtimeId: expect.stringMatching(new RegExp(`^\\d{6}_${date}_1900$`)),
-                    },
-                ],
-            },
+        });
+        expect(responseBody(result).showtimes).toEqual({
+            [day]: daySchedule.map(({ screen, time }) => ({
+                screen,
+                time,
+                date,
+                showtimeId: expect.stringMatching(
+                    new RegExp(`^\\d{6}_${date}_${time.replace(':', '')}$`)
+                ),
+            })),
         });
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-movies-table',
@@ -147,57 +152,47 @@ describe('Get movie Lambda handler', () => {
     });
 
     it('returns date-specific stable showtime IDs with assigned screens', async () => {
-        const date = upcomingDay(1);
-        const showtimes = {
-            Monday: [
-                { screen: '1', time: '13:00' },
-                { screen: '3', time: '14:20' },
-            ],
-        };
-        ddbMock.on(QueryCommand).resolves({
-            Items: [{ ...movieRecord, showtimes }],
-        });
+        const [day, daySchedule] = Object.entries(
+            generateShowtimes(movieRecord.tmdbId, movieRecord.releaseDate, movieRecord.score)
+        )[0];
+        const date = upcomingDate(day);
 
         const result = await handler(createEvent('12345', date));
 
         expect(result).toMatchObject({ statusCode: 200 });
         const response = responseBody(result);
         const showtimesResult = response.showtimes as Record<string, Array<Record<string, unknown>>>;
-        expect(showtimesResult.Monday).toEqual([
-            {
-                screen: '1',
-                time: '13:00',
-                date,
-                showtimeId: expect.stringMatching(new RegExp(`^\\d{6}_${date}_1300$`)),
-            },
-            {
-                screen: '3',
-                time: '14:20',
-                date,
-                showtimeId: expect.stringMatching(new RegExp(`^\\d{6}_${date}_1420$`)),
-            },
-        ]);
-        const id = showtimesResult.Monday[0].showtimeId;
+        expect(showtimesResult[day]).toHaveLength(daySchedule.length);
+        const id = showtimesResult[day][0].showtimeId;
         const secondResult = await handler(createEvent('12345', date));
+        expect(secondResult).toMatchObject({ statusCode: 200 });
         const secondSchedule = responseBody(secondResult).showtimes as Record<
             string,
             Array<Record<string, unknown>>
         >;
-        expect(secondSchedule.Monday[0].showtimeId).toBe(id);
+        expect(secondSchedule[day][0].showtimeId).toBe(id);
     });
 
     it('returns a stable date-specific showtime ID for Bohemian Rhapsody Sunday 12:15 screen 5', async () => {
-        const date = upcomingDay(0);
-        ddbMock.on(QueryCommand).resolves({
-            Items: [
-                {
-                    ...movieRecord,
-                    tmdbId: '424694',
-                    title: 'Bohemian Rhapsody',
-                    showtimes: { Sunday: [{ screen: '5', time: '12:15' }] },
-                },
-            ],
-        });
+        const movie = {
+            ...movieRecord,
+            tmdbId: '424694',
+            title: 'Bohemian Rhapsody',
+        };
+        const [day, expected] = Object.entries(
+            generateShowtimes(movie.tmdbId, movie.releaseDate, movie.score)
+        )[0];
+        ddbMock.on(QueryCommand).callsFake((input) => (
+            input.IndexName === 'ShowtimesByDate'
+                ? {
+                    Items: [...registry.values()].filter(
+                        (item) => item.GSI1PK === input.ExpressionAttributeValues?.[':dateKey']
+                    ),
+                }
+                : { Items: [movie] }
+        ));
+        ddbMock.on(ScanCommand).resolves({ Items: [movie] });
+        const date = upcomingDate(day);
 
         const result = await handler(createEvent('424694', date));
 
@@ -205,11 +200,13 @@ describe('Get movie Lambda handler', () => {
             string,
             Array<Record<string, unknown>>
         >;
-        expect(showtimes.Sunday[0]).toMatchObject({
-            screen: '5',
-            time: '12:15',
+        expect(showtimes[day][0]).toMatchObject({
+            screen: expected[0].screen,
+            time: expected[0].time,
             date,
-            showtimeId: expect.stringMatching(new RegExp(`^\\d{6}_${date}_1215$`)),
+            showtimeId: expect.stringMatching(
+                new RegExp(`^\\d{6}_${date}_${expected[0].time.replace(':', '')}$`)
+            ),
         });
     });
 

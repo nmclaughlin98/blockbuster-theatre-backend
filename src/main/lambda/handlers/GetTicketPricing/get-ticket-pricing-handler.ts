@@ -12,6 +12,7 @@ export const handler = async (
         const resolved = await resolvePricing({
             movieId: query.movieId,
             offerId: query.offerId,
+            date: query.date,
             showtime: {
                 day: query.day,
                 time: query.time,

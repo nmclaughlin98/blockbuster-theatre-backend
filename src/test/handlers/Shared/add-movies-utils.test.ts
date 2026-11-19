@@ -12,6 +12,10 @@ import {
 } from '../../../main/lambda/handlers/utils/movie-projection';
 import { generateShowtimes } from '../../../main/lambda/handlers/utils/showtime-schedule';
 
+jest.mock('../../../main/lambda/handlers/utils/movie-schedule-service', () => ({
+    getMovieShowtimes: jest.fn().mockResolvedValue({}),
+}));
+
 describe('add movies utilities', () => {
     describe('intEnv', () => {
         const envName = 'ADD_MOVIES_TEST_INTEGER';
@@ -115,19 +119,8 @@ describe('add movies utilities', () => {
                 poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
                 still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
             });
-            expect(Object.keys(movie.showtimes).length).toBeGreaterThan(0);
-            expect(Object.keys(movie.showtimes).length).toBeLessThanOrEqual(7);
-            for (const showings of Object.values(movie.showtimes)) {
-                expect(showings.length).toBeGreaterThanOrEqual(2);
-                expect(showings.length).toBeLessThanOrEqual(4);
-                expect(
-                    showings.every(
-                        ({ screen, time }) =>
-                            ['1', '2', '3', '4', '5'].includes(screen) &&
-                            /^\d{2}:\d{2}$/.test(time)
-                    )
-                ).toBe(true);
-            }
+            expect(movie).not.toHaveProperty('showtimes');
+            expect(movie.preSalesEligible).toBe(false);
         });
 
         it('applies metadata overrides by TMDB ID', () => {
@@ -214,7 +207,6 @@ describe('add movies utilities', () => {
                     tmdbId: String(movieId),
                     poster: 'https://image.tmdb.org/t/p/w500/poster.jpg',
                     still: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
-                    showtimes: {},
                 };
 
                 expect(projectMovieSummary(movie)).toMatchObject({

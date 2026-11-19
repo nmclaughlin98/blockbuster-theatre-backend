@@ -10,6 +10,7 @@ import {
 import { mockClient } from 'aws-sdk-client-mock';
 
 process.env.BOOKINGS_TABLE_NAME = 'test-bookings-table';
+process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const { handler } = require('../../../main/lambda/handlers/RescheduleBooking/reschedule-booking-handler') as {
@@ -99,7 +100,7 @@ describe('Reschedule booking Lambda handler', () => {
             ConsistentRead: true,
         });
         const items = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems!;
-        expect(items).toHaveLength(6);
+        expect(items).toHaveLength(7);
         expect(items[0].Delete).toMatchObject({
             Key: { showtimeId: booking.showtimeId, seatId: booking.seatId },
             ConditionExpression: 'attribute_exists(seatId)',
@@ -117,7 +118,7 @@ describe('Reschedule booking Lambda handler', () => {
             ConditionExpression: 'attribute_not_exists(seatId)',
         });
         expect(items.slice(2, 4).map((item) => item.Delete?.Key?.seatId)).toEqual(['B4', 'B5']);
-        expect(items.slice(4).map((item) => item.Put?.Item)).toEqual([
+        expect(items.slice(4, 6).map((item) => item.Put?.Item)).toEqual([
             expect.objectContaining({
                 showtimeId: '456000_2026-11-23_1930',
                 seatId: 'B4',
@@ -131,9 +132,13 @@ describe('Reschedule booking Lambda handler', () => {
                 recordType: 'SEAT',
             }),
         ]);
-        expect(items.slice(4).every((item) =>
+        expect(items.slice(4, 6).every((item) =>
             item.Put?.ConditionExpression === 'attribute_not_exists(seatId)'
         )).toBe(true);
+        expect(items[6].ConditionCheck).toMatchObject({
+            TableName: 'test-showtime-registry',
+            Key: { registryKey: 'SHOWTIME#456000_2026-11-23_1930' },
+        });
     });
 
     it('requires both query parameters and the new showtime ID', async () => {

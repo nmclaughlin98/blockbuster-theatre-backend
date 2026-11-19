@@ -6,6 +6,8 @@ import * as ses from 'aws-cdk-lib/aws-ses';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cdk from 'aws-cdk-lib';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import {
@@ -67,6 +69,8 @@ export class LambdaConstruct extends Construct {
     public readonly listBookingsFunction: lambdaNodejs.NodejsFunction;
     public readonly createBookingFunction: lambdaNodejs.NodejsFunction;
     public readonly rescheduleBookingFunction: lambdaNodejs.NodejsFunction;
+    public readonly manageShowtimesFunction: lambdaNodejs.NodejsFunction;
+    public readonly maintainScheduleFunction: lambdaNodejs.NodejsFunction;
     public readonly guestBookedSeatsFunction: lambdaNodejs.NodejsFunction;
     public readonly guestBookingFunction: lambdaNodejs.NodejsFunction;
     public readonly guestConversionFunction: lambdaNodejs.NodejsFunction;
@@ -283,6 +287,7 @@ export class LambdaConstruct extends Construct {
                     TABLE_NAME: props.table.tableName,
                     PRICING_TABLE_NAME: props.pricingTable.tableName,
                     OFFERS_TABLE_NAME: props.offersTable.tableName,
+                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 },
             }
         );
@@ -290,6 +295,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadData(this.getTicketPricingFunction);
         props.pricingTable.grantReadData(this.getTicketPricingFunction);
         props.offersTable.grantReadData(this.getTicketPricingFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.getTicketPricingFunction);
 
         this.validateCheckoutFunction = createNodejsFunction(
             this,
@@ -305,6 +311,7 @@ export class LambdaConstruct extends Construct {
                     TABLE_NAME: props.table.tableName,
                     PRICING_TABLE_NAME: props.pricingTable.tableName,
                     OFFERS_TABLE_NAME: props.offersTable.tableName,
+                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 },
             }
         );
@@ -312,6 +319,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadData(this.validateCheckoutFunction);
         props.pricingTable.grantReadData(this.validateCheckoutFunction);
         props.offersTable.grantReadData(this.validateCheckoutFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.validateCheckoutFunction);
 
         this.sendBookingConfirmationFunction = createNodejsFunction(
             this,
@@ -449,6 +457,7 @@ export class LambdaConstruct extends Construct {
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
             },
         });
         props.bookingsTable.grant(
@@ -457,6 +466,54 @@ export class LambdaConstruct extends Construct {
             'dynamodb:DeleteItem',
             'dynamodb:PutItem'
         );
+        props.showtimeRegistryTable.grantReadData(this.rescheduleBookingFunction);
+        props.showtimeRegistryTable.grant(
+            this.rescheduleBookingFunction,
+            'dynamodb:ConditionCheckItem'
+        );
+
+        this.manageShowtimesFunction = createNodejsFunction(this, 'ManageShowtimesHandler', {
+            functionName: 'blockbuster-theatre-manage-showtimes-handler',
+            runtime: lambdaSettings.runtime,
+            entry: path.join(__dirname, './handlers/ManageShowtimes/manage-showtimes-handler.ts'),
+            handler: 'handler',
+            memorySize: lambdaSettings.default.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
+                BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
+            },
+        });
+        props.table.grantReadData(this.manageShowtimesFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.manageShowtimesFunction);
+        props.bookingsTable.grantReadData(this.manageShowtimesFunction);
+        props.legacyBookingsTable.grantReadData(this.manageShowtimesFunction);
+
+        this.maintainScheduleFunction = createNodejsFunction(this, 'MaintainScheduleHandler', {
+            functionName: 'blockbuster-theatre-maintain-schedule-handler',
+            runtime: lambdaSettings.runtime,
+            entry: path.join(__dirname, './handlers/MaintainSchedule/maintain-schedule-handler.ts'),
+            handler: 'handler',
+            memorySize: 512,
+            timeout: cdk.Duration.minutes(15),
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
+                BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
+            },
+        });
+        props.table.grantReadData(this.maintainScheduleFunction);
+        props.showtimeRegistryTable.grantReadWriteData(this.maintainScheduleFunction);
+        props.bookingsTable.grantReadData(this.maintainScheduleFunction);
+        props.legacyBookingsTable.grantReadData(this.maintainScheduleFunction);
+
+        new events.Rule(this, 'MaintainRollingScheduleRule', {
+            schedule: events.Schedule.rate(cdk.Duration.hours(6)),
+            targets: [new targets.LambdaFunction(this.maintainScheduleFunction)],
+        });
 
         this.guestBookedSeatsFunction = createNodejsFunction(
             this,

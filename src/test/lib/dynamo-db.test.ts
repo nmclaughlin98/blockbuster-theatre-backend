@@ -78,6 +78,22 @@ describe('DatabaseConstruct', () => {
         }
     });
 
+    it('indexes showtime registry records by date without changing the table key', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-showtime-registry',
+            KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
+            GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
+                IndexName: 'ShowtimesByDate',
+                KeySchema: [
+                    { AttributeName: 'GSI1PK', KeyType: 'HASH' },
+                    { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            })]),
+        });
+    });
+
     it('should have string type for id attribute', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {

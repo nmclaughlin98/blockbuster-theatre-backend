@@ -142,8 +142,22 @@ const tableDefinitions: CreateTableCommandInput[] = [
     {
         TableName: tableNames.showtimeRegistry,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [{ AttributeName: 'registryKey', AttributeType: 'S' }],
+        AttributeDefinitions: [
+            { AttributeName: 'registryKey', AttributeType: 'S' },
+            { AttributeName: 'GSI1PK', AttributeType: 'S' },
+            { AttributeName: 'GSI1SK', AttributeType: 'S' },
+        ],
         KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
+        GlobalSecondaryIndexes: [
+            {
+                IndexName: 'ShowtimesByDate',
+                KeySchema: [
+                    { AttributeName: 'GSI1PK', KeyType: 'HASH' },
+                    { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+        ],
     },
     {
         TableName: tableNames.bookingReferences,
@@ -260,36 +274,8 @@ const demoMovie: MovieRecord & {
     synopsis: 'A sample movie record for local API testing.',
     tagline: 'Local development fixture.',
     trailer: '',
-    showtimes: {
-        Monday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Tuesday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Wednesday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Thursday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Friday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Saturday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Sunday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-    },
+    startDate: '2026-01-01',
+    preSalesEligible: false,
     entityType: 'Movie',
     GSI1PK: 'MOVIE',
     GSI1SK: '2026-01-01#99999999',
