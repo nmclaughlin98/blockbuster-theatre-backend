@@ -106,6 +106,40 @@ describe('LambdaConstruct', () => {
         });
     });
 
+    it('passes a masked deployment parameter to both TMDB handlers without embedding the key', () => {
+        const template = Template.fromStack(stack);
+        const json = template.toJSON();
+        expect(json.Parameters.TmdbApiKey).toMatchObject({ Type: 'String', NoEcho: true });
+        for (const name of [
+            'blockbuster-theatre-add-movies-handler',
+            'blockbuster-theatre-refresh-movie-collection-handler',
+        ]) {
+            template.hasResourceProperties('AWS::Lambda::Function', {
+                FunctionName: name,
+                Environment: { Variables: Match.objectLike({ TMDB_API_KEY: { Ref: 'TmdbApiKey' } }) },
+            });
+        }
+        expect(JSON.stringify(json)).not.toContain('test-tmdb-key');
+    });
+
+    it('rejects missing and blank TMDB keys at synthesis configuration', () => {
+        const original = process.env.TMDB_API_KEY;
+        try {
+            for (const [index, value] of [undefined, '', '   '].entries()) {
+                if (value === undefined) delete process.env.TMDB_API_KEY;
+                else process.env.TMDB_API_KEY = value;
+                expect(() => new LambdaConstruct(stack, `MissingTmdbKey${index}`, {
+                    table, pricingTable, offersTable, collectionsTable, bookingsTable,
+                    legacyBookingsTable, showtimeRegistryTable, bookingReferencesTable,
+                    guestConversionTokensTable, userPool, userPoolClient, bookingEmailIdentity,
+                })).toThrow('TMDB_API_KEY must be set and non-empty');
+            }
+        } finally {
+            if (original === undefined) delete process.env.TMDB_API_KEY;
+            else process.env.TMDB_API_KEY = original;
+        }
+    });
+
     it('configures the reschedule handler with only the required booking-table permissions', () => {
         const template = Template.fromStack(stack);
         const table = Match.stringLikeRegexp('TestBookingsTable');

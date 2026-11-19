@@ -19,6 +19,8 @@
     "migrate:movie-image-urls": "ts-node scripts/migrate-movie-image-urls.ts",
     "migrate:showtime-registry": "ts-node scripts/migrate-showtime-registry.ts",
     "migrate:movie-showtimes": "ts-node scripts/migrate-movie-showtimes.ts",
+    "sync:dev": "ts-node scripts/sync-prod-to-dev.ts",
+    "update:movie-showtimes": "ts-node scripts/update-movie-showtimes.ts",
     "update:offer-showtimes": "ts-node scripts/update-offer-showtimes.ts",
     "local:db:start": "docker compose up -d dynamodb-local",
     "local:db:stop": "docker compose stop dynamodb-local",
