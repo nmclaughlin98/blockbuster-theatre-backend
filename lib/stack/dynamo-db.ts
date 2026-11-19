@@ -81,6 +81,12 @@ export class DatabaseConstruct extends Construct {
             partitionKey: { name: 'customerEmail', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
         });
+        this.legacyBookingsTable.addGlobalSecondaryIndex({
+            indexName: 'CustomerEmailUpcomingBookings',
+            partitionKey: { name: 'customerEmail', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'date', type: dynamodb.AttributeType.STRING },
+            projectionType: dynamodb.ProjectionType.ALL,
+        });
 
         this.bookingsTable = new dynamodb.Table(this, 'BlockbusterTheatreBookingsByShowtime', {
             tableName: 'blockbuster-theatre-bookings-by-showtime',
@@ -98,6 +104,12 @@ export class DatabaseConstruct extends Construct {
         this.bookingsTable.addGlobalSecondaryIndex({
             indexName: 'CustomerEmailBookings',
             partitionKey: { name: 'customerEmail', type: dynamodb.AttributeType.STRING },
+            projectionType: dynamodb.ProjectionType.ALL,
+        });
+        this.bookingsTable.addGlobalSecondaryIndex({
+            indexName: 'CustomerEmailUpcomingBookings',
+            partitionKey: { name: 'customerEmail', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'date', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
         });
 

@@ -61,6 +61,23 @@ describe('DatabaseConstruct', () => {
         }
     });
 
+    it('indexes guest email and date for upcoming booking lookups', () => {
+        const template = Template.fromStack(stack);
+        for (const TableName of ['blockbuster-theatre-bookings', 'blockbuster-theatre-bookings-by-showtime']) {
+            template.hasResourceProperties('AWS::DynamoDB::Table', {
+                TableName,
+                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
+                    IndexName: 'CustomerEmailUpcomingBookings',
+                    KeySchema: [
+                        { AttributeName: 'customerEmail', KeyType: 'HASH' },
+                        { AttributeName: 'date', KeyType: 'RANGE' },
+                    ],
+                    Projection: { ProjectionType: 'ALL' },
+                })]),
+            });
+        }
+    });
+
     it('should have string type for id attribute', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
