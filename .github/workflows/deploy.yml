@@ -1,5 +1,5 @@
 name: 2. Deploy Stack 🚀
-run-name: '🚀 Deploy Stack (${{ github.event.workflow_run.head_branch || github.ref_name }} Build #${{ github.event.workflow_run.run_number || inputs.build_number }})'
+run-name: "🚀 Deploy Stack (${{ inputs.environment || (github.event.workflow_run.head_branch == 'dev' && 'dev' || 'prod') }}; ${{ github.event.workflow_run.head_branch || github.ref_name }} Build #${{ github.event.workflow_run.run_number || inputs.build_number }})"
 
 on:
   workflow_run:
@@ -12,8 +12,16 @@ on:
       - dev
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - prod
       build_number:
-        description: 'Build number to deploy (leave as "latest" or empty for most recent successful main build)'
+        description: 'Build number to deploy from the selected environment branch (leave as "latest" for the most recent successful build)'
         required: false
         default: 'latest'
         type: string
@@ -53,6 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
           TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
           TRIGGER_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -70,9 +79,17 @@ jobs:
               exit 1
             fi
           else
+            TARGET_ENVIRONMENT="${INPUT_ENVIRONMENT:-dev}"
+            if [ "$TARGET_ENVIRONMENT" = "prod" ]; then
+              TARGET_BRANCH=main
+            elif [ "$TARGET_ENVIRONMENT" = "dev" ]; then
+              TARGET_BRANCH=dev
+            else
+              echo "Error: Environment must be 'dev' or 'prod'."
+              exit 1
+            fi
+
             TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
-            TARGET_ENVIRONMENT=prod
-            TARGET_BRANCH=main
 
             if [ "$TARGET_BUILD" = "latest" ]; then
               BUILD_INFO=$(gh run list --workflow build.yml --branch "$TARGET_BRANCH" --status success --limit 1 --json databaseId,number --jq '.[0] | [.databaseId, .number] | @tsv')
@@ -127,7 +144,7 @@ jobs:
         if: always()
         env:
           DEPLOY_BRANCH: ${{ steps.download_artifact.outputs.deploy_branch || github.event.workflow_run.head_branch || github.ref_name }}
-          DEPLOY_ENVIRONMENT: ${{ steps.download_artifact.outputs.deploy_environment || 'prod' }}
+          DEPLOY_ENVIRONMENT: ${{ steps.download_artifact.outputs.deploy_environment || inputs.environment || (github.event.workflow_run.head_branch == 'dev' && 'dev') || 'prod' }}
           DEPLOY_BUILD_NUMBER: ${{ steps.download_artifact.outputs.build_number || github.event.workflow_run.run_number || inputs.build_number }}
           DEPLOY_BUILD_RUN_ID: ${{ steps.download_artifact.outputs.build_run_id || github.event.workflow_run.id }}
           JOB_STATUS: ${{ job.status }}
