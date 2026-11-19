@@ -29,6 +29,7 @@ describe('AuthenticationConstruct', () => {
         expect(template.Parameters).toMatchObject({
             ProdUserPoolId: { Type: 'String' },
             ProdUserPoolClientId: { Type: 'String' },
+            ProdPostmanClientId: { Type: 'String', MinLength: 1 },
         });
         expect(template.Outputs.ImportedPoolId.Value).toEqual({ Ref: 'ProdUserPoolId' });
         expect(template.Outputs.ImportedClientId.Value).toEqual({ Ref: 'ProdUserPoolClientId' });

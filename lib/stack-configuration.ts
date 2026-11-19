@@ -13,6 +13,7 @@ interface BlockbusterTheatreBackendStackProps extends cdk.StackProps {
     envName?: EnvironmentName;
     prodUserPoolId?: string;
     prodUserPoolClientId?: string;
+    prodPostmanClientId?: string;
 }
 
 export class BlockbusterTheatreBackendStack extends cdk.Stack {
@@ -21,6 +22,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             envName = 'prod',
             prodUserPoolId,
             prodUserPoolClientId,
+            prodPostmanClientId,
             ...stackProps
         } = props;
         super(scope, id, stackProps);
@@ -34,6 +36,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             envName,
             prodUserPoolId,
             prodUserPoolClientId,
+            prodPostmanClientId,
         });
         const bookingEmailIdentity = envName === 'prod'
             ? new ses.EmailIdentity(this, 'BookingEmailIdentity', {

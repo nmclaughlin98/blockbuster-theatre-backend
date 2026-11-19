@@ -13,6 +13,7 @@ interface AuthenticationConstructProps {
     envName?: EnvironmentName;
     prodUserPoolId?: string;
     prodUserPoolClientId?: string;
+    prodPostmanClientId?: string;
 }
 
 export class AuthenticationConstruct extends Construct {
@@ -46,6 +47,13 @@ export class AuthenticationConstruct extends Construct {
                     type: 'String',
                     description: 'Production Cognito user pool client ID',
                 }).valueAsString;
+            const postmanClientId = props.prodPostmanClientId
+                ?? new cdk.CfnParameter(cdk.Stack.of(this), 'ProdPostmanClientId', {
+                    type: 'String',
+                    minLength: 1,
+                    allowedPattern: '.*\\S.*',
+                    description: 'Production Cognito Postman app client ID',
+                }).valueAsString;
 
             this.userPool = cognito.UserPool.fromUserPoolId(this, 'ImportedProdUserPool', userPoolId);
             this.userPoolClient = cognito.UserPoolClient.fromUserPoolClientId(
@@ -56,7 +64,7 @@ export class AuthenticationConstruct extends Construct {
             this.jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
                 resourceName('CognitoJwtAuthorizer', envName),
                 `https://cognito-idp.${cdk.Stack.of(this).region}.amazonaws.com/${userPoolId}`,
-                { jwtAudience: [userPoolClientId] }
+                { jwtAudience: [userPoolClientId, postmanClientId] }
             );
             return;
         }

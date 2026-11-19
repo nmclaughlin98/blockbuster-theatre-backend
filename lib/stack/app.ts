@@ -27,6 +27,10 @@ new BlockbusterTheatreBackendStack(app, envName === 'dev'
         'prodUserPoolClientId',
         'PROD_USER_POOL_CLIENT_ID'
     ),
+    prodPostmanClientId: optionalConfigValue(
+        'prodPostmanClientId',
+        'PROD_POSTMAN_CLIENT_ID'
+    ),
     env: {
         account: '334624057595',
         region: 'eu-west-2',

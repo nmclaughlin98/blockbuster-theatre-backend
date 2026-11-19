@@ -332,6 +332,7 @@ jobs:
           CDK_DEFAULT_REGION: 'eu-west-2'
           DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          PROD_POSTMAN_CLIENT_ID: ${{ vars.PROD_POSTMAN_CLIENT_ID }}
         run: |
           if [[ ! "$TMDB_API_KEY" =~ [^[:space:]] ]]; then
             echo "Error: TMDB_API_KEY must be configured as a non-empty GitHub Environment secret."
@@ -339,6 +340,17 @@ jobs:
           fi
           PARAMETERS=(--parameters "TmdbApiKey=${TMDB_API_KEY}")
           if [ "$DEPLOY_ENVIRONMENT" = "dev" ]; then
+            POSTMAN_PARAMETER_REQUIRED=$(node -e '
+              const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
+              if (template.Parameters?.ProdPostmanClientId) console.log("true");
+            ')
+            if [ "$POSTMAN_PARAMETER_REQUIRED" = "true" ]; then
+              if [[ ! "$PROD_POSTMAN_CLIENT_ID" =~ [^[:space:]] ]]; then
+                echo "Error: PROD_POSTMAN_CLIENT_ID must be configured as a non-empty dev GitHub Environment variable."
+                exit 1
+              fi
+              PARAMETERS+=(--parameters "ProdPostmanClientId=${PROD_POSTMAN_CLIENT_ID}")
+            fi
             REQUIRED_PARAMETERS=$(node -e '
               const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
               for (const name of ["ProdUserPoolId", "ProdUserPoolClientId"]) {

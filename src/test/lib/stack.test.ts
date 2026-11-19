@@ -24,6 +24,7 @@ describe('BackendStack', () => {
                 envName: 'dev',
                 prodUserPoolId: 'eu-west-2_sharedpool',
                 prodUserPoolClientId: 'sharedclientid',
+                prodPostmanClientId: 'postmanclientid',
                 env: { account: '334624057595', region: 'eu-west-2' },
             }
         );
@@ -84,7 +85,25 @@ describe('BackendStack', () => {
             Name: 'CognitoJwtAuthorizer-DEV',
             AuthorizerType: 'JWT',
             JwtConfiguration: {
-                Audience: ['sharedclientid'],
+                Audience: ['sharedclientid', 'postmanclientid'],
+                Issuer: 'https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_sharedpool',
+            },
+        });
+    });
+
+    it('uses the Postman CloudFormation parameter in the dev authorizer when not configured', () => {
+        const app = new cdk.App();
+        const devStack = new BlockbusterTheatreBackendStack(app, 'DevStack', {
+            envName: 'dev',
+            prodUserPoolId: 'eu-west-2_sharedpool',
+            prodUserPoolClientId: 'sharedclientid',
+            env: { account: '334624057595', region: 'eu-west-2' },
+        });
+        const template = Template.fromStack(devStack);
+        template.hasParameter('ProdPostmanClientId', { Type: 'String', MinLength: 1 });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Authorizer', {
+            JwtConfiguration: {
+                Audience: ['sharedclientid', { Ref: 'ProdPostmanClientId' }],
                 Issuer: 'https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_sharedpool',
             },
         });

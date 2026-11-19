@@ -26,7 +26,8 @@ describe('deploy Cognito parameters', () => {
         outputs: unknown,
         environment = 'dev',
         failAssumeRole = false,
-        tmdbApiKey = 'test-deploy-key'
+        tmdbApiKey = 'test-deploy-key',
+        postmanClientId = 'postmanclientid'
     ) {
         writeFileSync(join(directory, 'cdk-out/BlockbusterTheatreBackendStack-dev.template.json'),
             JSON.stringify({ Parameters: parameters }));
@@ -60,6 +61,7 @@ describe('deploy Cognito parameters', () => {
                 CDK_DEFAULT_ACCOUNT: '334624057595',
                 CDK_DEFAULT_REGION: 'eu-west-2',
                 TMDB_API_KEY: tmdbApiKey,
+                PROD_POSTMAN_CLIENT_ID: postmanClientId,
                 AWS_ACCESS_KEY_ID: 'original-key',
                 AWS_SECRET_ACCESS_KEY: 'original-secret',
                 AWS_SESSION_TOKEN: 'original-token',
@@ -111,6 +113,21 @@ describe('deploy Cognito parameters', () => {
         const args = readFileSync(join(directory, 'args'), 'utf8');
         expect(args).toContain('--parameters\nProdUserPoolClientId=clientid\n');
         expect(args).not.toContain('ProdUserPoolId=');
+    });
+
+    it('passes the configured Postman client ID only when required by dev', () => {
+        const result = runStep({ ProdPostmanClientId: {} }, {});
+        expect(result.status).toBe(0);
+        expect(readFileSync(join(directory, 'args'), 'utf8'))
+            .toContain('--parameters\nProdPostmanClientId=postmanclientid\n');
+        expect(() => readFileSync(join(directory, 'calls'))).toThrow();
+    });
+
+    it('refuses to deploy dev if its required Postman client ID is missing', () => {
+        const result = runStep({ ProdPostmanClientId: {} }, {}, 'dev', false, 'key', '   ');
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).toContain('PROD_POSTMAN_CLIENT_ID must be configured');
+        expect(() => readFileSync(join(directory, 'args'))).toThrow();
     });
 
     it('does not fetch or pass outputs for prod or an explicitly configured dev template', () => {
