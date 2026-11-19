@@ -4,7 +4,7 @@ run-name: "🚀 Deploy Stack (${{ inputs.environment || (github.event.workflow_r
 on:
   workflow_run:
     workflows:
-      - 1. Build and Package
+      - 1. Build and Package 🔨
     types:
       - completed
     branches:
@@ -21,10 +21,15 @@ on:
           - dev
           - prod
       build_number:
-        description: 'Build number to deploy (leave as "latest" for the most recent build)'
+        description: 'Build number to deploy (latest uses the selected branch when overriding)'
         required: false
         default: 'latest'
         type: string
+      allow_non_main_prod:
+        description: 'Risk: allow production deployments from non-main branches'
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   prepare:
@@ -55,6 +60,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
           INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_ALLOW_NON_MAIN_PROD: ${{ inputs.allow_non_main_prod }}
           TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
           TRIGGER_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -79,10 +85,61 @@ jobs:
               echo "Error: Environment must be 'dev' or 'prod'."
               exit 1
             fi
+            ALLOW_NON_MAIN_PROD="${INPUT_ALLOW_NON_MAIN_PROD:-false}"
+            if [ "$ALLOW_NON_MAIN_PROD" != "true" ] && [ "$ALLOW_NON_MAIN_PROD" != "false" ]; then
+              echo "Error: Production branch override must be true or false."
+              exit 1
+            fi
+            if [ "$TARGET_ENVIRONMENT" = "prod" ]; then
+              if [[ "$GITHUB_REF" != refs/heads/* ]]; then
+                echo "Error: Production deployments must be triggered from a branch."
+                exit 1
+              fi
+              if [ "$ALLOW_NON_MAIN_PROD" = "false" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+                echo "Error: Production deployments must be triggered from main."
+                exit 1
+              fi
+            fi
             TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
             ENDPOINT="repos/${GITHUB_REPOSITORY}/actions/workflows/build.yml/runs?per_page=100"
 
-            if [ "$TARGET_BUILD" = "latest" ]; then
+            if [ "$TARGET_ENVIRONMENT" = "prod" ]; then
+              ENDPOINT="${ENDPOINT}&event=push&status=success"
+              BRANCH_FILTER=()
+              if [ "$ALLOW_NON_MAIN_PROD" = "false" ]; then
+                BRANCH_FILTER=(-f "branch=main")
+              elif [ "$TARGET_BUILD" = "latest" ]; then
+                BRANCH_FILTER=(-f "branch=${GITHUB_REF#refs/heads/}")
+              fi
+              if [ "$TARGET_BUILD" = "latest" ]; then
+                BUILD_INFO=$(gh api -X GET "$ENDPOINT" "${BRANCH_FILTER[@]}" --jq '.workflow_runs[0] | select(. != null) | [.id, .run_number, .head_sha, .head_branch, .event, .conclusion, .head_repository.full_name] | @tsv')
+              else
+                if ! [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
+                  echo "Error: Build number must be numeric or 'latest'."
+                  exit 1
+                fi
+                BUILD_INFO=$(gh api -X GET --paginate "$ENDPOINT" "${BRANCH_FILTER[@]}" --jq ".workflow_runs[] | select(.run_number == ${TARGET_BUILD}) | [.id, .run_number, .head_sha, .head_branch, .event, .conclusion, .head_repository.full_name] | @tsv")
+              fi
+              IFS=$'\t' read -r BUILD_RUN_ID TARGET_BUILD BUILD_SHA TARGET_BRANCH BUILD_EVENT BUILD_CONCLUSION BUILD_REPOSITORY <<< "$BUILD_INFO"
+              if [ -z "$TARGET_BRANCH" ] || [ "$BUILD_EVENT" != "push" ] || \
+                 [ "$BUILD_CONCLUSION" != "success" ] || [ "$BUILD_REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
+                echo "Error: Production requires a successful push build from this repository."
+                exit 1
+              fi
+              if [ "$ALLOW_NON_MAIN_PROD" = "false" ] && [ "$TARGET_BRANCH" != "main" ]; then
+                echo "Error: Production requires a main push build unless the override is enabled."
+                exit 1
+              fi
+              if [ "$ALLOW_NON_MAIN_PROD" = "true" ] && [ "${INPUT_BUILD_NUMBER:-latest}" = "latest" ] && \
+                 [ "$TARGET_BRANCH" != "${GITHUB_REF#refs/heads/}" ]; then
+                echo "Error: The latest build must come from the selected branch."
+                exit 1
+              fi
+              if [ "$ALLOW_NON_MAIN_PROD" = "true" ]; then
+                echo "::warning::Production branch override enabled. Review the selected build before deploying."
+                echo "**Warning:** Production branch override enabled." >> "$GITHUB_STEP_SUMMARY"
+              fi
+            elif [ "$TARGET_BUILD" = "latest" ]; then
               BUILD_INFO=$(gh api "$ENDPOINT" --jq '.workflow_runs[0] | select(. != null) | [.id, .run_number, .head_sha, .head_branch] | @tsv')
             else
               if ! [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
@@ -92,7 +149,9 @@ jobs:
               BUILD_INFO=$(gh api --paginate "$ENDPOINT" --jq ".workflow_runs[] | select(.run_number == ${TARGET_BUILD}) | [.id, .run_number, .head_sha, .head_branch] | @tsv")
             fi
 
-            IFS=$'\t' read -r BUILD_RUN_ID TARGET_BUILD BUILD_SHA TARGET_BRANCH <<< "$BUILD_INFO"
+            if [ "$TARGET_ENVIRONMENT" = "dev" ]; then
+              IFS=$'\t' read -r BUILD_RUN_ID TARGET_BUILD BUILD_SHA TARGET_BRANCH <<< "$BUILD_INFO"
+            fi
             if ! [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ && "$TARGET_BUILD" =~ ^[0-9]+$ && "$BUILD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
               echo "Error: No build found for the requested build number."
               exit 1

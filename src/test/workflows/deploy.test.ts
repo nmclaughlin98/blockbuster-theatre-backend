@@ -35,6 +35,7 @@ describe('deploy build selection', () => {
                 ...process.env,
                 GITHUB_EVENT_NAME: 'workflow_dispatch',
                 GITHUB_REPOSITORY: 'owner/repo',
+                GITHUB_REF: 'refs/heads/main',
                 GITHUB_OUTPUT: join(directory, 'output'),
                 GITHUB_STEP_SUMMARY: join(directory, 'summary'),
                 CALLS: join(directory, 'calls'),
@@ -57,16 +58,90 @@ describe('deploy build selection', () => {
         );
     });
 
-    it('paginates to find a numbered build for prod independently of its branch', () => {
-        const result = runStep(`23456\t17\t${sha}\tfeature`, {
+    it('finds a successful main push build for prod', () => {
+        const result = runStep(`23456\t17\t${sha}\tmain\tpush\tsuccess\towner/repo`, {
             INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '17',
         });
         expect(result.status).toBe(0);
         const calls = readFileSync(join(directory, 'calls'), 'utf8');
-        expect(calls).toContain('api --paginate');
+        expect(calls).toContain('--paginate');
+        expect(calls).toContain('event=push&status=success');
+        expect(calls).toContain('-f branch=main');
         expect(calls).toContain('select(.run_number == 17)');
         expect(readFileSync(join(directory, 'output'), 'utf8'))
-            .toContain(`deploy_environment=prod\ndeploy_branch=feature\nbuild_sha=${sha}`);
+            .toContain(`deploy_environment=prod\ndeploy_branch=main\nbuild_sha=${sha}`);
+    });
+
+    it('selects the latest successful main push for prod', () => {
+        const result = runStep(`23456\t17\t${sha}\tmain\tpush\tsuccess\towner/repo`, {
+            INPUT_ENVIRONMENT: 'prod',
+        });
+        expect(result.status).toBe(0);
+        const calls = readFileSync(join(directory, 'calls'), 'utf8');
+        expect(calls).toContain('event=push&status=success');
+        expect(calls).toContain('-f branch=main');
+        expect(calls).toContain('.workflow_runs[0]');
+    });
+
+    it('rejects prod dispatch from outside main before querying builds', () => {
+        const result = runStep('', { INPUT_ENVIRONMENT: 'prod', GITHUB_REF: 'refs/heads/dev' });
+        expect(result.status).toBe(1);
+        expect(result.stdout).toContain('must be triggered from main');
+    });
+
+    it.each([
+        ['feature', 'push', 'success', 'owner/repo'],
+        ['main', 'pull_request', 'success', 'owner/repo'],
+        ['main', 'push', 'failure', 'owner/repo'],
+        ['main', 'push', 'success', 'other/repo'],
+    ])('rejects untrusted prod build metadata: %s %s %s %s', (branch, event, conclusion, repository) => {
+        const result = runStep(`23456\t17\t${sha}\t${branch}\t${event}\t${conclusion}\t${repository}`, {
+            INPUT_ENVIRONMENT: 'prod',
+        });
+        expect(result.status).toBe(1);
+        expect(result.stdout).toContain(branch === 'feature'
+            ? 'Production requires a main push build'
+            : 'Production requires a successful push build');
+    });
+
+    it('allows the latest successful push from the selected branch with the prod override', () => {
+        const result = runStep(`23456\t17\t${sha}\tfeature/example\tpush\tsuccess\towner/repo`, {
+            INPUT_ENVIRONMENT: 'prod',
+            INPUT_ALLOW_NON_MAIN_PROD: 'true',
+            GITHUB_REF: 'refs/heads/feature/example',
+        });
+        expect(result.status).toBe(0);
+        expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain('-f branch=feature/example');
+        expect(readFileSync(join(directory, 'output'), 'utf8')).toContain('deploy_branch=feature/example');
+        expect(result.stdout).toContain('Production branch override enabled');
+    });
+
+    it('allows a numbered successful push from another branch with the prod override', () => {
+        const result = runStep(`23456\t17\t${sha}\tfeature\tpush\tsuccess\towner/repo`, {
+            INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '17', INPUT_ALLOW_NON_MAIN_PROD: 'true',
+        });
+        expect(result.status).toBe(0);
+        expect(readFileSync(join(directory, 'calls'), 'utf8')).not.toContain('-f branch=');
+    });
+
+    it.each([
+        ['feature', 'pull_request', 'success', 'owner/repo'],
+        ['feature', 'push', 'failure', 'owner/repo'],
+        ['feature', 'push', 'success', 'other/repo'],
+    ])('rejects unsafe prod override builds: %s %s %s %s', (branch, event, conclusion, repository) => {
+        const result = runStep(`23456\t17\t${sha}\t${branch}\t${event}\t${conclusion}\t${repository}`, {
+            INPUT_ENVIRONMENT: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', INPUT_BUILD_NUMBER: '17',
+        });
+        expect(result.status).toBe(1);
+    });
+
+    it('rejects a latest override build from a different branch and rejects tag dispatches', () => {
+        expect(runStep(`23456\t17\t${sha}\tother\tpush\tsuccess\towner/repo`, {
+            INPUT_ENVIRONMENT: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', GITHUB_REF: 'refs/heads/feature',
+        }).status).toBe(1);
+        expect(runStep('', {
+            INPUT_ENVIRONMENT: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', GITHUB_REF: 'refs/tags/v1',
+        }).status).toBe(1);
     });
 
     it.each(['', '\t', '12345\t42\tinvalid\tmain'])('rejects invalid build lookup %p', info => {
@@ -77,6 +152,9 @@ describe('deploy build selection', () => {
 
     it('rejects invalid build numbers and environments', () => {
         expect(runStep('', { INPUT_BUILD_NUMBER: '1; echo bad' }).status).toBe(1);
+        expect(runStep('', { INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '1; echo bad' }).status).toBe(1);
+        expect(runStep('', { INPUT_ENVIRONMENT: 'prod' }).status).toBe(1);
+        expect(runStep('', { INPUT_ENVIRONMENT: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'yes' }).status).toBe(1);
         expect(runStep('', { INPUT_ENVIRONMENT: 'staging' }).status).toBe(1);
     });
 
