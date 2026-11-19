@@ -1,5 +1,5 @@
 name: 2. Deploy Stack 🚀
-run-name: "🚀 Deploy Stack (${{ inputs.environment || (github.event.workflow_run.head_branch == 'dev' && 'dev' || 'prod') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
+run-name: "🚀 Deploy Stack (${{ inputs.target_env != 'auto' && inputs.target_env || inputs.environment || (github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch == 'dev' && 'dev' || github.ref == 'refs/heads/main' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
   workflow_run:
@@ -12,14 +12,19 @@ on:
       - dev
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Environment to deploy'
+      target_env:
+        description: 'Environment to deploy (auto selects prod for main, otherwise dev)'
         required: true
         type: choice
-        default: dev
+        default: auto
         options:
+          - auto
           - dev
           - prod
+      environment:
+        description: 'Legacy environment input (leave empty when using target_env)'
+        required: false
+        type: string
       build_number:
         description: 'Build number to deploy (latest uses the selected branch when overriding)'
         required: false
@@ -60,6 +65,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
           INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_TARGET_ENV: ${{ inputs.target_env }}
           INPUT_ALLOW_NON_MAIN_PROD: ${{ inputs.allow_non_main_prod }}
           TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
@@ -80,7 +86,19 @@ jobs:
               exit 1
             fi
           else
-            TARGET_ENVIRONMENT="${INPUT_ENVIRONMENT:-dev}"
+            TARGET_ENVIRONMENT="${INPUT_TARGET_ENV:-auto}"
+            if [ "$TARGET_ENVIRONMENT" = "auto" ]; then
+              if [ -n "$INPUT_ENVIRONMENT" ]; then
+                TARGET_ENVIRONMENT="$INPUT_ENVIRONMENT"
+              elif [ "$GITHUB_REF" = "refs/heads/main" ]; then
+                TARGET_ENVIRONMENT=prod
+              else
+                TARGET_ENVIRONMENT=dev
+              fi
+            elif [ -n "$INPUT_ENVIRONMENT" ] && [ "$INPUT_ENVIRONMENT" != "$TARGET_ENVIRONMENT" ]; then
+              echo "Error: target_env and the legacy environment input disagree."
+              exit 1
+            fi
             if [ "$TARGET_ENVIRONMENT" != "prod" ] && [ "$TARGET_ENVIRONMENT" != "dev" ]; then
               echo "Error: Environment must be 'dev' or 'prod'."
               exit 1
@@ -194,6 +212,7 @@ jobs:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
           DEPLOY_ENVIRONMENT: ${{ steps.select_build.outputs.deploy_environment }}
+          TMDB_API_KEY: 'ci-synth-placeholder'
         run: |
           npx cdk synth -c env="$DEPLOY_ENVIRONMENT" --output cdk-out
           node -e '
@@ -221,6 +240,8 @@ jobs:
   deploy:
     needs: prepare
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.prepare.outputs.deploy_environment }}
     permissions:
       id-token: write
       contents: read
@@ -268,6 +289,16 @@ jobs:
             if (stacks.length !== 1 || stacks[0][0] !== expected ||
                 stacks[0][1].properties.templateFile !== `${expected}.template.json` ||
                 Object.values(artifacts).some(a => !allowed.has(a.type))) throw new Error("Unexpected assembly artifacts");
+            const template = JSON.parse(fs.readFileSync(path.join(root, `${expected}.template.json`)));
+            if (template.Parameters?.TmdbApiKey?.NoEcho !== true) throw new Error("Missing masked TMDB key parameter");
+            const suffix = process.env.DEPLOY_ENVIRONMENT === "dev" ? "-dev" : "";
+            for (const name of ["blockbuster-theatre-add-movies-handler", "blockbuster-theatre-refresh-movie-collection-handler"]) {
+              const matches = Object.values(template.Resources || {}).filter(r =>
+                r.Type === "AWS::Lambda::Function" && r.Properties?.FunctionName === `${name}${suffix}`);
+              if (matches.length !== 1 || matches[0].Properties.Environment?.Variables?.TMDB_API_KEY?.Ref !== "TmdbApiKey") {
+                throw new Error(`Unexpected TMDB key configuration for ${name}${suffix}`);
+              }
+            }
             for (const artifact of Object.values(artifacts).filter(a => a.type === "cdk:asset-manifest")) {
               const file = artifact.properties.file;
               if (file !== `${expected}.assets.json`) throw new Error("Unexpected asset manifest");
@@ -300,8 +331,13 @@ jobs:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
           DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
-          PARAMETERS=()
+          if [[ ! "$TMDB_API_KEY" =~ [^[:space:]] ]]; then
+            echo "Error: TMDB_API_KEY must be configured as a non-empty GitHub Environment secret."
+            exit 1
+          fi
+          PARAMETERS=(--parameters "TmdbApiKey=${TMDB_API_KEY}")
           if [ "$DEPLOY_ENVIRONMENT" = "dev" ]; then
             REQUIRED_PARAMETERS=$(node -e '
               const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");

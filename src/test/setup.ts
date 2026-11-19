@@ -13,3 +13,4 @@ fs.mkdirSync(targetDir, { recursive: true });
 
 // Assign the unique output directory to the CDK environment variable
 process.env.CDK_OUTDIR = targetDir;
+process.env.TMDB_API_KEY = 'test-tmdb-key';

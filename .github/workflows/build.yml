@@ -41,6 +41,7 @@ jobs:
         env:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
+          TMDB_API_KEY: 'ci-synth-placeholder'
         run: |
           if [ "$BUILD_BRANCH" = "dev" ]; then
             CDK_ENV=dev

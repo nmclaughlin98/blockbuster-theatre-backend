@@ -25,7 +25,8 @@ describe('deploy Cognito parameters', () => {
         parameters: Record<string, unknown>,
         outputs: unknown,
         environment = 'dev',
-        failAssumeRole = false
+        failAssumeRole = false,
+        tmdbApiKey = 'test-deploy-key'
     ) {
         writeFileSync(join(directory, 'cdk-out/BlockbusterTheatreBackendStack-dev.template.json'),
             JSON.stringify({ Parameters: parameters }));
@@ -58,6 +59,7 @@ describe('deploy Cognito parameters', () => {
                 DEPLOY_CREDS: join(directory, 'deploy-creds'),
                 CDK_DEFAULT_ACCOUNT: '334624057595',
                 CDK_DEFAULT_REGION: 'eu-west-2',
+                TMDB_API_KEY: tmdbApiKey,
                 AWS_ACCESS_KEY_ID: 'original-key',
                 AWS_SECRET_ACCESS_KEY: 'original-secret',
                 AWS_SESSION_TOKEN: 'original-token',
@@ -116,8 +118,16 @@ describe('deploy Cognito parameters', () => {
             const result = runStep({}, {}, environment);
             expect(result.status).toBe(0);
             expect(() => readFileSync(join(directory, 'calls'))).toThrow();
-            expect(readFileSync(join(directory, 'args'), 'utf8')).not.toContain('--parameters');
+            expect(readFileSync(join(directory, 'args'), 'utf8'))
+                .toContain('--parameters\nTmdbApiKey=test-deploy-key\n');
         }
+    });
+
+    it('refuses to deploy without an environment-scoped TMDB key', () => {
+        const result = runStep({}, {}, 'prod', false, '   ');
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).toContain('TMDB_API_KEY must be configured');
+        expect(() => readFileSync(join(directory, 'args'))).toThrow();
     });
 });
 
@@ -154,6 +164,7 @@ describe('deploy build selection', () => {
                 GITHUB_EVENT_NAME: 'workflow_dispatch',
                 GITHUB_REPOSITORY: 'owner/repo',
                 GITHUB_REF: 'refs/heads/main',
+                INPUT_ENVIRONMENT: 'dev',
                 GITHUB_OUTPUT: join(directory, 'output'),
                 GITHUB_STEP_SUMMARY: join(directory, 'summary'),
                 CALLS: join(directory, 'calls'),
@@ -174,6 +185,29 @@ describe('deploy build selection', () => {
         expect(readFileSync(join(directory, 'output'), 'utf8')).toContain(
             `build_number=42\nbuild_run_id=12345\ndeploy_environment=dev\ndeploy_branch=environment-control\nbuild_sha=${sha}`
         );
+    });
+
+    it.each([
+        ['dev', 'refs/heads/main', 'dev'],
+        ['prod', 'refs/heads/main', 'prod'],
+        ['auto', 'refs/heads/main', 'prod'],
+        ['auto', 'refs/heads/feature', 'dev'],
+    ])('resolves target_env %s on %s to %s', (input, ref, expected) => {
+        const info = expected === 'prod'
+            ? `12345\t42\t${sha}\tmain\tpush\tsuccess\towner/repo`
+            : `12345\t42\t${sha}\tfeature`;
+        const result = runStep(info, {
+            INPUT_ENVIRONMENT: '', INPUT_TARGET_ENV: input, GITHUB_REF: ref,
+        });
+        expect(result.status).toBe(0);
+        expect(readFileSync(join(directory, 'output'), 'utf8'))
+            .toContain(`deploy_environment=${expected}`);
+    });
+
+    it('rejects conflicting target and legacy environment inputs', () => {
+        const result = runStep('', { INPUT_TARGET_ENV: 'prod', INPUT_ENVIRONMENT: 'dev' });
+        expect(result.status).toBe(1);
+        expect(result.stdout).toContain('environment input disagree');
     });
 
     it('finds a successful main push build for prod', () => {
@@ -291,6 +325,8 @@ describe('deploy build selection', () => {
 
     it('synthesizes the selected source and refuses an assembly for the wrong environment', () => {
         expect(workflow).toContain('ref: ${{ steps.select_build.outputs.build_sha }}');
+        expect(workflow).toContain('name: ${{ needs.prepare.outputs.deploy_environment }}');
+        expect(workflow).toContain('TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}');
         const synth = workflow.split('      - name: Synthesize CDK App\n')[1]
             .split('      - name: Upload Deployment Assembly\n')[0]
             .split('        run: |\n')[1].replace(/^          /gm, '');
@@ -317,7 +353,19 @@ describe('deploy build selection', () => {
         const stack = 'BlockbusterTheatreBackendStack-dev';
         const assetName = `asset.${'b'.repeat(64)}`;
         mkdirSync(join(root, assetName));
-        writeFileSync(join(root, `${stack}.template.json`), '{}');
+        writeFileSync(join(root, `${stack}.template.json`), JSON.stringify({
+            Parameters: { TmdbApiKey: { Type: 'String', NoEcho: true } },
+            Resources: Object.fromEntries([
+                'blockbuster-theatre-add-movies-handler',
+                'blockbuster-theatre-refresh-movie-collection-handler',
+            ].map((name, index) => [`Function${index}`, {
+                Type: 'AWS::Lambda::Function',
+                Properties: {
+                    FunctionName: `${name}-dev`,
+                    Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
+                },
+            }])),
+        }));
         writeFileSync(join(root, 'manifest.json'), JSON.stringify({ artifacts: {
             [stack]: { type: 'aws:cloudformation:stack', properties: { templateFile: `${stack}.template.json` } },
             assets: { type: 'cdk:asset-manifest', properties: { file: `${stack}.assets.json` } },
@@ -335,5 +383,7 @@ describe('deploy build selection', () => {
         expect(runValidation({ executable: ['sh', '-c', 'echo bad'] }).status).toBe(1);
         expect(runValidation({ path: '../secret', packaging: 'file' }).status).toBe(1);
         expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
+        writeFileSync(join(root, `${stack}.template.json`), '{}');
+        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
     });
 });

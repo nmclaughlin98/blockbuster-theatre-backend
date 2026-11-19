@@ -589,6 +589,7 @@ The profile must have DynamoDB permissions for those tables and Cognito admin pe
 ## Prod and dev AWS environments
 
 The CDK entry point is `lib/stack/app.ts`. The environment defaults to `prod`; use `-c env=dev` to synthesize or deploy the isolated dev stack. Any other environment value is rejected.
+Set the `TMDB_API_KEY` environment variable to a non-empty TMDB read access token before synthesizing. The template contains a masked CloudFormation parameter rather than the token itself. For a direct deployment, pass the same value as `--parameters TmdbApiKey=<token>` through a secure shell; command-line arguments may be visible to local processes. The first deployment with this change requires the parameter for both environments.
 
 ```powershell
 npx cdk synth -c env=prod
@@ -601,12 +602,7 @@ The custom API domain is imported, not created, by CDK. Before deploying dev, pr
 
 ### Shared Cognito and SES resources
 
-Dev imports the existing prod User Pool, backend App Client, and SES email identity; it does not create or modify Cognito pools/clients or an SES identity. The IDs can be provided through CDK context (`prodUserPoolId`, `prodUserPoolClientId`) or environment variables (`PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`). If neither is supplied, synthesis emits deploy-time SSM references to:
-
-- `/blockbuster-theatre/prod/user-pool-id`
-- `/blockbuster-theatre/prod/user-pool-client-id`
-
-Populate those plain-string parameters with the `UserPoolId` and `UserPoolClientId` outputs from the prod stack before deploying dev. The CloudFormation execution role must be allowed to read these parameter paths. The current frontend auth flow uses SRP directly, so no Hosted UI callback/client changes are required or made to prod.
+Dev imports the existing prod User Pool, backend App Client, and SES email identity; it does not create or modify Cognito pools/clients or an SES identity. The IDs can be provided through CDK context (`prodUserPoolId`, `prodUserPoolClientId`) or environment variables (`PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`). Otherwise the dev template requires `ProdUserPoolId` and `ProdUserPoolClientId` CloudFormation parameters. The deployment workflow retrieves them from the `UserPoolId` and `UserPoolClientId` outputs of the prod stack; direct deployments must provide them. The current frontend auth flow uses SRP directly, so no Hosted UI callback/client changes are required or made to prod.
 
 The dev API accepts the production frontend origin, local development origins, and HTTPS Cloudflare Pages previews. API Gateway HTTP API's `https://*` origin pattern is used for preview hostnames; it permits any HTTPS origin, so bearer-token handling must remain explicit and API authorization must not rely on CORS alone. `Authorization`, `Content-Type`, and common AWS/request headers are allowed.
 
@@ -631,6 +627,12 @@ This copies production records, including customer and booking data. Restrict ac
 
 ### GitHub Actions deployments
 
-The build workflow synthesizes `prod` for `main` and `dev` for `dev`. The deploy workflow deploys a successful `main` push build to prod and a successful `dev` push build to dev. By default, manual prod deployments must be run from `main` and select a successful `main` push build from this repository. The default-off `allow_non_main_prod` override allows dispatch from any branch and a numbered successful push build from any branch; with `latest`, it selects a successful push build from the branch selected when dispatching the workflow. The override deliberately bypasses the main-only protection and can deploy unreviewed code and infrastructure to production; use it only after reviewing the selected source. OIDC trust and IAM permissions may still prevent deployments from other branches. Manual dev deployments can select builds from other branches and synthesize the dev stack from that source. No release-tagging job exists in these workflows; any future SemVer tagging must remain restricted to `main`.
+The build workflow synthesizes `prod` for `main` and `dev` for `dev`. The deploy workflow deploys a successful `main` push build to prod and a successful `dev` push build to dev. Manual dispatch accepts `target_env` (`auto`, `prod`, or `dev`); `auto` selects prod for `main` and dev otherwise. The existing `environment` input remains available for older callers when `target_env` is `auto`. The deploy job uses the matching GitHub Environment.
 
-The repository's OIDC role is external to this codebase. Workflow checks alone cannot restrict someone who can change and run a workflow on another branch: protect `main` and configure AWS OIDC trust and IAM permissions so only trusted workflows can deploy production. If direct dev-branch deployments require a separate OIDC subject, restrict that subject to dev-only permissions. Ensure the role used for dev can deploy dev resources and read the shared Cognito SSM parameters.
+Create GitHub Environments named `prod` and `dev`, and add a non-empty `TMDB_API_KEY` environment secret to each. No additional GitHub Environment variables are required: table names, SES sender, Cognito IDs, Lambda settings, and the optional max-tickets SSM parameter name are supplied by CDK or the deploy workflow. No WalletWallet credentials are used by the current backend. Runtime SSM and AWS resources still need their existing permissions and configuration.
+
+Build and preparation syntheses use a non-secret placeholder to validate the template without exposing the environment secret to the selected source or uploaded artifact. The deploy job validates the template and passes the real key as the masked `TmdbApiKey` CloudFormation parameter; older selected builds without this parameter are rejected. The deployed Lambda environment still contains the key, so restrict AWS Lambda and CloudFormation access appropriately.
+
+By default, manual prod deployments must be run from `main` and select a successful `main` push build from this repository. The default-off `allow_non_main_prod` override allows dispatch from any branch and a numbered successful push build from any branch; with `latest`, it selects a successful push build from the branch selected when dispatching the workflow. The override deliberately bypasses the main-only protection and can deploy unreviewed code and infrastructure to production; use it only after reviewing the selected source. OIDC trust and IAM permissions may still prevent deployments from other branches. Manual dev deployments can select builds from other branches and synthesize the dev stack from that source. No release-tagging job exists in these workflows; any future SemVer tagging must remain restricted to `main`.
+
+The repository's OIDC role is external to this codebase. Environment-bound jobs use subjects `repo:nmclaughlin98/blockbuster-theatre-backend:environment:prod` and `repo:nmclaughlin98/blockbuster-theatre-backend:environment:dev`; update trust as appropriate, with separate least-privilege roles where possible. Protect the GitHub Environments with deployment branch rules and reviewers: a workflow can otherwise use an approved environment to deploy code from an untrusted selected build. Dev deployment also needs permission to assume the CDK deploy role and read the prod stack's Cognito outputs.

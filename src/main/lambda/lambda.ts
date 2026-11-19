@@ -88,6 +88,15 @@ export class LambdaConstruct extends Construct {
         super(scope, id);
         const lambdaConfig = props.lambdaConfig ?? cfg;
         const envName = props.envName ?? 'prod';
+        if (!process.env.TMDB_API_KEY?.trim()) {
+            throw new Error('TMDB_API_KEY must be set and non-empty before synthesizing the stack.');
+        }
+        const tmdbApiKey = new cdk.CfnParameter(cdk.Stack.of(this), 'TmdbApiKey', {
+            type: 'String',
+            noEcho: true,
+            minLength: 1,
+            description: 'TMDB API read access token',
+        }).valueAsString;
         const functionName = (name: string): string => resourceName(name, envName);
         const scopedMaxTicketsParameterName = maxTicketsParameterForEnvironment(
             maxTicketsParameterName,
@@ -113,7 +122,7 @@ export class LambdaConstruct extends Construct {
             }),
             environment: {
                 TABLE_NAME: props.table.tableName,
-                TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',
+                TMDB_API_KEY: tmdbApiKey,
                 MAX_BATCH: String(lambdaConfig.maxBatch),
                 TMDB_CONCURRENCY: String(lambdaConfig.tmdbConcurrency),
                 TMDB_TIMEOUT_MS: String(lambdaConfig.tmdbTimeoutMs),
@@ -394,7 +403,7 @@ export class LambdaConstruct extends Construct {
                 timeout: cdk.Duration.seconds(lambdaSettings.collectionRefresh.timeoutSeconds),
                 environment: {
                     COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
-                    TMDB_API_KEY: process.env.TMDB_API_KEY ?? '',
+                    TMDB_API_KEY: tmdbApiKey,
                     TMDB_TIMEOUT_MS: String(lambdaConfig.tmdbTimeoutMs),
                     TMDB_RETRIES: String(lambdaConfig.tmdbRetries),
                 },
