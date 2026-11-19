@@ -1,20 +1,21 @@
 import { spawnSync } from 'child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-describe('deploy build artifact selection', () => {
+describe('deploy build selection', () => {
     let directory: string;
+    let workflow: string;
     let script: string;
+    const sha = 'a'.repeat(40);
 
     beforeEach(() => {
         directory = mkdtempSync(join(tmpdir(), 'deploy-test-'));
-        const workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
+        workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
             .replace(/\r\n/g, '\n');
-        const step = workflow.split('      - name: Download Build Artifact\n')[1]
-            .split('      - name: Configure AWS Credentials\n')[0];
-        script = step.split('        run: |\n')[1]
-            .replace(/^          /gm, '');
+        const step = workflow.split('      - name: Select Build\n')[1]
+            .split('      - name: Checkout Build Source\n')[0];
+        script = step.split('        run: |\n')[1].replace(/^          /gm, '');
     });
 
     afterEach(() => {
@@ -25,9 +26,7 @@ describe('deploy build artifact selection', () => {
         return spawnSync('bash', ['-e', '-c', `
             gh() {
                 echo "$*" >> "$CALLS"
-                if [ "$1 $2" = "run list" ]; then
-                    printf '%s' "$BUILD_INFO"
-                fi
+                printf '%s' "$BUILD_INFO"
             }
             ${script}
         `], {
@@ -35,8 +34,7 @@ describe('deploy build artifact selection', () => {
             env: {
                 ...process.env,
                 GITHUB_EVENT_NAME: 'workflow_dispatch',
-                DISPATCH_BRANCH: 'environment-control',
-                DISPATCH_REF_TYPE: 'branch',
+                GITHUB_REPOSITORY: 'owner/repo',
                 GITHUB_OUTPUT: join(directory, 'output'),
                 GITHUB_STEP_SUMMARY: join(directory, 'summary'),
                 CALLS: join(directory, 'calls'),
@@ -46,98 +44,71 @@ describe('deploy build artifact selection', () => {
         });
     }
 
-    it('rejects an empty latest build lookup without downloading an artifact', () => {
-        const result = runStep('');
-        expect(result.status).toBe(1);
-        expect(result.stdout).toContain('No successful build found');
-        const calls = readFileSync(join(directory, 'calls'), 'utf8');
-        expect(calls).toContain('--jq .[] | [.databaseId, .number] | @tsv');
-        expect(calls).not.toContain('run download');
-    });
-
-    it('rejects a whitespace-only lookup result', () => {
-        const result = runStep('\t');
-        expect(result.status).toBe(1);
-        expect(result.stdout).toContain('No successful build found');
-        expect(readFileSync(join(directory, 'calls'), 'utf8')).not.toContain('run download');
-    });
-
-    it('downloads the selected successful build', () => {
-        const result = runStep('12345\t42');
+    it('selects the latest build across branches for dev', () => {
+        const result = runStep(`12345\t42\t${sha}\tenvironment-control`);
         expect(result.status).toBe(0);
         const calls = readFileSync(join(directory, 'calls'), 'utf8');
-        expect(calls).toContain('--branch environment-control --status success --limit 1');
-        expect(calls).toContain('run download 12345 --name build-artifact-42-dev --dir cdk-out');
-        expect(readFileSync(join(directory, 'output'), 'utf8'))
-            .toContain('build_number=42\nbuild_run_id=12345\ndeploy_environment=dev\ndeploy_branch=environment-control');
+        expect(calls).toContain('actions/workflows/build.yml/runs?per_page=100');
+        expect(calls).toContain('.workflow_runs[0]');
+        expect(calls).not.toContain('branch=');
+        expect(calls).not.toContain('status=');
+        expect(readFileSync(join(directory, 'output'), 'utf8')).toContain(
+            `build_number=42\nbuild_run_id=12345\ndeploy_environment=dev\ndeploy_branch=environment-control\nbuild_sha=${sha}`
+        );
     });
 
-    it('downloads a specific production build', () => {
-        const result = runStep('23456\t17', {
-            INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '17', DISPATCH_BRANCH: 'main',
+    it('paginates to find a numbered build for prod independently of its branch', () => {
+        const result = runStep(`23456\t17\t${sha}\tfeature`, {
+            INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '17',
         });
         expect(result.status).toBe(0);
         const calls = readFileSync(join(directory, 'calls'), 'utf8');
-        expect(calls).toContain('--branch main --status success --limit 100');
-        expect(calls).toContain('select(.number == 17)');
-        expect(calls).toContain('run download 23456 --name build-artifact-17-prod --dir cdk-out');
+        expect(calls).toContain('api --paginate');
+        expect(calls).toContain('select(.run_number == 17)');
         expect(readFileSync(join(directory, 'output'), 'utf8'))
-            .toContain('build_number=17\nbuild_run_id=23456\ndeploy_environment=prod\ndeploy_branch=main');
+            .toContain(`deploy_environment=prod\ndeploy_branch=feature\nbuild_sha=${sha}`);
     });
 
-    it('rejects a missing numbered build and preserves workflow-run downloads', () => {
-        const missing = runStep('', { INPUT_BUILD_NUMBER: '42' });
-        expect(missing.status).toBe(1);
-        expect(missing.stdout).toContain('No successful build found');
-
-        const triggered = runStep('', {
-            GITHUB_EVENT_NAME: 'workflow_run',
-            TRIGGER_RUN_ID: '67890',
-            TRIGGER_RUN_NUMBER: '43',
-            TRIGGER_HEAD_BRANCH: 'dev',
-        });
-        expect(triggered.status).toBe(0);
-        expect(readFileSync(join(directory, 'calls'), 'utf8'))
-            .toContain('run download 67890 --name build-artifact-43-dev --dir cdk-out');
+    it.each(['', '\t', '12345\t42\tinvalid\tmain'])('rejects invalid build lookup %p', info => {
+        const result = runStep(info);
+        expect(result.status).toBe(1);
+        expect(result.stdout).toContain('No build found');
     });
 
-    it('uses the production artifact for a successful main workflow run', () => {
+    it('rejects invalid build numbers and environments', () => {
+        expect(runStep('', { INPUT_BUILD_NUMBER: '1; echo bad' }).status).toBe(1);
+        expect(runStep('', { INPUT_ENVIRONMENT: 'staging' }).status).toBe(1);
+    });
+
+    it.each([['dev', 'dev'], ['main', 'prod']])('uses the triggering %s build', (branch, environment) => {
         const result = runStep('', {
             GITHUB_EVENT_NAME: 'workflow_run',
             TRIGGER_RUN_ID: '67890',
             TRIGGER_RUN_NUMBER: '43',
-            TRIGGER_HEAD_BRANCH: 'main',
+            TRIGGER_HEAD_BRANCH: branch,
+            TRIGGER_HEAD_SHA: sha,
         });
         expect(result.status).toBe(0);
-        expect(readFileSync(join(directory, 'calls'), 'utf8'))
-            .toContain('run download 67890 --name build-artifact-43-prod --dir cdk-out');
         expect(readFileSync(join(directory, 'output'), 'utf8'))
-            .toContain('deploy_environment=prod\ndeploy_branch=main');
+            .toContain(`deploy_environment=${environment}\ndeploy_branch=${branch}\nbuild_sha=${sha}`);
     });
 
-    it('rejects dispatches from tags', () => {
-        const result = runStep('12345\t42', { DISPATCH_REF_TYPE: 'tag' });
-        expect(result.status).toBe(1);
-        expect(result.stdout).toContain('Select a branch to deploy');
-    });
-
-    it('synthesizes and uploads separate environment artifacts', () => {
-        const workflow = readFileSync(join(process.cwd(), '.github/workflows/build.yml'), 'utf8')
-            .replace(/\r\n/g, '\n');
+    it('synthesizes the selected source and refuses an assembly for the wrong environment', () => {
+        expect(workflow).toContain('ref: ${{ steps.select_build.outputs.build_sha }}');
         const synth = workflow.split('      - name: Synthesize CDK App\n')[1]
-            .split('      - name: Upload Dev Build Artifact\n')[0]
+            .split('      - name: Upload Deployment Assembly\n')[0]
             .split('        run: |\n')[1].replace(/^          /gm, '');
-        const result = spawnSync('bash', ['-e', '-c', `
-            npx() { echo "$*" >> "$CALLS"; }
-            ${synth}
-        `], { encoding: 'utf8', env: { ...process.env, CALLS: join(directory, 'calls') } });
-
-        expect(result.status).toBe(0);
-        expect(readFileSync(join(directory, 'calls'), 'utf8')).toBe(
-            'cdk synth -c env=dev --output cdk-out/dev\n' +
-            'cdk synth -c env=prod --output cdk-out/prod\n'
-        );
-        expect(workflow).toContain('name: build-artifact-${{ github.run_number }}-dev\n          path: cdk-out/dev');
-        expect(workflow).toContain('name: build-artifact-${{ github.run_number }}-prod\n          path: cdk-out/prod');
+        const runSynth = (environment: string, stack: string) => {
+            writeFileSync(join(directory, 'manifest.json'), JSON.stringify({
+                artifacts: { [stack]: { type: 'aws:cloudformation:stack' } },
+            }));
+            return spawnSync('bash', ['-e', '-c', `
+                npx() { mkdir -p cdk-out; cp manifest.json cdk-out/manifest.json; }
+                ${synth}
+            `], { cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: environment } });
+        };
+        expect(runSynth('dev', 'BlockbusterTheatreBackendStack-dev').status).toBe(0);
+        expect(runSynth('prod', 'BlockbusterTheatreBackendStack').status).toBe(0);
+        expect(runSynth('dev', 'BlockbusterTheatreBackendStack').status).toBe(1);
     });
 });
