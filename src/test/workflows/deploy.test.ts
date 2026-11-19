@@ -21,15 +21,27 @@ describe('deploy Cognito parameters', () => {
         rmSync(directory, { recursive: true, force: true });
     });
 
-    function runStep(parameters: Record<string, unknown>, outputs: unknown, environment = 'dev') {
+    function runStep(
+        parameters: Record<string, unknown>,
+        outputs: unknown,
+        environment = 'dev',
+        failAssumeRole = false
+    ) {
         writeFileSync(join(directory, 'cdk-out/BlockbusterTheatreBackendStack-dev.template.json'),
             JSON.stringify({ Parameters: parameters }));
         return spawnSync('bash', ['-e', '-c', `
             aws() {
                 echo "$*" >> "$CALLS"
-                printf '%s' "$OUTPUTS"
+                if [ "$1" = sts ]; then
+                    if [ "\${FAIL_ASSUME_ROLE:-false}" = true ]; then return 1; fi
+                    printf '%s' '{"Credentials":{"AccessKeyId":"lookup-key","SecretAccessKey":"lookup-secret","SessionToken":"lookup-token"}}'
+                else
+                    printf '%s\\n' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" "$AWS_SESSION_TOKEN" >> "$LOOKUP_CREDS"
+                    printf '%s' "$OUTPUTS"
+                fi
             }
             npx() {
+                printf '%s\\n' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" "$AWS_SESSION_TOKEN" >> "$DEPLOY_CREDS"
                 printf '%s\\n' "$@" >> "$ARGS"
             }
             ${script}
@@ -42,6 +54,14 @@ describe('deploy Cognito parameters', () => {
                 OUTPUTS: JSON.stringify(outputs),
                 CALLS: join(directory, 'calls'),
                 ARGS: join(directory, 'args'),
+                LOOKUP_CREDS: join(directory, 'lookup-creds'),
+                DEPLOY_CREDS: join(directory, 'deploy-creds'),
+                CDK_DEFAULT_ACCOUNT: '334624057595',
+                CDK_DEFAULT_REGION: 'eu-west-2',
+                AWS_ACCESS_KEY_ID: 'original-key',
+                AWS_SECRET_ACCESS_KEY: 'original-secret',
+                AWS_SESSION_TOKEN: 'original-token',
+                FAIL_ASSUME_ROLE: String(failAssumeRole),
             },
         });
     }
@@ -56,6 +76,13 @@ describe('deploy Cognito parameters', () => {
         expect(result.status).toBe(0);
         expect(readFileSync(join(directory, 'calls'), 'utf8'))
             .toContain('describe-stacks --stack-name BlockbusterTheatreBackendStack');
+        expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
+            'sts assume-role --role-arn arn:aws:iam::334624057595:role/cdk-hnb659fds-deploy-role-334624057595-eu-west-2'
+        );
+        expect(readFileSync(join(directory, 'lookup-creds'), 'utf8'))
+            .toBe('lookup-key\nlookup-secret\nlookup-token\n');
+        expect(readFileSync(join(directory, 'deploy-creds'), 'utf8'))
+            .toBe('original-key\noriginal-secret\noriginal-token\n');
         expect(readFileSync(join(directory, 'args'), 'utf8'))
             .toContain('--parameters\nProdUserPoolId=eu-west-2_pool\n--parameters\nProdUserPoolClientId=clientid\n');
     });
@@ -64,6 +91,13 @@ describe('deploy Cognito parameters', () => {
         const result = runStep({ ProdUserPoolClientId: {} }, { Stacks: [{ Outputs: [] }] });
         expect(result.status).not.toBe(0);
         expect(result.stdout).toContain('Production stack output UserPoolClientId is missing');
+        expect(() => readFileSync(join(directory, 'args'))).toThrow();
+    });
+
+    it('fails before reading outputs or deploying if the bootstrap role cannot be assumed', () => {
+        const result = runStep({ ProdUserPoolId: {} }, {}, 'dev', true);
+        expect(result.status).not.toBe(0);
+        expect(readFileSync(join(directory, 'calls'), 'utf8')).not.toContain('describe-stacks');
         expect(() => readFileSync(join(directory, 'args'))).toThrow();
     });
 
