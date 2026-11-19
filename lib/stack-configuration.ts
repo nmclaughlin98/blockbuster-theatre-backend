@@ -7,19 +7,45 @@ import {
     DatabaseConstruct,
     LambdaConstruct,
 } from './stack';
+import { type EnvironmentName } from './stack/environment';
+
+interface BlockbusterTheatreBackendStackProps extends cdk.StackProps {
+    envName?: EnvironmentName;
+    prodUserPoolId?: string;
+    prodUserPoolClientId?: string;
+}
 
 export class BlockbusterTheatreBackendStack extends cdk.Stack {
-    constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-        super(scope, id, props);
+    constructor(scope: Construct, id: string, props: BlockbusterTheatreBackendStackProps = {}) {
+        const {
+            envName = 'prod',
+            prodUserPoolId,
+            prodUserPoolClientId,
+            ...stackProps
+        } = props;
+        super(scope, id, stackProps);
 
         cdk.Tags.of(this).add('Project', 'blockbuster-theatre');
+        if (envName === 'dev') {
+            cdk.Tags.of(this).add('Environment', 'dev');
+        }
 
         // 1. Instantiate DynamoDB
-        const database = new DatabaseConstruct(this, 'MoviesDatabase');
-        const authentication = new AuthenticationConstruct(this, 'Authentication');
-        const bookingEmailIdentity = new ses.EmailIdentity(this, 'BookingEmailIdentity', {
-            identity: ses.Identity.email('niallmclaughlin1998@gmail.com'),
+        const database = new DatabaseConstruct(this, 'MoviesDatabase', envName);
+        const authentication = new AuthenticationConstruct(this, 'Authentication', {
+            envName,
+            prodUserPoolId,
+            prodUserPoolClientId,
         });
+        const bookingEmailIdentity = envName === 'prod'
+            ? new ses.EmailIdentity(this, 'BookingEmailIdentity', {
+                identity: ses.Identity.email('niallmclaughlin1998@gmail.com'),
+            })
+            : ses.EmailIdentity.fromEmailIdentityName(
+                this,
+                'ImportedBookingEmailIdentity',
+                'niallmclaughlin1998@gmail.com'
+            );
 
         // 2. Instantiate Lambda & pass DB table
         const lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {
@@ -35,6 +61,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             userPool: authentication.userPool,
             userPoolClient: authentication.userPoolClient,
             bookingEmailIdentity,
+            envName,
         });
 
         // 3. Instantiate API Gateway & pass Lambda handler
@@ -63,6 +90,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             guestConversionFunction: lambdaServices.guestConversionFunction,
             downloadTicketFunction: lambdaServices.downloadTicketFunction,
             jwtAuthorizer: authentication.jwtAuthorizer,
+            envName,
         });
 
         // Output backend endpoint for client apps
@@ -82,9 +110,11 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             value: `https://cognito-idp.${this.region}.amazonaws.com/${authentication.userPool.userPoolId}`,
             description: 'JWT issuer configured on the API Gateway authorizer',
         });
-        new cdk.CfnOutput(this, 'CognitoLoginUrl', {
-            value: authentication.loginUrl,
-            description: 'Dark-mode Cognito managed login URL for browser authorization',
-        });
+        if (authentication.loginUrl) {
+            new cdk.CfnOutput(this, 'CognitoLoginUrl', {
+                value: authentication.loginUrl,
+                description: 'Dark-mode Cognito managed login URL for browser authorization',
+            });
+        }
     }
 }

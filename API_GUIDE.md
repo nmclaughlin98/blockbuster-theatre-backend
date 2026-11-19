@@ -585,3 +585,52 @@ npm run local:cloud
 ```
 
 The profile must have DynamoDB permissions for those tables and Cognito admin permissions on the specified dev/test user pool to convert guest accounts. The tables must already exist with the same keys and movie-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections/refresh` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.
+
+## Prod and dev AWS environments
+
+The CDK entry point is `lib/stack/app.ts`. The environment defaults to `prod`; use `-c env=dev` to synthesize or deploy the isolated dev stack. Any other environment value is rejected.
+
+```powershell
+npx cdk synth -c env=prod
+npx cdk synth -c env=dev
+```
+
+Prod keeps the existing stack ID, table names, Lambda names, API name, SES identity, API domain, and Cognito pool/client. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-dev`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. No S3 buckets are defined by this stack.
+
+The custom API domain is imported, not created, by CDK. Before deploying dev, provision `api-dev.blockbuster-theatre.nml-applications.com` in API Gateway with its certificate and DNS mapping. Prod's existing `api.blockbuster-theatre.nml-applications.com` mapping is unchanged.
+
+### Shared Cognito and SES resources
+
+Dev imports the existing prod User Pool, backend App Client, and SES email identity; it does not create or modify Cognito pools/clients or an SES identity. The IDs can be provided through CDK context (`prodUserPoolId`, `prodUserPoolClientId`) or environment variables (`PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`). If neither is supplied, synthesis emits deploy-time SSM references to:
+
+- `/blockbuster-theatre/prod/user-pool-id`
+- `/blockbuster-theatre/prod/user-pool-client-id`
+
+Populate those plain-string parameters with the `UserPoolId` and `UserPoolClientId` outputs from the prod stack before deploying dev. The CloudFormation execution role must be allowed to read these parameter paths. The current frontend auth flow uses SRP directly, so no Hosted UI callback/client changes are required or made to prod.
+
+The dev API accepts the production frontend origin, local development origins, and HTTPS Cloudflare Pages previews. API Gateway HTTP API's `https://*` origin pattern is used for preview hostnames; it permits any HTTPS origin, so bearer-token handling must remain explicit and API authorization must not rely on CORS alone. `Authorization`, `Content-Type`, and common AWS/request headers are allowed.
+
+Guest conversion tokens and booking records are read from the environment-specific DynamoDB tables. As requested, dev may create/authenticate an account in the shared prod Cognito pool when converting a dev guest booking; it only operates on the dev booking/token records.
+
+The dev booking Lambdas also use the existing prod SES identity. Exercise email-sending flows carefully; dev traffic can send real email from the shared identity.
+
+### Production data sync to dev
+
+`npm run sync:dev` scans the nine configured prod tables and writes to their `-dev` counterparts in batches of 25, retrying DynamoDB unprocessed writes with exponential backoff. It verifies all source/target tables and key schemas before any writes. Every target must exactly end in `-dev`, must not match a prod table, and all mappings are validated before the optional clear begins.
+
+By default, sync overwrites matching keys but leaves other existing dev rows intact. Use `-- --clear` to delete every current item from all `-dev` tables before copying. Run a clear-and-copy during a quiet period so concurrent dev writes do not race with the synchronization:
+
+```powershell
+$env:AWS_PROFILE = "your-aws-profile"
+$env:AWS_REGION = "eu-west-2"
+npm run sync:dev
+npm run sync:dev -- --clear
+```
+
+This copies production records, including customer and booking data. Restrict access to the sync role and dev environment accordingly. The manual `Sync Prod Data to Dev` GitHub Actions workflow runs from `main`, uses the existing OIDC deploy role in `eu-west-2`, and defaults `clear_dev_tables` to `true`. That role needs `dynamodb:ListTables`, `dynamodb:DescribeTable`, and `dynamodb:Scan` for the mapped source/target tables, plus `dynamodb:BatchWriteItem` for the `-dev` targets.
+
+### GitHub Actions deployments
+
+The build workflow synthesizes `prod` for `main` and `dev` for `dev`. The deploy workflow deploys a successful `main` build to prod and a successful `dev` build to dev. Manual deployment remains limited to numbered/latest `main` builds. No release-tagging job exists in these workflows; any future SemVer tagging must remain restricted to `main`.
+
+The repository's OIDC role is external to this codebase. Update its trust policy to allow `repo:nmclaughlin98/blockbuster-theatre-backend:ref:refs/heads/dev` in addition to the existing `main` subject, and ensure the GitHub Actions deploy role has the permissions needed to deploy dev resources and read the shared Cognito SSM parameters.

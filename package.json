@@ -17,6 +17,7 @@
     "test:coverage": "jest --coverage --runInBand",
     "seed:pricing": "ts-node scripts/seed-pricing-offers.ts",
     "migrate:movie-image-urls": "ts-node scripts/migrate-movie-image-urls.ts",
+    "sync:dev": "ts-node scripts/sync-prod-to-dev.ts",
     "update:movie-showtimes": "ts-node scripts/update-movie-showtimes.ts",
     "update:offer-showtimes": "ts-node scripts/update-offer-showtimes.ts",
     "local:db:start": "docker compose up -d dynamodb-local",

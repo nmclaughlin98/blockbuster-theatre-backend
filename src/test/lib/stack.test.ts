@@ -15,6 +15,67 @@ describe('BackendStack', () => {
         expect(template).toBeDefined();
     });
 
+    it('synthesizes an isolated dev stack without creating prod Cognito or SES resources', () => {
+        const app = new cdk.App();
+        const devStack = new BlockbusterTheatreBackendStack(
+            app,
+            'BlockbusterTheatreBackendStack-dev',
+            {
+                envName: 'dev',
+                prodUserPoolId: 'eu-west-2_sharedpool',
+                prodUserPoolClientId: 'sharedclientid',
+                env: { account: '334624057595', region: 'eu-west-2' },
+            }
+        );
+        const template = Template.fromStack(devStack);
+
+        const tables = Object.values(template.findResources('AWS::DynamoDB::Table'));
+        expect(tables).toHaveLength(9);
+        expect(tables.every((table) =>
+            String(table.Properties?.TableName).endsWith('-dev')
+        )).toBe(true);
+        template.hasResource('AWS::DynamoDB::Table', {
+            DeletionPolicy: 'Delete',
+            Properties: Match.objectLike({
+                TableName: 'blockbuster-theatre-movie-catalogue-dev',
+            }),
+        });
+
+        const functions = Object.values(template.findResources('AWS::Lambda::Function'))
+            .map((fn) => fn.Properties?.FunctionName)
+            .filter((name): name is string => typeof name === 'string');
+        expect(functions.length).toBeGreaterThan(0);
+        expect(functions.every((name) => name.endsWith('-dev'))).toBe(true);
+        expect(template.findResources('AWS::Cognito::UserPool')).toEqual({});
+        expect(template.findResources('AWS::Cognito::UserPoolClient')).toEqual({});
+        expect(template.findResources('AWS::SES::EmailIdentity')).toEqual({});
+
+        template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+            Name: 'blockbuster-theatre-api-gateway-dev',
+            CorsConfiguration: Match.objectLike({
+                AllowOrigins: Match.arrayWith([
+                    'https://blockbuster-theatre.nml-applications.com',
+                    'https://*',
+                    'http://localhost:3000',
+                    'http://localhost:5173',
+                ]),
+                AllowHeaders: Match.arrayWith(['Authorization', 'Content-Type']),
+                AllowMethods: Match.arrayWith(['GET', 'POST', 'PATCH', 'DELETE']),
+            }),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::ApiMapping', {
+            DomainName: 'api-dev.blockbuster-theatre.nml-applications.com',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Authorizer', {
+            Name: 'CognitoJwtAuthorizer-dev',
+            AuthorizerType: 'JWT',
+            JwtConfiguration: {
+                Audience: ['sharedclientid'],
+                Issuer: 'https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_sharedpool',
+            },
+        });
+    });
+
     it('should tag taggable resources with the project name', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {

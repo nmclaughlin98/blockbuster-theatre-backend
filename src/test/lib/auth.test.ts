@@ -3,6 +3,34 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { AuthenticationConstruct } from '../../../lib/stack';
 
 describe('AuthenticationConstruct', () => {
+    it('imports the configured prod pool and client without creating auth resources in dev', () => {
+        const stack = new cdk.Stack();
+        const auth = new AuthenticationConstruct(stack, 'Auth', {
+            envName: 'dev',
+            prodUserPoolId: 'eu-west-2_sharedpool',
+            prodUserPoolClientId: 'sharedclientid',
+        });
+
+        expect(auth.userPool.userPoolId).toBe('eu-west-2_sharedpool');
+        expect(auth.userPoolClient.userPoolClientId).toBe('sharedclientid');
+        expect(auth.loginUrl).toBeUndefined();
+        expect(auth.jwtAuthorizer).toBeDefined();
+    });
+
+    it('uses deploy-time SSM references when dev pool values are not supplied', () => {
+        const stack = new cdk.Stack();
+        const auth = new AuthenticationConstruct(stack, 'Auth', { envName: 'dev' });
+        new cdk.CfnOutput(stack, 'ImportedPoolId', { value: auth.userPool.userPoolId });
+        new cdk.CfnOutput(stack, 'ImportedClientId', {
+            value: auth.userPoolClient.userPoolClientId,
+        });
+
+        expect(JSON.stringify(Template.fromStack(stack).toJSON()))
+            .toContain('/blockbuster-theatre/prod/user-pool-id');
+        expect(JSON.stringify(Template.fromStack(stack).toJSON()))
+            .toContain('/blockbuster-theatre/prod/user-pool-client-id');
+    });
+
     it('creates an invite-only Cognito pool with backend and OAuth clients', () => {
         const stack = new cdk.Stack();
         new AuthenticationConstruct(stack, 'Auth');

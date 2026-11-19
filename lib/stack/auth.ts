@@ -4,15 +4,28 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { lambdaSettings } from './lambda';
+import {
+    PROD_USER_POOL_CLIENT_ID_PARAMETER,
+    PROD_USER_POOL_ID_PARAMETER,
+    resourceName,
+    type EnvironmentName,
+} from './environment';
+
+interface AuthenticationConstructProps {
+    envName?: EnvironmentName;
+    prodUserPoolId?: string;
+    prodUserPoolClientId?: string;
+}
 
 export class AuthenticationConstruct extends Construct {
-    public readonly userPool: cognito.UserPool;
-    public readonly userPoolClient: cognito.UserPoolClient;
+    public readonly userPool: cognito.IUserPool;
+    public readonly userPoolClient: cognito.IUserPoolClient;
     public readonly jwtAuthorizer: authorizers.HttpJwtAuthorizer;
-    public readonly loginUrl: string;
+    public readonly loginUrl?: string;
 
     /**
      * Creates the Cognito user pool, public frontend client, and API Gateway JWT authorizer.
@@ -20,10 +33,41 @@ export class AuthenticationConstruct extends Construct {
      * @param scope Parent CDK construct.
      * @param id Construct identifier.
      */
-    constructor(scope: Construct, id: string) {
+    constructor(
+        scope: Construct,
+        id: string,
+        props: AuthenticationConstructProps = {}
+    ) {
         super(scope, id);
 
-        this.userPool = new cognito.UserPool(this, 'MovieUsers', {
+        const envName = props.envName ?? 'prod';
+        if (envName === 'dev') {
+            const userPoolId = props.prodUserPoolId
+                ?? ssm.StringParameter.valueForStringParameter(
+                    this,
+                    PROD_USER_POOL_ID_PARAMETER
+                );
+            const userPoolClientId = props.prodUserPoolClientId
+                ?? ssm.StringParameter.valueForStringParameter(
+                    this,
+                    PROD_USER_POOL_CLIENT_ID_PARAMETER
+                );
+
+            this.userPool = cognito.UserPool.fromUserPoolId(this, 'ImportedProdUserPool', userPoolId);
+            this.userPoolClient = cognito.UserPoolClient.fromUserPoolClientId(
+                this,
+                'ImportedProdUserPoolClient',
+                userPoolClientId
+            );
+            this.jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
+                resourceName('CognitoJwtAuthorizer', envName),
+                `https://cognito-idp.${cdk.Stack.of(this).region}.amazonaws.com/${userPoolId}`,
+                { jwtAudience: [userPoolClientId] }
+            );
+            return;
+        }
+
+        const userPool = new cognito.UserPool(this, 'MovieUsers', {
             userPoolName: 'blockbuster-theatre-users',
             selfSignUpEnabled: true,
             signInAliases: { email: true },
@@ -37,6 +81,7 @@ export class AuthenticationConstruct extends Construct {
                 requireUppercase: true,
             },
         });
+        this.userPool = userPool;
 
         const preTokenFunction = new lambdaNodejs.NodejsFunction(this, 'PreTokenGenerationHandler', {
             functionName: 'blockbuster-theatre-pre-token-generation-handler',
@@ -47,7 +92,7 @@ export class AuthenticationConstruct extends Construct {
             timeout: cdk.Duration.seconds(5),
             logRetention: logs.RetentionDays.ONE_WEEK,
         });
-        this.userPool.addTrigger(
+        userPool.addTrigger(
             cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
             preTokenFunction,
             cognito.LambdaVersion.V1_0
@@ -62,14 +107,14 @@ export class AuthenticationConstruct extends Construct {
             })],
         });
 
-        const userPoolDomain = this.userPool.addDomain('CognitoDomain', {
+        const userPoolDomain = userPool.addDomain('CognitoDomain', {
             cognitoDomain: {
                 domainPrefix: 'blockbuster-theatre',
             },
             managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
         });
 
-        const postmanClient = this.userPool.addClient('PostmanAppClient', {
+        const postmanClient = userPool.addClient('PostmanAppClient', {
             userPoolClientName: 'postman-test-client',
             generateSecret: false,
             oAuth: {
@@ -105,7 +150,7 @@ export class AuthenticationConstruct extends Construct {
             redirectUri: 'https://oauth.pstmn.io/v1/callback',
         })}&scope=openid%20email%20profile`;
 
-        this.userPoolClient = this.userPool.addClient('BackendClient', {
+        this.userPoolClient = userPool.addClient('BackendClient', {
             userPoolClientName: 'blockbuster-theatre-backend',
             generateSecret: false,
             authFlows: { userSrp: true, adminUserPassword: true },
@@ -118,7 +163,7 @@ export class AuthenticationConstruct extends Construct {
         });
 
         this.jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
-            'CognitoJwtAuthorizer',
+            resourceName('CognitoJwtAuthorizer', envName),
             `https://cognito-idp.${cdk.Stack.of(this).region}.amazonaws.com/${this.userPool.userPoolId}`,
             {
                 jwtAudience: [
