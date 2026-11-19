@@ -1,6 +1,5 @@
 import {
     DescribeTableCommand,
-    ListTablesCommand,
     type DynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
 import {
@@ -67,21 +66,6 @@ export function assertSafeTargetTables(
         }
         seenTargets.add(targetTable);
     }
-}
-
-async function listAllTableNames(client: DynamoDBClient): Promise<Set<string>> {
-    const names = new Set<string>();
-    let exclusiveStartTableName: string | undefined;
-
-    do {
-        const page = await client.send(new ListTablesCommand({
-            ExclusiveStartTableName: exclusiveStartTableName,
-        }));
-        for (const tableName of page.TableNames ?? []) names.add(tableName);
-        exclusiveStartTableName = page.LastEvaluatedTableName;
-    } while (exclusiveStartTableName);
-
-    return names;
 }
 
 function getKeySchema(keySchema: KeySchema | undefined, tableName: string): string[] {
@@ -247,21 +231,6 @@ export async function syncProdToDev(
         new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
 
     assertSafeTargetTables(mappings, new Set(PROD_TABLE_NAMES));
-    const availableTableNames = await listAllTableNames(dynamoClient);
-    const availableProductionTableNames = new Set(
-        [...availableTableNames].filter((tableName) => !tableName.endsWith('-DEV'))
-    );
-    assertSafeTargetTables(mappings, availableProductionTableNames);
-
-    for (const { sourceTable, targetTable } of mappings) {
-        if (!availableTableNames.has(sourceTable)) {
-            throw new Error(`Production table "${sourceTable}" does not exist.`);
-        }
-        if (!availableTableNames.has(targetTable)) {
-            throw new Error(`Development target table "${targetTable}" does not exist.`);
-        }
-    }
-
     const keyNamesByTarget = new Map<string, string[]>();
     for (const { sourceTable, targetTable } of mappings) {
         const [sourceSchema, targetSchema] = await Promise.all([
