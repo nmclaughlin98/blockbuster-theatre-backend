@@ -202,7 +202,7 @@ export class LambdaConstruct extends Construct {
         });
 
         props.table.grantReadData(this.getMovieFunction);
-        props.showtimeRegistryTable.grantReadWriteData(this.getMovieFunction);
+        props.showtimeRegistryTable.grantReadData(this.getMovieFunction);
 
         this.listMovieCollectionsFunction = createNodejsFunction(
             this,

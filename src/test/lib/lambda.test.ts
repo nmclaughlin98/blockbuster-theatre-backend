@@ -422,6 +422,47 @@ describe('LambdaConstruct', () => {
         expect(construct.getMovieFunction).toBeDefined();
     });
 
+    it('keeps GetMovie schedule reads read-only and independent of bookings', () => {
+        const resources = Template.fromStack(stack).toJSON().Resources as Record<string, {
+            Type: string;
+            Properties?: {
+                FunctionName?: string;
+                Environment?: { Variables?: Record<string, unknown> };
+                Roles?: Array<Record<string, unknown>>;
+                PolicyDocument?: {
+                    Statement?: Array<{ Action?: string | string[] }>;
+                };
+            };
+        }>;
+        const getMovieFunction = Object.values(resources).find((resource) => (
+            resource.Type === 'AWS::Lambda::Function'
+            && resource.Properties?.FunctionName === 'blockbuster-theatre-get-movie-lambda'
+        ));
+        const variables = getMovieFunction?.Properties?.Environment?.Variables;
+
+        expect(variables).toHaveProperty('TABLE_NAME');
+        expect(variables).toHaveProperty('SHOWTIME_REGISTRY_TABLE_NAME');
+        expect(variables).not.toHaveProperty('BOOKINGS_TABLE_NAME');
+
+        const getMoviePolicies = Object.values(resources).filter((resource) => (
+            resource.Type === 'AWS::IAM::Policy'
+            && JSON.stringify(resource.Properties?.Roles ?? []).includes('GetMovieHandlerServiceRole')
+        ));
+        expect(getMoviePolicies).not.toHaveLength(0);
+        const actions = getMoviePolicies.flatMap((policy) => (
+            policy.Properties?.PolicyDocument?.Statement ?? []
+        ).flatMap(({ Action }) => (Array.isArray(Action) ? Action : [Action]))
+            .filter((action): action is string => typeof action === 'string'));
+        expect(actions).toContain('dynamodb:Query');
+        expect(actions).not.toEqual(expect.arrayContaining([
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem',
+            'dynamodb:DeleteItem',
+            'dynamodb:TransactWriteItems',
+        ]));
+        expect(JSON.stringify(getMoviePolicies)).not.toContain('TestBookingsTable');
+    });
+
     it('should export exportMoviesFunction', () => {
         expect(construct.exportMoviesFunction).toBeDefined();
     });

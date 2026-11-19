@@ -447,12 +447,12 @@ export async function getMovieShowtimes(
     if (dates.some((date) => date < today)) {
         throw new MovieScheduleError(400, 'date must not be in the past.');
     }
-    const { recordsByDate } = await maintainRollingSchedule({ dates });
+    const scheduledDates = dates.filter((date) => isMovieScheduleDateAllowed(movie, date, today));
+    const recordsByDate = await Promise.all(scheduledDates.map(listShowtimesForDate));
 
     const result: MovieShowtimes = {};
-    for (const date of dates) {
-        if (!isMovieScheduleDateAllowed(movie, date, today)) continue;
-        const records = (recordsByDate.get(date) ?? [])
+    for (const [index, date] of scheduledDates.entries()) {
+        const records = recordsByDate[index]
             .filter(isScheduleRecord)
             .filter((record) =>
                 record.movieId === movie.tmdbId
