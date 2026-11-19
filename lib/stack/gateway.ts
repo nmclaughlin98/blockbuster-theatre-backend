@@ -23,6 +23,7 @@ interface ApiGatewayConstructProps {
     refreshMovieCollectionFunction: lambda.IFunction;
     listBookingsFunction: lambda.IFunction;
     createBookingFunction: lambda.IFunction;
+    rescheduleBookingFunction: lambda.IFunction;
     guestBookedSeatsFunction: lambda.IFunction;
     guestBookingFunction: lambda.IFunction;
     guestConversionFunction: lambda.IFunction;
@@ -132,6 +133,10 @@ export class ApiGatewayConstruct extends Construct {
         const createBookingIntegration = new integrations.HttpLambdaIntegration(
             'CreateBookingIntegration',
             props.createBookingFunction
+        );
+        const rescheduleBookingIntegration = new integrations.HttpLambdaIntegration(
+            'RescheduleBookingIntegration',
+            props.rescheduleBookingFunction
         );
         const guestBookedSeatsIntegration = new integrations.HttpLambdaIntegration(
             'GuestBookedSeatsIntegration',
@@ -270,6 +275,12 @@ export class ApiGatewayConstruct extends Construct {
             path: '/bookings',
             methods: [apigw2.HttpMethod.POST],
             integration: createBookingIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/bookings/reschedule-booking',
+            methods: [apigw2.HttpMethod.PATCH],
+            integration: rescheduleBookingIntegration,
         });
 
         this.httpApi.addRoutes({

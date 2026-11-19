@@ -165,12 +165,16 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 26);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 27);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /bookings',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'PATCH /bookings/reschedule-booking',
+            AuthorizationType: 'NONE',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/guest',
@@ -239,7 +243,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 24);
+        template.resourceCountIs('AWS::IAM::Policy', 25);
         template.hasResourceProperties('AWS::SES::EmailIdentity', {
             EmailIdentity: 'niallmclaughlin1998@gmail.com',
         });

@@ -106,9 +106,36 @@ describe('LambdaConstruct', () => {
         });
     });
 
+    it('configures the reschedule handler with only the required booking-table permissions', () => {
+        const template = Template.fromStack(stack);
+        const table = Match.stringLikeRegexp('TestBookingsTable');
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-reschedule-booking-handler',
+            Environment: {
+                Variables: {
+                    BOOKINGS_TABLE_NAME: { Ref: table },
+                },
+            },
+        });
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            Roles: [{ Ref: Match.stringLikeRegexp('RescheduleBookingHandlerServiceRole') }],
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([Match.objectLike({
+                    Effect: 'Allow',
+                    Action: Match.arrayWith([
+                        'dynamodb:Query',
+                        'dynamodb:DeleteItem',
+                        'dynamodb:PutItem',
+                    ]),
+                    Resource: Match.arrayWith([{ 'Fn::GetAtt': [table, 'Arn'] }]),
+                })]),
+            }),
+        });
+    });
+
     it('should retain CloudWatch logs for one week for every Lambda function', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('Custom::LogRetention', 22);
+        template.resourceCountIs('Custom::LogRetention', 23);
         template.hasResourceProperties('Custom::LogRetention', {
             RetentionInDays: 7,
         });
@@ -121,7 +148,7 @@ describe('LambdaConstruct', () => {
             JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
         );
 
-        expect(loggingRoles).toHaveLength(23);
+        expect(loggingRoles).toHaveLength(24);
     });
 
     it('should use Node.js 24.x runtime', () => {
@@ -235,7 +262,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(23);
+        expect(Object.values(functions)).toHaveLength(24);
         for (const fn of Object.values(functions)) {
             expect(fn.Properties).not.toHaveProperty('ReservedConcurrentExecutions');
         }

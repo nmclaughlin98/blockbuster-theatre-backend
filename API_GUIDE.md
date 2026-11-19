@@ -524,6 +524,21 @@ When the booking comes from an offer, also send `offerId` (with the offer's feat
 }
 ```
 
+### Reschedule a booking
+
+`PATCH /bookings/reschedule-booking?showtimeId=559924_2026-11-02_1900&bookingRef=BBT-958000`
+
+```json
+{
+  "newShowtimeId": "559924_2026-11-05_1930",
+  "date": "2026-11-05",
+  "time": "19:30",
+  "screen": "3"
+}
+```
+
+`showtimeId` identifies the current showing and `bookingRef` identifies the booking. Both query parameters and `newShowtimeId` are required; the target showtime must differ from the current one. The date and time can be omitted when they can be parsed from the target ID; an unparsable time is retained from the existing booking. The existing screen is retained when `screen` is omitted. Booking and seat-lock records move in one DynamoDB transaction, so the booking remains unchanged and HTTP 409 is returned if any target seat is unavailable. Missing bookings return HTTP 404 and invalid input returns HTTP 400.
+
 Invalid seats, dates, or showtimes return HTTP 400, an unknown movie returns HTTP 404, and seats that were booked in the meantime return HTTP 409 (`Seat already booked: B5.`) without reserving any of the requested seats.
 
 ## Run the booking API locally

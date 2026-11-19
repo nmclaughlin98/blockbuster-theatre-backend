@@ -66,6 +66,7 @@ export class LambdaConstruct extends Construct {
     public readonly refreshMovieCollectionFunction: lambdaNodejs.NodejsFunction;
     public readonly listBookingsFunction: lambdaNodejs.NodejsFunction;
     public readonly createBookingFunction: lambdaNodejs.NodejsFunction;
+    public readonly rescheduleBookingFunction: lambdaNodejs.NodejsFunction;
     public readonly guestBookedSeatsFunction: lambdaNodejs.NodejsFunction;
     public readonly guestBookingFunction: lambdaNodejs.NodejsFunction;
     public readonly guestConversionFunction: lambdaNodejs.NodejsFunction;
@@ -438,6 +439,24 @@ export class LambdaConstruct extends Construct {
         props.bookingsTable.grantWriteData(this.createBookingFunction);
         props.legacyBookingsTable.grantReadData(this.createBookingFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.createBookingFunction);
+
+        this.rescheduleBookingFunction = createNodejsFunction(this, 'RescheduleBookingHandler', {
+            functionName: 'blockbuster-theatre-reschedule-booking-handler',
+            runtime: lambdaSettings.runtime,
+            entry: path.join(__dirname, './handlers/RescheduleBooking/reschedule-booking-handler.ts'),
+            handler: 'handler',
+            memorySize: lambdaSettings.default.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+            environment: {
+                BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+            },
+        });
+        props.bookingsTable.grant(
+            this.rescheduleBookingFunction,
+            'dynamodb:Query',
+            'dynamodb:DeleteItem',
+            'dynamodb:PutItem'
+        );
 
         this.guestBookedSeatsFunction = createNodejsFunction(
             this,
