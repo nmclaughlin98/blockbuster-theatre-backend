@@ -62,7 +62,7 @@ jobs:
             TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
 
             if [ "$TARGET_BUILD" = "latest" ]; then
-              BUILD_INFO=$(gh run list --workflow build.yml --branch main --status success --limit 1 --json databaseId,number --jq '.[0] | [.databaseId, .number] | @tsv')
+              BUILD_INFO=$(gh run list --workflow build.yml --branch main --status success --limit 1 --json databaseId,number --jq '.[] | [.databaseId, .number] | @tsv')
             else
               if ! [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
                 echo "Error: Build number must be numeric or 'latest'."
@@ -71,12 +71,11 @@ jobs:
               BUILD_INFO=$(gh run list --workflow build.yml --branch main --status success --limit 100 --json databaseId,number --jq ".[] | select(.number == ${TARGET_BUILD}) | [.databaseId, .number] | @tsv" | head -n 1)
             fi
 
-            if [ -z "$BUILD_INFO" ] || [ "$BUILD_INFO" = "null" ]; then
+            read -r BUILD_RUN_ID TARGET_BUILD <<< "$BUILD_INFO"
+            if [ -z "$BUILD_RUN_ID" ] || [ -z "$TARGET_BUILD" ]; then
               echo "Error: No successful build found for the requested main-branch build."
               exit 1
             fi
-
-            read -r BUILD_RUN_ID TARGET_BUILD <<< "$BUILD_INFO"
           fi
 
           echo "build_number=${TARGET_BUILD}" >> "$GITHUB_OUTPUT"
