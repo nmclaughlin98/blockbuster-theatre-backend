@@ -32,11 +32,12 @@ describe('sync production data to dev', () => {
     it('defines a -DEV counterpart for every production table', () => {
         expect(PROD_TO_DEV_TABLES).toHaveLength(PROD_TABLE_NAMES.length);
         for (const mapping of PROD_TO_DEV_TABLES) {
-            expect(mapping.targetTable).toBe(`${mapping.sourceTable}-DEV`);
+            expect(mapping.sourceTable).toMatch(/-PROD$/);
+            expect(mapping.targetTable).toBe(mapping.sourceTable.replace(/-PROD$/, '-DEV'));
         }
     });
 
-    it.each(['production', 'lowercase'])('rejects %s targets before any DynamoDB operation', async (kind) => {
+    it.each(['production', 'lowercase', 'wrong-table'])('rejects %s targets before any DynamoDB operation', async (kind) => {
         const sourceTable = PROD_TABLE_NAMES[0];
         await expect(syncProdToDev(
             {} as DynamoDBClient,
@@ -44,7 +45,9 @@ describe('sync production data to dev', () => {
             {
                 mappings: [{
                     sourceTable,
-                    targetTable: kind === 'production' ? sourceTable : `${sourceTable}-dev`,
+                    targetTable: kind === 'production' ? sourceTable
+                        : kind === 'lowercase' ? sourceTable.replace(/-PROD$/, '-dev')
+                            : PROD_TO_DEV_TABLES[1].targetTable,
                 }],
                 clear: true,
             }

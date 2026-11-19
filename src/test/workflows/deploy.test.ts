@@ -361,13 +361,14 @@ describe('deploy build selection', () => {
         expect(runSynth('dev', 'BlockbusterTheatreBackendStack').status).toBe(1);
     });
 
-    it('validates deployment assets before assuming AWS credentials', () => {
+    it.each(['dev', 'prod'])('validates %s deployment assets before assuming AWS credentials', (environment) => {
         const validate = workflow.split('      - name: Validate Deployment Assembly\n')[1]
             .split('      - name: Configure AWS Credentials\n')[0]
             .split('        run: |\n')[1].replace(/^          /gm, '');
         const root = join(directory, 'cdk-out');
         mkdirSync(root);
-        const stack = 'BlockbusterTheatreBackendStack-dev';
+        const stack = environment === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
+        const suffix = environment === 'dev' ? '-DEV' : '-PROD';
         const assetName = `asset.${'b'.repeat(64)}`;
         mkdirSync(join(root, assetName));
         writeFileSync(join(root, `${stack}.template.json`), JSON.stringify({
@@ -378,7 +379,7 @@ describe('deploy build selection', () => {
             ].map((name, index) => [`Function${index}`, {
                 Type: 'AWS::Lambda::Function',
                 Properties: {
-                    FunctionName: `${name}-DEV`,
+                    FunctionName: `${name}${suffix}`,
                     Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
                 },
             }])),
@@ -392,7 +393,7 @@ describe('deploy build selection', () => {
                 files: { asset: { source } }, dockerImages,
             }));
             return spawnSync('bash', ['-e', '-c', validate], {
-                cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: 'dev' },
+                cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: environment },
             });
         };
         expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(0);
@@ -400,6 +401,11 @@ describe('deploy build selection', () => {
         expect(runValidation({ executable: ['sh', '-c', 'echo bad'] }).status).toBe(1);
         expect(runValidation({ path: '../secret', packaging: 'file' }).status).toBe(1);
         expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
+        const templatePath = join(root, `${stack}.template.json`);
+        const wrongEnvironmentTemplate = readFileSync(templatePath, 'utf8')
+            .replaceAll(suffix, environment === 'dev' ? '-PROD' : '-DEV');
+        writeFileSync(templatePath, wrongEnvironmentTemplate);
+        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
         writeFileSync(join(root, `${stack}.template.json`), '{}');
         expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
     });

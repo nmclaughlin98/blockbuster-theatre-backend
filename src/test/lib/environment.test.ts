@@ -1,10 +1,10 @@
 import { parseEnvironmentName, resourceName } from '../../../lib/stack/environment';
 
 describe('CDK environment helpers', () => {
-    it('defaults to prod and preserves existing physical names', () => {
+    it('defaults to prod and adds the production suffix', () => {
         expect(parseEnvironmentName(undefined)).toBe('prod');
         expect(resourceName('blockbuster-theatre-api-gateway', 'prod'))
-            .toBe('blockbuster-theatre-api-gateway');
+            .toBe('blockbuster-theatre-api-gateway-PROD');
     });
 
     it('adds the dev suffix and rejects unsupported environments', () => {

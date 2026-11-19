@@ -11,7 +11,7 @@ export function parseEnvironmentName(value: unknown): EnvironmentName {
 }
 
 export function resourceName(baseName: string, envName: EnvironmentName): string {
-    return envName === 'prod' ? baseName : `${baseName}-DEV`;
+    return `${baseName}-${envName.toUpperCase()}`;
 }
 
 export function maxTicketsParameterForEnvironment(

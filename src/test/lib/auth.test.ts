@@ -53,7 +53,7 @@ describe('AuthenticationConstruct', () => {
 
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Cognito::UserPool', {
-            UserPoolName: 'blockbuster-theatre-users',
+            UserPoolName: 'blockbuster-theatre-users-PROD',
             UsernameAttributes: ['email'],
             AdminCreateUserConfig: {
                 AllowAdminCreateUserOnly: true,
@@ -64,7 +64,7 @@ describe('AuthenticationConstruct', () => {
             ManagedLoginVersion: 2,
         });
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-            ClientName: 'blockbuster-theatre-backend',
+            ClientName: 'blockbuster-theatre-backend-PROD',
             GenerateSecret: false,
             ExplicitAuthFlows: Match.arrayWith([
                 'ALLOW_ADMIN_USER_PASSWORD_AUTH',
@@ -73,7 +73,7 @@ describe('AuthenticationConstruct', () => {
             EnableTokenRevocation: true,
         });
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-            ClientName: 'postman-test-client',
+            ClientName: 'postman-test-client-PROD',
             GenerateSecret: false,
             AllowedOAuthFlows: ['code'],
             CallbackURLs: [
@@ -98,7 +98,7 @@ describe('AuthenticationConstruct', () => {
         const template = Template.fromStack(stack);
         const poolId = Object.keys(template.findResources('AWS::Cognito::UserPool'))[0];
         const functions = template.findResources('AWS::Lambda::Function', {
-            Properties: { FunctionName: 'blockbuster-theatre-pre-token-generation-handler' },
+            Properties: { FunctionName: 'blockbuster-theatre-pre-token-generation-handler-PROD' },
         });
         const functionId = Object.keys(functions)[0];
         const roleId = functions[functionId].Properties.Role['Fn::GetAtt'][0];

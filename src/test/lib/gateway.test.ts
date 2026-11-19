@@ -59,7 +59,7 @@ describe('ApiGatewayConstruct', () => {
     it('should create an HTTP API', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'blockbuster-theatre-api-gateway',
+            Name: 'blockbuster-theatre-api-gateway-PROD',
             ProtocolType: 'HTTP',
         });
     });
@@ -245,7 +245,7 @@ describe('ApiGatewayConstruct', () => {
     it.each(['prod', 'dev'] as const)('logs %s API access through the existing default stage', (envName) => {
         if (envName === 'dev') createGateway('dev');
         const template = Template.fromStack(stack);
-        const logName = `/aws/vendedlogs/blockbuster-theatre-api-access${envName === 'dev' ? '-DEV' : ''}`;
+        const logName = `/aws/vendedlogs/blockbuster-theatre-api-access-${envName.toUpperCase()}`;
         const groups = template.findResources('AWS::Logs::LogGroup', {
             Properties: { LogGroupName: logName },
         });

@@ -291,7 +291,7 @@ jobs:
                 Object.values(artifacts).some(a => !allowed.has(a.type))) throw new Error("Unexpected assembly artifacts");
             const template = JSON.parse(fs.readFileSync(path.join(root, `${expected}.template.json`)));
             if (template.Parameters?.TmdbApiKey?.NoEcho !== true) throw new Error("Missing masked TMDB key parameter");
-            const suffix = process.env.DEPLOY_ENVIRONMENT === "dev" ? "-DEV" : "";
+            const suffix = process.env.DEPLOY_ENVIRONMENT === "dev" ? "-DEV" : "-PROD";
             for (const name of ["blockbuster-theatre-add-movies-handler", "blockbuster-theatre-refresh-movie-collection-handler"]) {
               const matches = Object.values(template.Resources || {}).filter(r =>
                 r.Type === "AWS::Lambda::Function" && r.Properties?.FunctionName === `${name}${suffix}`);

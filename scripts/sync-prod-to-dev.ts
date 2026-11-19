@@ -10,8 +10,9 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
+import { resourceName } from '../lib/stack/environment';
 
-export const PROD_TABLE_NAMES = [
+const TABLE_BASE_NAMES = [
     'blockbuster-theatre-movie-catalogue',
     'blockbuster-theatre-ticket-pricing',
     'blockbuster-theatre-booking-offers',
@@ -22,6 +23,8 @@ export const PROD_TABLE_NAMES = [
     'blockbuster-theatre-booking-references',
     'blockbuster-theatre-guest-conversion-tokens',
 ] as const;
+
+export const PROD_TABLE_NAMES = TABLE_BASE_NAMES.map((name) => resourceName(name, 'prod'));
 
 export interface TableMapping {
     sourceTable: string;
@@ -37,9 +40,9 @@ const MAX_UNPROCESSED_RETRIES = 8;
 const INITIAL_RETRY_DELAY_MS = 100;
 const MAX_RETRY_DELAY_MS = 5000;
 
-export const PROD_TO_DEV_TABLES: TableMapping[] = PROD_TABLE_NAMES.map((sourceTable) => ({
-    sourceTable,
-    targetTable: `${sourceTable}-DEV`,
+export const PROD_TO_DEV_TABLES: TableMapping[] = TABLE_BASE_NAMES.map((name) => ({
+    sourceTable: resourceName(name, 'prod'),
+    targetTable: resourceName(name, 'dev'),
 }));
 
 export function assertSafeTargetTables(
@@ -52,9 +55,12 @@ export function assertSafeTargetTables(
 
     const seenTargets = new Set<string>();
     for (const { sourceTable, targetTable } of mappings) {
+        const expectedTarget = PROD_TO_DEV_TABLES.find((mapping) =>
+            mapping.sourceTable === sourceTable
+        )?.targetTable;
         if (
-            !PROD_TABLE_NAMES.some((name) => name === sourceTable)
-            || targetTable !== `${sourceTable}-DEV`
+            !expectedTarget
+            || targetTable !== expectedTarget
             || !targetTable.endsWith('-DEV')
             || productionTableNames.has(targetTable)
             || targetTable === sourceTable

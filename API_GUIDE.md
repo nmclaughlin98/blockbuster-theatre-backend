@@ -12,7 +12,7 @@ All Lambda functions use CloudWatch Logs with a seven-day retention period and t
 
 ## API Gateway access logging
 
-The HTTP API default stage writes access logs to CloudWatch Logs in `eu-west-2`: `/aws/vendedlogs/blockbuster-theatre-api-access` for prod and `/aws/vendedlogs/blockbuster-theatre-api-access-DEV` for dev. Logs are retained for seven days. The prod log group is retained if its stack is deleted; the dev log group is deleted with its stack.
+The HTTP API default stage writes access logs to CloudWatch Logs in `eu-west-2`: `/aws/vendedlogs/blockbuster-theatre-api-access-PROD` for prod and `/aws/vendedlogs/blockbuster-theatre-api-access-DEV` for dev. Logs are retained for seven days. The prod log group is retained if its stack is deleted; the dev log group is deleted with its stack.
 
 Logs include the request ID, time, method, route key, response status and latency, integration status, and available gateway or authorizer errors. They do not explicitly include request bodies, authorization headers, tokens, query strings, or JWT claims. An authorizer error may not contain the reason for every JWT rejection. Logs begin after deployment and access logging can incur CloudWatch charges. The deploying role needs the permissions listed in the [AWS HTTP API logging documentation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html#http-api-logging.permissions).
 
@@ -51,14 +51,14 @@ The stack creates an SES email identity for `niallmclaughlin1998@gmail.com`. Aft
 
 The endpoint is intended for the deployed demo booking flow and is not available through the local API adapter. It accepts the client-provided booking summary and does not persist or independently verify a booking or price. Do not treat the email as proof of payment or a confirmed seat reservation.
 
-The maximum accepted ticket count is read from the AWS Systems Manager Parameter Store string parameter `/blockbuster-theatre/booking-configuration/max-tickets-value` in prod and `/blockbuster-theatre/booking-configuration/max-tickets-value-dev` in dev. If the parameter is not configured or does not exist, the handlers use a limit of 10. The guest-booking and booking-confirmation Lambda roles have read access to their environment's parameter.
+The maximum accepted ticket count is read from the AWS Systems Manager Parameter Store string parameter `/blockbuster-theatre/booking-configuration/max-tickets-value-PROD` in prod and `/blockbuster-theatre/booking-configuration/max-tickets-value-DEV` in dev. These parameters are external to this stack; copy the existing prod value to the new name before deployment. If the parameter is not configured or does not exist, the handlers use a limit of 10. The guest-booking and booking-confirmation Lambda roles have read access to their environment's parameter.
 
 Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
 
 Movie records store TMDB `poster` and `still` URLs at original resolution. To backfill existing movie records, set `MOVIE_TABLE_NAME` and AWS credentials/region, then run `npm run migrate:movie-image-urls` to preview changes. The script scans every page and updates only those two URL attributes while preserving the rest of each record. Add `-- --apply` to write the changes after reviewing the dry-run output:
 
 ```powershell
-$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue"
+$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue-PROD"
 $env:AWS_PROFILE = "your-aws-profile"
 $env:AWS_REGION = "eu-west-2"
 npm run migrate:movie-image-urls
@@ -96,7 +96,7 @@ npm run migrate:showtime-registry -- --apply
 Legacy movie `showtimes` values are ignored by the new scheduler. Preview them before removal:
 
 ```powershell
-$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue"
+$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue-PROD"
 $env:AWS_PROFILE = "your-aws-profile"
 $env:AWS_REGION = "eu-west-2"
 npm run migrate:movie-showtimes
@@ -616,7 +616,9 @@ npx cdk synth -c env=prod
 npx cdk synth -c env=dev
 ```
 
-Prod keeps the existing stack ID, table names, Lambda names, API name, SES identity, API domain, and Cognito pool/client. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming existing dev tables replaces them and can delete their data. No S3 buckets are defined by this stack.
+Prod keeps the existing stack ID and uses `-PROD`-suffixed DynamoDB tables, Lambda/API names, and Cognito pool/client names. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. External API and Cognito domains and the SES email identity remain unchanged. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming prod tables creates new, empty tables; retained old tables are not copied automatically. Copy and verify any needed data before purging the old tables. No S3 buckets are defined by this stack.
+
+The Cognito user pool is also retained on stack deletion. When recreating the stack, the unchanged Cognito domain and API mapping must be released by the old stack before the replacement can claim them. A retained pool and retained log group may still exist after deletion; inspect them before any cleanup.
 
 CDK applies `Environment=prod` or `Environment=dev` and `Project=blockbuster-theatre` to supported stack-managed resources. Adding the prod environment tag changes the prod template; imported resources and resource types without tag support cannot be tagged by this stack.
 
@@ -628,7 +630,7 @@ Dev imports the existing prod User Pool, backend App Client, and SES email ident
 
 The pool and backend client IDs can be provided through CDK context (`prodUserPoolId`, `prodUserPoolClientId`) or environment variables (`PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`). Otherwise the dev template requires `ProdUserPoolId` and `ProdUserPoolClientId` CloudFormation parameters. The deployment workflow retrieves those parameters from the `UserPoolId` and `UserPoolClientId` outputs of the prod stack.
 
-For the Postman client, set the dev GitHub Environment variable `PROD_POSTMAN_CLIENT_ID` to the client ID of `postman-test-client` in the shared prod Cognito pool. The workflow supplies it as the required `ProdPostmanClientId` CloudFormation parameter. For direct dev deployment, supply `--parameters ProdPostmanClientId=<postman-client-id>` along with any required pool and backend client parameters; alternatively synthesize with context `prodPostmanClientId` or environment variable `PROD_POSTMAN_CLIENT_ID`. The current frontend auth flow uses SRP directly, so no Hosted UI callback/client changes are required or made to prod.
+For the Postman client, set the dev GitHub Environment variable `PROD_POSTMAN_CLIENT_ID` to the client ID of `postman-test-client-PROD` in the shared prod Cognito pool. The workflow supplies it as the required `ProdPostmanClientId` CloudFormation parameter. For direct dev deployment, supply `--parameters ProdPostmanClientId=<postman-client-id>` along with any required pool and backend client parameters; alternatively synthesize with context `prodPostmanClientId` or environment variable `PROD_POSTMAN_CLIENT_ID`. Recreating the pool or its clients changes their IDs: update the frontend and Postman configuration, update this dev variable, and redeploy dev with the new pool/client IDs.
 
 The dev API accepts the production frontend origin, local development origins, and HTTPS Cloudflare Pages previews. API Gateway HTTP API's `https://*` origin pattern is used for preview hostnames; it permits any HTTPS origin, so bearer-token handling must remain explicit and API authorization must not rely on CORS alone. `Authorization`, `Content-Type`, and common AWS/request headers are allowed.
 
@@ -638,7 +640,7 @@ The dev booking Lambdas also use the existing prod SES identity. Exercise email-
 
 ### Production data sync to dev
 
-`npm run sync:dev` scans the nine configured prod tables and writes to their `-DEV` counterparts in batches of 25, retrying DynamoDB unprocessed writes with exponential backoff. It verifies all source/target tables and key schemas before any writes. Every target must exactly end in `-DEV`, must not match a prod table, and all mappings are validated before the optional clear begins.
+`npm run sync:dev` scans the nine configured `-PROD` tables and writes to their `-DEV` counterparts in batches of 25, retrying DynamoDB unprocessed writes with exponential backoff. It verifies all source/target tables and key schemas before any writes. Every target must exactly match the `-DEV` counterpart of its `-PROD` source, must not match a prod table, and all mappings are validated before the optional clear begins. This command does not migrate the old unsuffixed prod tables.
 
 By default, sync overwrites matching keys but leaves other existing dev rows intact. Use `-- --clear` to delete every current item from all `-DEV` tables before copying. Run a clear-and-copy during a quiet period so concurrent dev writes do not race with the synchronization:
 

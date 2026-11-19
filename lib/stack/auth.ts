@@ -70,7 +70,7 @@ export class AuthenticationConstruct extends Construct {
         }
 
         const userPool = new cognito.UserPool(this, 'MovieUsers', {
-            userPoolName: 'blockbuster-theatre-users',
+            userPoolName: resourceName('blockbuster-theatre-users', envName),
             selfSignUpEnabled: true,
             signInAliases: { email: true },
             autoVerify: { email: true },
@@ -86,7 +86,7 @@ export class AuthenticationConstruct extends Construct {
         this.userPool = userPool;
 
         const preTokenFunction = new lambdaNodejs.NodejsFunction(this, 'PreTokenGenerationHandler', {
-            functionName: 'blockbuster-theatre-pre-token-generation-handler',
+            functionName: resourceName('blockbuster-theatre-pre-token-generation-handler', envName),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, '../../src/main/lambda/handlers/PreTokenGeneration/pre-token-generation-handler.ts'),
             handler: 'handler',
@@ -117,7 +117,7 @@ export class AuthenticationConstruct extends Construct {
         });
 
         const postmanClient = userPool.addClient('PostmanAppClient', {
-            userPoolClientName: 'postman-test-client',
+            userPoolClientName: resourceName('postman-test-client', envName),
             generateSecret: false,
             oAuth: {
                 flows: {
@@ -153,7 +153,7 @@ export class AuthenticationConstruct extends Construct {
         })}&scope=openid%20email%20profile`;
 
         this.userPoolClient = userPool.addClient('BackendClient', {
-            userPoolClientName: 'blockbuster-theatre-backend',
+            userPoolClientName: resourceName('blockbuster-theatre-backend', envName),
             generateSecret: false,
             authFlows: { userSrp: true, adminUserPassword: true },
             preventUserExistenceErrors: true,
