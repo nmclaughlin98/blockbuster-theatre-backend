@@ -105,8 +105,6 @@ jobs:
               echo "Error: No successful build found for the requested ${TARGET_BRANCH} build."
               exit 1
             fi
-
-            read -r BUILD_RUN_ID TARGET_BUILD <<< "$BUILD_INFO"
           fi
 
           echo "build_number=${TARGET_BUILD}" >> "$GITHUB_OUTPUT"
