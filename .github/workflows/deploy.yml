@@ -26,7 +26,7 @@ on:
         default: 'latest'
         type: string
       allow_non_main_prod:
-        description: 'Risk: allow production deployments from non-main branches'
+        description: 'Allow production deployments from non-main branches'
         required: true
         default: false
         type: boolean
