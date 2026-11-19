@@ -123,7 +123,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: 'npm'
+          package-manager-cache: false
 
       - name: Install Dependencies
         id: install_dependencies
@@ -178,7 +178,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: 'npm'
+          package-manager-cache: false
 
       - name: Install Dependencies
         id: install_dependencies
@@ -190,6 +190,42 @@ jobs:
         with:
           name: deployment-assembly
           path: cdk-out
+
+      - name: Validate Deployment Assembly
+        id: validate_assembly
+        env:
+          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const root = path.resolve("cdk-out");
+            const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
+              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
+            const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json")));
+            const artifacts = manifest.artifacts;
+            const allowed = new Set(["aws:cloudformation:stack", "cdk:asset-manifest", "cdk:tree", "cdk:feature-flag-report"]);
+            const stacks = Object.entries(artifacts).filter(([, a]) => a.type === "aws:cloudformation:stack");
+            if (stacks.length !== 1 || stacks[0][0] !== expected ||
+                stacks[0][1].properties.templateFile !== `${expected}.template.json` ||
+                Object.values(artifacts).some(a => !allowed.has(a.type))) throw new Error("Unexpected assembly artifacts");
+            for (const artifact of Object.values(artifacts).filter(a => a.type === "cdk:asset-manifest")) {
+              const file = artifact.properties.file;
+              if (file !== `${expected}.assets.json`) throw new Error("Unexpected asset manifest");
+              const assets = JSON.parse(fs.readFileSync(path.join(root, file)));
+              if (Object.keys(assets.dockerImages || {}).length) throw new Error("Docker assets are not supported");
+              for (const asset of Object.values(assets.files || {})) {
+                const source = asset.source;
+                if (!source || Object.keys(source).some(k => k !== "path" && k !== "packaging") ||
+                    !(/^asset\.[0-9a-f]{64}$/.test(source.path) ||
+                      (source.path === `${expected}.template.json` && source.packaging === "file")) ||
+                    !["zip", "file"].includes(source.packaging) ||
+                    fs.lstatSync(path.join(root, source.path)).isSymbolicLink()) {
+                  throw new Error("Unexpected asset source");
+                }
+              }
+            }
+          '
 
       - name: Configure AWS Credentials
         id: configure_aws
@@ -219,6 +255,7 @@ jobs:
           SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
           INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
           DOWNLOAD_ASSEMBLY_OUTCOME: ${{ steps.download_assembly.outcome }}
+          VALIDATE_ASSEMBLY_OUTCOME: ${{ steps.validate_assembly.outcome }}
           CONFIGURE_AWS_OUTCOME: ${{ steps.configure_aws.outcome }}
           DEPLOY_CDK_OUTCOME: ${{ steps.deploy_cdk.outcome }}
         run: |
@@ -243,6 +280,7 @@ jobs:
                 "Setup Node.js:${SETUP_NODE_OUTCOME}" \
                 "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
                 "Download Deployment Assembly:${DOWNLOAD_ASSEMBLY_OUTCOME}" \
+                "Validate Deployment Assembly:${VALIDATE_ASSEMBLY_OUTCOME}" \
                 "Configure AWS Credentials:${CONFIGURE_AWS_OUTCOME}" \
                 "Deploy CDK Stack:${DEPLOY_CDK_OUTCOME}"; do
                 STEP_NAME="${step%%:*}"

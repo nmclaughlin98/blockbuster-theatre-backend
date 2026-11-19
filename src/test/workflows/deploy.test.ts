@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -110,5 +110,34 @@ describe('deploy build selection', () => {
         expect(runSynth('dev', 'BlockbusterTheatreBackendStack-dev').status).toBe(0);
         expect(runSynth('prod', 'BlockbusterTheatreBackendStack').status).toBe(0);
         expect(runSynth('dev', 'BlockbusterTheatreBackendStack').status).toBe(1);
+    });
+
+    it('validates deployment assets before assuming AWS credentials', () => {
+        const validate = workflow.split('      - name: Validate Deployment Assembly\n')[1]
+            .split('      - name: Configure AWS Credentials\n')[0]
+            .split('        run: |\n')[1].replace(/^          /gm, '');
+        const root = join(directory, 'cdk-out');
+        mkdirSync(root);
+        const stack = 'BlockbusterTheatreBackendStack-dev';
+        const assetName = `asset.${'b'.repeat(64)}`;
+        mkdirSync(join(root, assetName));
+        writeFileSync(join(root, `${stack}.template.json`), '{}');
+        writeFileSync(join(root, 'manifest.json'), JSON.stringify({ artifacts: {
+            [stack]: { type: 'aws:cloudformation:stack', properties: { templateFile: `${stack}.template.json` } },
+            assets: { type: 'cdk:asset-manifest', properties: { file: `${stack}.assets.json` } },
+        } }));
+        const runValidation = (source: object, dockerImages = {}) => {
+            writeFileSync(join(root, `${stack}.assets.json`), JSON.stringify({
+                files: { asset: { source } }, dockerImages,
+            }));
+            return spawnSync('bash', ['-e', '-c', validate], {
+                cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: 'dev' },
+            });
+        };
+        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(0);
+        expect(runValidation({ path: `${stack}.template.json`, packaging: 'file' }).status).toBe(0);
+        expect(runValidation({ executable: ['sh', '-c', 'echo bad'] }).status).toBe(1);
+        expect(runValidation({ path: '../secret', packaging: 'file' }).status).toBe(1);
+        expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
     });
 });

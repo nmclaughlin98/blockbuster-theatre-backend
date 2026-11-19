@@ -67,7 +67,7 @@ npm run deploy
 
 Deployment requires AWS credentials and targets the account and region configured for CDK. Review the synthesized template with `npm run synth` before deploying. DynamoDB tables use a retain removal policy so stack removal does not delete their data.
 
-For a manual GitHub Actions deployment, select an environment and optionally a build number; `latest` selects the most recent build across all branches, regardless of its status. The workflow checks out that build's source revision and synthesizes it for the selected environment rather than deploying its original artifact. The source revision must still be available and support the selected environment; older revisions that cannot synthesize the expected stack are rejected. Automatic deployments remain limited to successful push builds on `dev` and `main`.
+For a manual GitHub Actions deployment, select an environment and optionally a build number; `latest` selects the most recent build across all branches, regardless of its status. Check the build and its source before deploying, especially to production. The workflow checks out that build's source revision and synthesizes it for the selected environment rather than deploying its original artifact. The source revision must still be available and support the selected environment; older revisions that cannot synthesize the expected stack are rejected. The deployment assembly supports file assets, not Docker or executable assets. Automatic deployments remain limited to successful push builds on `dev` and `main`.
 
 ## Project layout
 
