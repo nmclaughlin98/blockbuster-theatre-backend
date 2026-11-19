@@ -190,7 +190,7 @@ export class ApiGatewayConstruct extends Construct {
             props.createBookingFunction
         );
         const rescheduleBookingIntegration = new integrations.HttpLambdaIntegration(
-            'RescheduleBookingIntegration',
+            'RescheduleCustomerBookingIntegration',
             props.rescheduleBookingFunction
         );
         const manageShowtimesIntegration = new integrations.HttpLambdaIntegration(

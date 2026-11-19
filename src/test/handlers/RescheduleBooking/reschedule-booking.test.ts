@@ -13,7 +13,7 @@ process.env.BOOKINGS_TABLE_NAME = 'test-bookings-table';
 process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/RescheduleBooking/reschedule-booking-handler') as {
+const { handler } = require('../../../main/lambda/handlers/RescheduleCustomerBooking/reschedule-customer-booking-handler') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 

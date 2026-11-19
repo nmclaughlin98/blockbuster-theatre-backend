@@ -101,7 +101,7 @@ export class LambdaConstruct extends Construct {
             minLength: 1,
             description: 'TMDB API read access token',
         }).valueAsString;
-        const functionName = (name: string): string => resourceName(name, envName);
+        const formatLambdaFunctionName = (name: string): string => resourceName(name, envName);
         const scopedMaxTicketsParameterName = maxTicketsParameterForEnvironment(
             maxTicketsParameterName,
             envName
@@ -123,7 +123,7 @@ export class LambdaConstruct extends Construct {
         );
 
         this.addMoviesFunction = createNodejsFunction(this, 'AddMoviesHandler', {
-            functionName: functionName('blockbuster-theatre-add-movies-handler'),
+            functionName: formatLambdaFunctionName('blockbuster-theatre-add-movies-handler'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/AddMovies/add-movies-handler.ts'),
             handler: 'handler',
@@ -145,7 +145,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadWriteData(this.addMoviesFunction);
 
         this.updateMoviesFunction = createNodejsFunction(this, 'UpdateMoviesHandler', {
-            functionName: functionName('blockbuster-theatre-update-movies-handler'),
+            functionName: formatLambdaFunctionName('blockbuster-theatre-update-movies-handler'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/UpdateMovies/update-movies-handler.ts'),
             handler: 'handler',
@@ -161,7 +161,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadWriteData(this.updateMoviesFunction);
 
         this.listMoviesFunction = createNodejsFunction(this, 'ListMoviesHandler', {
-            functionName: functionName('blockbuster-theatre-list-movies-handler'),
+            functionName: formatLambdaFunctionName('blockbuster-theatre-list-movies-handler'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ListMovies/list-movies-handler.ts'),
             handler: 'handler',
@@ -180,7 +180,7 @@ export class LambdaConstruct extends Construct {
             this,
             'ListFeaturedMoviesHandler',
             {
-                functionName: functionName('blockbuster-theatre-list-featured-movies-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-list-featured-movies-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/ListFeaturedMovies/list-featured-movies-handler.ts'),
                 handler: 'handler',
@@ -197,7 +197,7 @@ export class LambdaConstruct extends Construct {
         props.showtimeRegistryTable.grantReadWriteData(this.listFeaturedMoviesFunction);
 
         this.getMovieFunction = createNodejsFunction(this, 'GetMovieHandler', {
-            functionName: functionName('blockbuster-theatre-get-movie-lambda'),
+            functionName: formatLambdaFunctionName('blockbuster-theatre-get-movie-lambda'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/GetMovie/get-movie-handler.ts'),
             handler: 'handler',
@@ -216,7 +216,7 @@ export class LambdaConstruct extends Construct {
             this,
             'ListMovieCollectionsHandler',
             {
-                functionName: functionName('blockbuster-theatre-list-movie-collections-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-list-movie-collections-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/ListMovieCollections/list-movie-collections-handler.ts'),
                 handler: 'handler',
@@ -234,7 +234,7 @@ export class LambdaConstruct extends Construct {
             this,
             'GetMovieCollectionHandler',
             {
-                functionName: functionName('blockbuster-theatre-get-movie-collection-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-get-movie-collection-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/GetMovieCollection/get-movie-collection-handler.ts'),
                 handler: 'handler',
@@ -253,7 +253,7 @@ export class LambdaConstruct extends Construct {
         props.showtimeRegistryTable.grantReadWriteData(this.getMovieCollectionFunction);
 
         this.exportMoviesFunction = createNodejsFunction(this, 'ExportMoviesHandler', {
-            functionName: functionName('blockbuster-theatre-export-movies-handler'),
+            functionName: formatLambdaFunctionName('blockbuster-theatre-export-movies-handler'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ExportMovies/export-movies-handler.ts'),
             handler: 'handler',
@@ -267,7 +267,7 @@ export class LambdaConstruct extends Construct {
         props.table.grantReadData(this.exportMoviesFunction);
 
         this.listTmdbIdsFunction = createNodejsFunction(this, 'ListTmdbIdsHandler', {
-            functionName: functionName('blockbuster-theatre-list-tmdb-ids-lambda'),
+            functionName: formatLambdaFunctionName('blockbuster-theatre-list-tmdb-ids-lambda'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ListTmdbIds/list-tmdb-ids-handler.ts'),
             handler: 'handler',
@@ -284,7 +284,7 @@ export class LambdaConstruct extends Construct {
             this,
             'ListFilmSelectionsHandler',
             {
-                functionName: functionName('blockbuster-theatre-film-selections-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-film-selections-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/ListFilmSelections/list-film-selections-handler.ts'),
                 handler: 'handler',
@@ -306,7 +306,7 @@ export class LambdaConstruct extends Construct {
             this,
             'GetTicketPricingHandler',
             {
-                functionName: functionName('blockbuster-theatre-ticket-pricing-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-ticket-pricing-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/GetTicketPricing/get-ticket-pricing-handler.ts'),
                 handler: 'handler',
@@ -330,7 +330,7 @@ export class LambdaConstruct extends Construct {
             this,
             'ValidateCheckoutHandler',
             {
-                functionName: functionName('blockbuster-theatre-checkout-validation-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-checkout-validation-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/ValidateCheckout/validate-checkout-handler.ts'),
                 handler: 'handler',
@@ -354,7 +354,7 @@ export class LambdaConstruct extends Construct {
             this,
             'SendBookingConfirmationHandler',
             {
-                functionName: functionName('blockbuster-theatre-booking-confirmation-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-booking-confirmation-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/SendBookingConfirmation/send-booking-confirmation-handler.ts'),
                 handler: 'handler',
@@ -375,7 +375,7 @@ export class LambdaConstruct extends Construct {
             this,
             'UpsertBookingOffersHandler',
             {
-                functionName: functionName('blockbuster-theatre-upsert-booking-offers-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-booking-offers-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/UpsertBookingOffers/upsert-booking-offers-handler.ts'),
                 handler: 'handler',
@@ -393,7 +393,7 @@ export class LambdaConstruct extends Construct {
             this,
             'UpsertTicketPricingHandler',
             {
-                functionName: functionName('blockbuster-theatre-upsert-ticket-pricing-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-ticket-pricing-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/UpsertTicketPricing/upsert-ticket-pricing-handler.ts'),
                 handler: 'handler',
@@ -411,7 +411,7 @@ export class LambdaConstruct extends Construct {
             this,
             'RefreshMovieCollectionHandler',
             {
-                functionName: functionName('blockbuster-theatre-refresh-movie-collection-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-refresh-movie-collection-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/RefreshMovieCollection/refresh-movie-collection-handler.ts'),
                 handler: 'handler',
@@ -429,7 +429,7 @@ export class LambdaConstruct extends Construct {
         props.collectionsTable.grantReadWriteData(this.refreshMovieCollectionFunction);
 
         this.listBookingsFunction = createNodejsFunction(this, 'ListBookingsHandler', {
-            functionName: functionName('blockbuster-theatre-list-bookings-handler'),
+            functionName: formatLambdaFunctionName('blockbuster-theatre-list-bookings-handler'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/ListBookings/list-bookings-handler.ts'),
             handler: 'handler',
@@ -454,7 +454,7 @@ export class LambdaConstruct extends Construct {
 
         // Booking creation validates the movie and showtime, which needs the pricing lookups.
         this.createBookingFunction = createNodejsFunction(this, 'CreateBookingHandler', {
-            functionName: functionName('blockbuster-theatre-create-booking-handler'),
+            functionName: formatLambdaFunctionName('blockbuster-theatre-create-booking-handler'),
             runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, './handlers/CreateBooking/create-booking-handler.ts'),
             handler: 'handler',
@@ -477,10 +477,10 @@ export class LambdaConstruct extends Construct {
         props.legacyBookingsTable.grantReadData(this.createBookingFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.createBookingFunction);
 
-        this.rescheduleBookingFunction = createNodejsFunction(this, 'RescheduleBookingHandler', {
-            functionName: functionName('blockbuster-theatre-reschedule-booking-handler'),
+        this.rescheduleBookingFunction = createNodejsFunction(this, 'RescheduleCustomerBookingHandler', {
+            functionName: formatLambdaFunctionName('blockbuster-theatre-reschedule-customer-booking-handler'),
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/RescheduleBooking/reschedule-booking-handler.ts'),
+            entry: path.join(__dirname, './handlers/RescheduleCustomerBooking/reschedule-customer-booking-handler.ts'),
             handler: 'handler',
             memorySize: lambdaSettings.default.memorySize,
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
@@ -548,7 +548,7 @@ export class LambdaConstruct extends Construct {
             this,
             'GuestBookedSeatsHandler',
             {
-                functionName: functionName('blockbuster-theatre-guest-booked-seats-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-guest-booked-seats-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/GuestBookedSeats/guest-booked-seats-handler.ts'),
                 handler: 'handler',
@@ -577,7 +577,7 @@ export class LambdaConstruct extends Construct {
             this,
             'GuestBookingHandler',
             {
-                functionName: functionName('blockbuster-theatre-guest-booking-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-guest-booking-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/GuestBooking/guest-booking-handler.ts'),
                 handler: 'handler',
@@ -614,7 +614,7 @@ export class LambdaConstruct extends Construct {
             this,
             'GuestConversionHandler',
             {
-                functionName: functionName('blockbuster-theatre-guest-conversion-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-guest-conversion-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/GuestConversion/guest-conversion-handler.ts'),
                 handler: 'handler',
@@ -651,7 +651,7 @@ export class LambdaConstruct extends Construct {
             this,
             'DownloadTicketHandler',
             {
-                functionName: functionName('blockbuster-theatre-download-ticket-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-download-ticket-handler'),
                 runtime: lambdaSettings.runtime,
                 entry: path.join(__dirname, './handlers/DownloadTicket/download-ticket-handler.ts'),
                 handler: 'handler',

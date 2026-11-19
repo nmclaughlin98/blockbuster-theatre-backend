@@ -145,6 +145,7 @@ describe('LambdaConstruct', () => {
                 })).toThrow('TMDB_API_KEY must be set and non-empty');
             }
         } finally {
+            reschedule - customer - booking - handler
             if (original === undefined) delete process.env.TMDB_API_KEY;
             else process.env.TMDB_API_KEY = original;
         }
@@ -163,7 +164,7 @@ describe('LambdaConstruct', () => {
             },
         });
         template.hasResourceProperties('AWS::IAM::Policy', {
-            Roles: [{ Ref: Match.stringLikeRegexp('RescheduleBookingHandlerServiceRole') }],
+            Roles: [{ Ref: Match.stringLikeRegexp('RescheduleCustomerBookingHandlerServiceRole') }],
             PolicyDocument: Match.objectLike({
                 Statement: Match.arrayWith([Match.objectLike({
                     Effect: 'Allow',
@@ -344,9 +345,9 @@ describe('LambdaConstruct', () => {
             configuredStack,
             'ConfiguredLegacyBookingsTable',
             {
-            partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
-            sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
-            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+                partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
+                sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
+                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             }
         );
         const configuredShowtimeRegistryTable = new dynamodb.Table(
