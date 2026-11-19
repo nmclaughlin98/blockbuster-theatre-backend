@@ -17,6 +17,7 @@
     "test:coverage": "jest --coverage --runInBand",
     "seed:pricing": "ts-node scripts/seed-pricing-offers.ts",
     "migrate:movie-image-urls": "ts-node scripts/migrate-movie-image-urls.ts",
+    "sync:dev": "ts-node scripts/sync-prod-to-dev.ts",
     "update:movie-showtimes": "ts-node scripts/update-movie-showtimes.ts",
     "update:offer-showtimes": "ts-node scripts/update-offer-showtimes.ts",
     "local:db:start": "docker compose up -d dynamodb-local",
@@ -32,6 +33,7 @@
     "@types/aws-lambda": "^8.10.130",
     "@types/jest": "^30.0.0",
     "@types/node": "24.x",
+    "@types/pdfkit": "^0.17.7",
     "@types/qrcode": "^1.5.6",
     "aws-cdk": "^2.1146.1",
     "aws-sdk-client-mock": "^3.0.0",
@@ -45,9 +47,11 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.1156.0",
     "@aws-sdk/client-dynamodb": "^3.500.0",
     "@aws-sdk/client-sesv2": "^3.1154.0",
+    "@aws-sdk/client-ssm": "^3.1164.0",
     "@aws-sdk/lib-dynamodb": "^3.500.0",
     "aws-cdk-lib": "^2.274.0",
     "constructs": "^10.3.0",
+    "pdfkit": "^0.20.2",
     "qrcode": "^1.5.4"
   },
   "overrides": {

@@ -1,7 +1,7 @@
 import type {
     MovieShowtimes,
     ScreenedShowtime,
-} from '../interfaces';
+} from '../../lib/interfaces';
 
 const DAYS_OF_WEEK = [
     'Monday',

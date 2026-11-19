@@ -1,12 +1,28 @@
 # Booking Data API
 
+## Movie catalogue
+
+`GET /movies` returns movie summaries in descending release-date index order. Records with `visible: false` are excluded; legacy records without `visible` are included with `visible: true`. All existing summary fields are retained.
+
+Without a `limit`, the endpoint combines DynamoDB pages, up to 20 queries or a 4 MiB serialized Lambda proxy response budget. It returns `{ "movies": [...], "nextToken": null }` when complete; otherwise, pass `nextToken` to retrieve the remainder. An explicit `limit` (1–100) retains the existing per-DynamoDB-query pagination behavior, so a page may contain fewer visible movies than requested. Clients must follow non-null tokens.
+
+## Lambda logging
+
+All Lambda functions use CloudWatch Logs with a seven-day retention period and the standard Lambda execution permissions for writing logs. API responses are logged by status only: successful responses at `INFO`, client errors at `WARN`, and server errors at `ERROR`; response bodies are not included. Guest booking logs request start and successful booking creation without logging guest details. Guest booking and booking confirmation also temporarily log the resolved maximum-ticket value and whether it came from Parameter Store or the fallback.
+
+## API Gateway access logging
+
+The HTTP API default stage writes access logs to CloudWatch Logs in `eu-west-2`: `/aws/vendedlogs/blockbuster-theatre-api-access` for prod and `/aws/vendedlogs/blockbuster-theatre-api-access-DEV` for dev. Logs are retained for seven days. The prod log group is retained if its stack is deleted; the dev log group is deleted with its stack.
+
+Logs include the request ID, time, method, route key, response status and latency, integration status, and available gateway or authorizer errors. They do not explicitly include request bodies, authorization headers, tokens, query strings, or JWT claims. An authorizer error may not contain the reason for every JWT rejection. Logs begin after deployment and access logging can incur CloudWatch charges. The deploying role needs the permissions listed in the [AWS HTTP API logging documentation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html#http-api-logging.permissions).
+
 ## Public featured movie endpoints
 
 `GET /movies/newest` returns movies ordered by release date, newest first, excluding records where `isComingSoon` is `true`. Legacy records without an `isComingSoon` field are included.
 
 `GET /movies/top-picks` returns movies ordered by TMDB score (`score`) from highest to lowest. This endpoint does not filter coming-soon records.
 
-Both endpoints are public and accept the same optional pagination parameters as `GET /movies`: `limit` (1–100, default 50) and `nextToken` from the prior response. They return `{ "movies": [...], "nextToken": "..." }`, with `nextToken: null` when no additional page is available.
+Both endpoints are public and accept `limit` (1–100, default 50) and `nextToken` from the prior response. They return `{ "movies": [...], "nextToken": "..." }`, with `nextToken: null` when no additional page is available.
 
 ## Demo booking confirmation email
 
@@ -16,8 +32,8 @@ Both endpoints are public and accept the same optional pagination parameters as 
 {
   "bookingRef": "BBT-123456",
   "customer": {
-    "firstName": "Niall",
-    "surname": "McLaughlin",
+    "firstName": "John",
+    "surname": "Doe",
     "email": "guest@example.com",
     "phone": ""
   },
@@ -34,6 +50,8 @@ Both endpoints are public and accept the same optional pagination parameters as 
 The stack creates an SES email identity for `niallmclaughlin1998@gmail.com`. After deployment, open the SES verification message sent to that mailbox and confirm the identity before sending. New SES accounts are commonly in the sandbox: recipients must also be verified until SES production access is granted in `eu-west-2`.
 
 The endpoint is intended for the deployed demo booking flow and is not available through the local API adapter. It accepts the client-provided booking summary and does not persist or independently verify a booking or price. Do not treat the email as proof of payment or a confirmed seat reservation.
+
+The maximum accepted ticket count is read from the AWS Systems Manager Parameter Store string parameter `/blockbuster-theatre/booking-configuration/max-tickets-value` in prod and `/blockbuster-theatre/booking-configuration/max-tickets-value-dev` in dev. If the parameter is not configured or does not exist, the handlers use a limit of 10. The guest-booking and booking-confirmation Lambda roles have read access to their environment's parameter.
 
 Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
 
@@ -327,6 +345,19 @@ Catalogue showtimes repeat weekly. Both schedule endpoints accept an optional `?
 
 The lookup uses the same `showtimeId` and date identity as the guest booking endpoint. Invalid or unknown IDs and dates return HTTP 400; storage errors return HTTP 500.
 
+Signed-in customers can use `GET /api/v1/bookings/account` with the same query parameters and a Cognito access token. This protected route returns the same `bookedSeats` list plus `myBookedSeats`, containing only the seats associated with the authenticated Cognito subject:
+
+```json
+{
+  "showtimeId": "559924_2026-11-01_1215",
+  "date": "2026-11-01",
+  "bookedSeats": ["F10", "F11"],
+  "myBookedSeats": ["F10"]
+}
+```
+
+The route does not return booking details or other customers' identities.
+
 ### Make an unpaid guest booking
 
 `POST /api/v1/bookings/guest`
@@ -353,6 +384,7 @@ Success returns HTTP 201:
 {
   "bookingId": "bk_990123",
   "bookingRef": "BBT-883214",
+  "movieId": "424694",
   "showtimeId": "559924_2026-11-01_1215",
   "movieTitle": "Bohemian Rhapsody",
   "date": "2026-11-01",
@@ -382,6 +414,44 @@ The active booking table is keyed by `showtimeId` and `seatId`. It stores one bo
 
 The endpoint returns the same booking details as the guest endpoint, except for `conversionToken` and `conversionTokenExpiresAt`.
 
+### List account bookings
+
+`GET /api/v1/bookings/account/history` accepts a Cognito token in the `Authorization: Bearer <token>` header. Send an ID token to enable automatic guest-booking linking: only an ID token with `email_verified: true` and an email can initiate the sweep. Access tokens and unverified emails still return account history but do not initiate linking. Guest checkout does not check whether an account exists.
+
+The sweep matches normalized `customerEmail` against `CustomerEmailBookings` indexes on both booking tables. It conditionally assigns only unowned booking records to the verified subject, sets `claimedAt` and `claimMethod`, and removes the guest conversion-token hash. A competing conversion or claim cannot overwrite the owner. The existing guest credential is a conversion token, not a guest ticket-view link; it cannot be used after linking. Indexes are eventually consistent, so a recently created guest booking may be discovered on a later fetch. Newly claimed bookings are included immediately in the claiming response even before the `UserBookings` index catches up.
+
+`newlyLinkedBookings` contains booking references claimed by this request and is empty on subsequent requests. One consolidated SES email is attempted for each nonempty sweep. Delivery is best effort: if SES fails, the response includes `linkNotificationSent: false`, the failure is logged, and no retry is scheduled. A request interrupted after committing a claim may not deliver its one-time response metadata to the browser. Account history and ticket availability otherwise remain subject to `UserBookings` index propagation.
+
+```json
+{
+  "newlyLinkedBookings": [],
+  "bookings": [
+    {
+      "bookingId": "bk_990123",
+      "bookingRef": "BBT-883214",
+      "movieId": "424694",
+      "movieTitle": "Bohemian Rhapsody",
+      "date": "2026-11-01",
+      "time": "12:15",
+      "screen": "5",
+      "seats": ["F10", "F11"],
+      "guestName": "Alex Smith",
+      "ticketCount": 2,
+      "totalAmount": 15.5,
+      "currency": "GBP"
+    }
+  ]
+}
+```
+
+The endpoint returns both past and upcoming bookings; clients can categorize them using the theatre's Europe/London time zone. Unlinked guest bookings are not included. `guestName` is the name stored on the booking, and `ticketCount` is the sum of its ticket quantities. Older bookings may not have a `bookingRef`, `movieId`, `guestName`, `ticketCount`, `totalAmount`, or `currency`.
+
+### Download an account booking ticket
+
+`GET /bookings/{bookingId}/ticket` requires a Cognito access token in the `Authorization: Bearer <token>` header. It returns a PDF for a booking owned by the authenticated account, including linked guest bookings. Missing or other users' bookings return 404. The user-bookings index is eventually consistent, so a newly created or linked booking may not be immediately available. Older bookings without the details needed to generate a ticket cannot be downloaded.
+
+The PDF represents an unpaid reservation; this endpoint does not process payment or validate admission.
+
 ### Convert a guest booking to an account
 
 `POST /api/v1/auth/convert-guest`
@@ -389,11 +459,13 @@ The endpoint returns the same booking details as the guest endpoint, except for 
 ```json
 {
   "conversionToken": "cnv_tok_<opaque-random-token>",
-  "password": "SuperSecretPassword123!"
+  "password": "SuperSecretPassword123!",
+  "firstName": "Niall",
+  "surname": "McLaughlin"
 }
 ```
 
-The password is set and hashed by the existing Cognito user pool; it is never stored or logged by the application. On success, the one-time token is consumed, the booking is associated with the Cognito user ID, and the endpoint returns HTTP 200:
+The first name and surname must match the name on the guest booking and are saved as the Cognito `given_name` and `family_name` attributes. Older clients may omit both name fields; the service will derive them from the guest booking. The password is set and hashed by the existing Cognito user pool; it is never stored or logged by the application. On success, the one-time token is consumed, the booking is associated with the Cognito user ID, and the endpoint returns HTTP 200:
 
 ```json
 {
@@ -405,6 +477,10 @@ The password is set and hashed by the existing Cognito user pool; it is never st
 ```
 
 Invalid request or password returns HTTP 400, an unknown token returns HTTP 404, an already-consumed token returns HTTP 409, an expired (24-hour) token returns HTTP 410, and unexpected Cognito or storage failures return HTTP 500. Passwords, conversion tokens, and Cognito tokens are not logged.
+
+### Account creation date claim
+
+The Cognito user pool's dedicated V1 pre-token generation trigger adds `member_since` to ID tokens as the ISO 8601 UTC value of Cognito's `UserCreateDate`. The claim is not added to access tokens or to the guest-conversion HTTP response. Existing clients can obtain it from an ID token issued at sign-in or refresh. The trigger calls `AdminGetUser` on each token issuance; a lookup failure or missing creation date prevents token issuance rather than returning an incorrect claim. This call can contribute to Cognito monthly active user billing.
 
 ### Existing booking endpoints
 
@@ -454,6 +530,21 @@ When the booking comes from an offer, also send `offerId` (with the offer's feat
 }
 ```
 
+### Reschedule a booking
+
+`PATCH /bookings/reschedule-booking?showtimeId=559924_2026-11-02_1900&bookingRef=BBT-958000`
+
+```json
+{
+  "newShowtimeId": "559924_2026-11-05_1930",
+  "date": "2026-11-05",
+  "time": "19:30",
+  "screen": "3"
+}
+```
+
+`showtimeId` identifies the current showing and `bookingRef` identifies the booking. Both query parameters and `newShowtimeId` are required; the target showtime must differ from the current one. The date and time can be omitted when they can be parsed from the target ID; an unparsable time is retained from the existing booking. The existing screen is retained when `screen` is omitted. Booking and seat-lock records move in one DynamoDB transaction, so the booking remains unchanged and HTTP 409 is returned if any target seat is unavailable. Missing bookings return HTTP 404 and invalid input returns HTTP 400.
+
 Invalid seats, dates, or showtimes return HTTP 400, an unknown movie returns HTTP 404, and seats that were booked in the meantime return HTTP 409 (`Seat already booked: B5.`) without reserving any of the requested seats.
 
 ## Run the booking API locally
@@ -480,23 +571,80 @@ The local admin endpoints require `Authorization: Bearer local-dev-token` by def
 
 ### Use local handlers with cloud DynamoDB dev/test tables
 
-To run the same local HTTP adapter and Lambda handlers against existing AWS DynamoDB dev/test tables, configure AWS credentials and all nine table names before starting the cloud mode. The names must end in `-dev`, `-test`, `-testing`, `-staging`, or `-sandbox`; this guard prevents accidentally targeting the production table names. Cloud mode does not start or initialize DynamoDB Local and does not create AWS resources.
+To run the same local HTTP adapter and Lambda handlers against existing AWS DynamoDB dev/test tables, configure AWS credentials and all nine table names before starting the cloud mode. The names must end in `-DEV`, `-development`, `-test`, `-testing`, `-staging`, or `-sandbox` (case-insensitive); this guard prevents accidentally targeting the production table names. Cloud mode does not start or initialize DynamoDB Local and does not create AWS resources.
 
 ```powershell
 $env:AWS_PROFILE = "your-aws-profile"
 $env:AWS_REGION = "eu-west-2"
-$env:LOCAL_CLOUD_TABLE_NAME = "blockbuster-theatre-movie-catalogue-dev"
-$env:LOCAL_CLOUD_PRICING_TABLE_NAME = "blockbuster-theatre-ticket-pricing-dev"
-$env:LOCAL_CLOUD_OFFERS_TABLE_NAME = "blockbuster-theatre-booking-offers-dev"
-$env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections-dev"
-$env:LOCAL_CLOUD_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-by-showtime-dev"
-$env:LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-dev"
-$env:LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry-dev"
-$env:LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME = "blockbuster-theatre-booking-references-dev"
-$env:LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME = "blockbuster-theatre-guest-conversion-tokens-dev"
+$env:LOCAL_CLOUD_TABLE_NAME = "blockbuster-theatre-movie-catalogue-DEV"
+$env:LOCAL_CLOUD_PRICING_TABLE_NAME = "blockbuster-theatre-ticket-pricing-DEV"
+$env:LOCAL_CLOUD_OFFERS_TABLE_NAME = "blockbuster-theatre-booking-offers-DEV"
+$env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections-DEV"
+$env:LOCAL_CLOUD_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-by-showtime-DEV"
+$env:LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-DEV"
+$env:LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry-DEV"
+$env:LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME = "blockbuster-theatre-booking-references-DEV"
+$env:LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME = "blockbuster-theatre-guest-conversion-tokens-DEV"
 $env:LOCAL_CLOUD_USER_POOL_ID = "eu-west-2_example"
 $env:LOCAL_CLOUD_USER_POOL_CLIENT_ID = "exampleclientid"
 npm run local:cloud
 ```
 
 The profile must have DynamoDB permissions for those tables and Cognito admin permissions on the specified dev/test user pool to convert guest accounts. The tables must already exist with the same keys and movie-table `GSI1` as the application tables. Existing cloud dev/test data is used directly; this command does not seed or copy data. Local `POST /ticket-pricing`, `POST /booking-offers`, and `POST /collections/refresh` requests write to those cloud tables, so do not point this mode at production. The local adapter still bypasses API Gateway JWT authentication and remains loopback-only.
+
+## Prod and dev AWS environments
+
+The CDK entry point is `lib/stack/app.ts`. The environment defaults to `prod`; use `-c env=dev` to synthesize or deploy the isolated dev stack. Any other environment value is rejected.
+Set the `TMDB_API_KEY` environment variable to a non-empty TMDB read access token before synthesizing. The template contains a masked CloudFormation parameter rather than the token itself. For a direct deployment, pass the same value as `--parameters TmdbApiKey=<token>` through a secure shell; command-line arguments may be visible to local processes. The first deployment with this change requires the parameter for both environments.
+
+```powershell
+npx cdk synth -c env=prod
+npx cdk synth -c env=dev
+```
+
+Prod keeps the existing stack ID, table names, Lambda names, API name, SES identity, API domain, and Cognito pool/client. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming existing dev tables replaces them and can delete their data. No S3 buckets are defined by this stack.
+
+CDK applies `Environment=prod` or `Environment=dev` and `Project=blockbuster-theatre` to supported stack-managed resources. Adding the prod environment tag changes the prod template; imported resources and resource types without tag support cannot be tagged by this stack.
+
+The custom API domain is imported, not created, by CDK. Before deploying dev, provision `api-dev.blockbuster-theatre.nml-applications.com` in API Gateway with its certificate and DNS mapping. Prod's existing `api.blockbuster-theatre.nml-applications.com` mapping is unchanged.
+
+### Shared Cognito and SES resources
+
+Dev imports the existing prod User Pool, backend App Client, and SES email identity; it does not create or modify Cognito pools/clients or an SES identity. The dev JWT authorizer accepts tokens issued to either the backend or the existing Postman app client. As in prod, both clients are accepted on all JWT-protected routes, not only movie administration.
+
+The pool and backend client IDs can be provided through CDK context (`prodUserPoolId`, `prodUserPoolClientId`) or environment variables (`PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`). Otherwise the dev template requires `ProdUserPoolId` and `ProdUserPoolClientId` CloudFormation parameters. The deployment workflow retrieves those parameters from the `UserPoolId` and `UserPoolClientId` outputs of the prod stack.
+
+For the Postman client, set the dev GitHub Environment variable `PROD_POSTMAN_CLIENT_ID` to the client ID of `postman-test-client` in the shared prod Cognito pool. The workflow supplies it as the required `ProdPostmanClientId` CloudFormation parameter. For direct dev deployment, supply `--parameters ProdPostmanClientId=<postman-client-id>` along with any required pool and backend client parameters; alternatively synthesize with context `prodPostmanClientId` or environment variable `PROD_POSTMAN_CLIENT_ID`. The current frontend auth flow uses SRP directly, so no Hosted UI callback/client changes are required or made to prod.
+
+The dev API accepts the production frontend origin, local development origins, and HTTPS Cloudflare Pages previews. API Gateway HTTP API's `https://*` origin pattern is used for preview hostnames; it permits any HTTPS origin, so bearer-token handling must remain explicit and API authorization must not rely on CORS alone. `Authorization`, `Content-Type`, and common AWS/request headers are allowed.
+
+Guest conversion tokens and booking records are read from the environment-specific DynamoDB tables. As requested, dev may create/authenticate an account in the shared prod Cognito pool when converting a dev guest booking; it only operates on the dev booking/token records.
+
+The dev booking Lambdas also use the existing prod SES identity. Exercise email-sending flows carefully; dev traffic can send real email from the shared identity.
+
+### Production data sync to dev
+
+`npm run sync:dev` scans the nine configured prod tables and writes to their `-DEV` counterparts in batches of 25, retrying DynamoDB unprocessed writes with exponential backoff. It verifies all source/target tables and key schemas before any writes. Every target must exactly end in `-DEV`, must not match a prod table, and all mappings are validated before the optional clear begins.
+
+By default, sync overwrites matching keys but leaves other existing dev rows intact. Use `-- --clear` to delete every current item from all `-DEV` tables before copying. Run a clear-and-copy during a quiet period so concurrent dev writes do not race with the synchronization:
+
+```powershell
+$env:AWS_PROFILE = "your-aws-profile"
+$env:AWS_REGION = "eu-west-2"
+npm run sync:dev
+npm run sync:dev -- --clear
+```
+
+This copies production records, including customer and booking data. Restrict access to the sync role and dev environment accordingly. The manual `Sync Prod Data to Dev` GitHub Actions workflow runs from `main`, uses the existing OIDC deploy role in `eu-west-2`, and defaults `clear_dev_tables` to `true`. That role needs `dynamodb:ListTables`, `dynamodb:DescribeTable`, and `dynamodb:Scan` for the mapped source/target tables, plus `dynamodb:BatchWriteItem` for the `-DEV` targets.
+
+### GitHub Actions deployments
+
+The build workflow synthesizes `prod` for `main` and `dev` for `dev`. The deploy workflow deploys a successful `main` push build to prod and a successful `dev` push build to dev. Manual dispatch accepts `target_env` (`auto`, `prod`, or `dev`); `auto` selects prod for `main` and dev otherwise. The existing `environment` input remains available for older callers when `target_env` is `auto`. The deploy job uses the matching GitHub Environment.
+
+Create GitHub Environments named `prod` and `dev`, and add a non-empty `TMDB_API_KEY` environment secret to each. Add the `PROD_POSTMAN_CLIENT_ID` environment variable to `dev` as described above; it is not required for prod. Table names, SES sender, the other Cognito IDs, Lambda settings, and the optional max-tickets SSM parameter name are supplied by CDK or the deploy workflow. No WalletWallet credentials are used by the current backend. Runtime SSM and AWS resources still need their existing permissions and configuration.
+
+Build and preparation syntheses use a non-secret placeholder to validate the template without exposing the environment secret to the selected source or uploaded artifact. The deploy job validates the template and passes the real key as the masked `TmdbApiKey` CloudFormation parameter; older selected builds without this parameter are rejected. The deployed Lambda environment still contains the key, so restrict AWS Lambda and CloudFormation access appropriately.
+
+By default, manual prod deployments must be run from `main` and select a successful `main` push build from this repository. The default-off `allow_non_main_prod` override allows dispatch from any branch and a numbered successful push build from any branch; with `latest`, it selects a successful push build from the branch selected when dispatching the workflow. The override deliberately bypasses the main-only protection and can deploy unreviewed code and infrastructure to production; use it only after reviewing the selected source. OIDC trust and IAM permissions may still prevent deployments from other branches. Manual dev deployments can select builds from other branches and synthesize the dev stack from that source. No release-tagging job exists in these workflows; any future SemVer tagging must remain restricted to `main`.
+
+The repository's OIDC role is external to this codebase. Environment-bound jobs use subjects `repo:nmclaughlin98/blockbuster-theatre-backend:environment:prod` and `repo:nmclaughlin98/blockbuster-theatre-backend:environment:dev`; update trust as appropriate, with separate least-privilege roles where possible. Protect the GitHub Environments with deployment branch rules and reviewers: a workflow can otherwise use an approved environment to deploy code from an untrusted selected build. Dev deployment also needs permission to assume the CDK deploy role and read the prod stack's Cognito outputs.

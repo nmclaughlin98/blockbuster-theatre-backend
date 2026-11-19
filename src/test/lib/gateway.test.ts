@@ -8,20 +8,10 @@ describe('ApiGatewayConstruct', () => {
     let stack: cdk.Stack;
     let mockFunction: lambda.Function;
     let construct: ApiGatewayConstruct;
+    let jwtAuthorizer: authorizers.HttpJwtAuthorizer;
 
-    beforeEach(() => {
-        stack = new cdk.Stack();
-        mockFunction = new lambda.Function(stack, 'MockFunction', {
-            runtime: lambda.Runtime.NODEJS_24_X,
-            handler: 'index.handler',
-            code: lambda.Code.fromInline('exports.handler = async () => {};'),
-        });
-        const jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
-            'TestJwtAuthorizer',
-            'https://issuer.example.com',
-            { jwtAudience: ['test-client'] }
-        );
-        construct = new ApiGatewayConstruct(stack, 'TestApiGateway', {
+    function createGateway(envName: 'prod' | 'dev'): ApiGatewayConstruct {
+        return new ApiGatewayConstruct(stack, envName === 'prod' ? 'TestApiGateway' : 'DevApiGateway', {
             addMoviesFunction: mockFunction,
             updateMoviesFunction: mockFunction,
             listMoviesFunction: mockFunction,
@@ -40,11 +30,29 @@ describe('ApiGatewayConstruct', () => {
             refreshMovieCollectionFunction: mockFunction,
             listBookingsFunction: mockFunction,
             createBookingFunction: mockFunction,
+            rescheduleBookingFunction: mockFunction,
             guestBookedSeatsFunction: mockFunction,
             guestBookingFunction: mockFunction,
             guestConversionFunction: mockFunction,
+            downloadTicketFunction: mockFunction,
             jwtAuthorizer,
+            envName,
         });
+    }
+
+    beforeEach(() => {
+        stack = new cdk.Stack();
+        mockFunction = new lambda.Function(stack, 'MockFunction', {
+            runtime: lambda.Runtime.NODEJS_24_X,
+            handler: 'index.handler',
+            code: lambda.Code.fromInline('exports.handler = async () => {};'),
+        });
+        jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
+            'TestJwtAuthorizer',
+            'https://issuer.example.com',
+            { jwtAudience: ['test-client'] }
+        );
+        construct = createGateway('prod');
     });
 
     it('should create an HTTP API', () => {
@@ -67,7 +75,7 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 22);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 27);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/guest',
             AuthorizationType: 'NONE',
@@ -75,6 +83,21 @@ describe('ApiGatewayConstruct', () => {
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /api/v1/bookings/guest',
             AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /api/v1/bookings/account',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /api/v1/bookings/account/history',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'GET /bookings/{bookingId}/ticket',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /api/v1/auth/convert-guest',
@@ -86,6 +109,10 @@ describe('ApiGatewayConstruct', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /bookings',
+            AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'PATCH /bookings/reschedule-booking',
             AuthorizationType: 'NONE',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
@@ -196,6 +223,40 @@ describe('ApiGatewayConstruct', () => {
         template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
             StageName: '$default',
             AutoDeploy: true,
+        });
+    });
+
+    it.each(['prod', 'dev'] as const)('logs %s API access through the existing default stage', (envName) => {
+        if (envName === 'dev') createGateway('dev');
+        const template = Template.fromStack(stack);
+        const logName = `/aws/vendedlogs/blockbuster-theatre-api-access${envName === 'dev' ? '-DEV' : ''}`;
+        const groups = template.findResources('AWS::Logs::LogGroup', {
+            Properties: { LogGroupName: logName },
+        });
+        const logGroupId = Object.keys(groups)[0];
+        expect(logGroupId).toBeDefined();
+        template.hasResource('AWS::Logs::LogGroup', {
+            DeletionPolicy: envName === 'dev' ? 'Delete' : 'Retain',
+            UpdateReplacePolicy: envName === 'dev' ? 'Delete' : 'Retain',
+            Properties: { LogGroupName: logName, RetentionInDays: 7 },
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+            StageName: '$default',
+            AutoDeploy: true,
+            AccessLogSettings: {
+                DestinationArn: { 'Fn::GetAtt': [logGroupId, 'Arn'] },
+                Format: JSON.stringify({
+                    requestId: '$context.requestId',
+                    requestTime: '$context.requestTime',
+                    httpMethod: '$context.httpMethod',
+                    routeKey: '$context.routeKey',
+                    status: '$context.status',
+                    responseLatency: '$context.responseLatency',
+                    integrationStatus: '$context.integration.status',
+                    authorizerError: '$context.authorizer.error',
+                    gatewayError: '$context.error.message',
+                }),
+            },
         });
     });
 });
