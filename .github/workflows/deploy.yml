@@ -1,5 +1,5 @@
 name: 2. Deploy Stack 🚀
-run-name: "🚀 Deploy Stack (${{ inputs.environment || (github.event.workflow_run.head_branch == 'dev' && 'dev' || 'prod') }}; ${{ github.event.workflow_run.head_branch || github.ref_name }} Build #${{ github.event.workflow_run.run_number || inputs.build_number }})"
+run-name: "🚀 Deploy Stack (${{ inputs.environment || (github.event.workflow_run.head_branch == 'dev' && 'dev' || 'prod') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
   workflow_run:
@@ -21,13 +21,13 @@ on:
           - dev
           - prod
       build_number:
-        description: 'Build number to deploy from the selected environment branch (leave as "latest" for the most recent successful build)'
+        description: 'Build number to deploy (leave as "latest" for the most recent build)'
         required: false
         default: 'latest'
         type: string
 
 jobs:
-  deploy:
+  prepare:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -35,8 +35,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
-      id-token: write
       contents: read
+    outputs:
+      build_number: ${{ steps.select_build.outputs.build_number }}
+      build_run_id: ${{ steps.select_build.outputs.build_run_id }}
+      deploy_branch: ${{ steps.select_build.outputs.deploy_branch }}
+      deploy_environment: ${{ steps.select_build.outputs.deploy_environment }}
 
     steps:
       - name: Checkout Repository
@@ -45,19 +49,8 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Setup Node.js
-        id: setup_node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: 'npm'
-
-      - name: Install Dependencies
-        id: install_dependencies
-        run: npm ci
-
-      - name: Download Build Artifact
-        id: download_artifact
+      - name: Select Build
+        id: select_build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
@@ -65,11 +58,13 @@ jobs:
           TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
           TRIGGER_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
             BUILD_RUN_ID="$TRIGGER_RUN_ID"
             TARGET_BUILD="$TRIGGER_RUN_NUMBER"
             TARGET_BRANCH="$TRIGGER_HEAD_BRANCH"
+            BUILD_SHA="$TRIGGER_HEAD_SHA"
             if [ "$TARGET_BRANCH" = "main" ]; then
               TARGET_ENVIRONMENT=prod
             elif [ "$TARGET_BRANCH" = "dev" ]; then
@@ -80,30 +75,26 @@ jobs:
             fi
           else
             TARGET_ENVIRONMENT="${INPUT_ENVIRONMENT:-dev}"
-            if [ "$TARGET_ENVIRONMENT" = "prod" ]; then
-              TARGET_BRANCH=main
-            elif [ "$TARGET_ENVIRONMENT" = "dev" ]; then
-              TARGET_BRANCH=dev
-            else
+            if [ "$TARGET_ENVIRONMENT" != "prod" ] && [ "$TARGET_ENVIRONMENT" != "dev" ]; then
               echo "Error: Environment must be 'dev' or 'prod'."
               exit 1
             fi
-
             TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
+            ENDPOINT="repos/${GITHUB_REPOSITORY}/actions/workflows/build.yml/runs?per_page=100"
 
             if [ "$TARGET_BUILD" = "latest" ]; then
-              BUILD_INFO=$(gh run list --workflow build.yml --branch "$TARGET_BRANCH" --status success --limit 1 --json databaseId,number --jq '.[] | [.databaseId, .number] | @tsv')
+              BUILD_INFO=$(gh api "$ENDPOINT" --jq '.workflow_runs[0] | select(. != null) | [.id, .run_number, .head_sha, .head_branch] | @tsv')
             else
               if ! [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
                 echo "Error: Build number must be numeric or 'latest'."
                 exit 1
               fi
-              BUILD_INFO=$(gh run list --workflow build.yml --branch "$TARGET_BRANCH" --status success --limit 100 --json databaseId,number --jq ".[] | select(.number == ${TARGET_BUILD}) | [.databaseId, .number] | @tsv" | head -n 1)
+              BUILD_INFO=$(gh api --paginate "$ENDPOINT" --jq ".workflow_runs[] | select(.run_number == ${TARGET_BUILD}) | [.id, .run_number, .head_sha, .head_branch] | @tsv")
             fi
 
-            IFS=$'\t' read -r BUILD_RUN_ID TARGET_BUILD <<< "$BUILD_INFO"
-            if ! [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ && "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
-              echo "Error: No successful build found for the requested ${TARGET_BRANCH} build."
+            IFS=$'\t' read -r BUILD_RUN_ID TARGET_BUILD BUILD_SHA TARGET_BRANCH <<< "$BUILD_INFO"
+            if ! [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ && "$TARGET_BUILD" =~ ^[0-9]+$ && "$BUILD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Error: No build found for the requested build number."
               exit 1
             fi
           fi
@@ -112,14 +103,129 @@ jobs:
           echo "build_run_id=${BUILD_RUN_ID}" >> "$GITHUB_OUTPUT"
           echo "deploy_environment=${TARGET_ENVIRONMENT}" >> "$GITHUB_OUTPUT"
           echo "deploy_branch=${TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
-          echo "Downloading build artifact for run ${BUILD_RUN_ID}..."
-          gh run download "$BUILD_RUN_ID" --name "build-artifact-${TARGET_BUILD}" --dir cdk-out
+          echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
 
           echo "## 🚀 Deploying Build #${TARGET_BUILD}" >> "$GITHUB_STEP_SUMMARY"
           echo "**Build Number:** \`${TARGET_BUILD}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Deployment Environment:** \`${TARGET_ENVIRONMENT}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Build Branch:** \`${TARGET_BRANCH}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Build Run ID:** \`${BUILD_RUN_ID}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout Build Source
+        id: checkout_build
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.select_build.outputs.build_sha }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        id: setup_node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install Dependencies
+        id: install_dependencies
+        run: npm ci --include=dev
+
+      - name: Synthesize CDK App
+        id: synthesize
+        env:
+          CDK_DEFAULT_ACCOUNT: '334624057595'
+          CDK_DEFAULT_REGION: 'eu-west-2'
+          DEPLOY_ENVIRONMENT: ${{ steps.select_build.outputs.deploy_environment }}
+        run: |
+          npx cdk synth -c env="$DEPLOY_ENVIRONMENT" --output cdk-out
+          node -e '
+            const manifest = require("./cdk-out/manifest.json");
+            const stacks = Object.entries(manifest.artifacts)
+              .filter(([, artifact]) => artifact.type === "aws:cloudformation:stack")
+              .map(([name]) => name);
+            const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
+              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
+            if (stacks.length !== 1 || stacks[0] !== expected) {
+              console.error(`Expected only ${expected}; synthesized: ${stacks.join(", ") || "no stacks"}`);
+              process.exit(1);
+            }
+          '
+
+      - name: Upload Deployment Assembly
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployment-assembly
+          path: cdk-out
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout Workflow Source
+        id: checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        id: setup_node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install Dependencies
+        id: install_dependencies
+        run: npm ci --include=dev
+
+      - name: Download Deployment Assembly
+        id: download_assembly
+        uses: actions/download-artifact@v8
+        with:
+          name: deployment-assembly
+          path: cdk-out
+
+      - name: Validate Deployment Assembly
+        id: validate_assembly
+        env:
+          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const root = path.resolve("cdk-out");
+            const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
+              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
+            const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json")));
+            const artifacts = manifest.artifacts;
+            const allowed = new Set(["aws:cloudformation:stack", "cdk:asset-manifest", "cdk:tree", "cdk:feature-flag-report"]);
+            const stacks = Object.entries(artifacts).filter(([, a]) => a.type === "aws:cloudformation:stack");
+            if (stacks.length !== 1 || stacks[0][0] !== expected ||
+                stacks[0][1].properties.templateFile !== `${expected}.template.json` ||
+                Object.values(artifacts).some(a => !allowed.has(a.type))) throw new Error("Unexpected assembly artifacts");
+            for (const artifact of Object.values(artifacts).filter(a => a.type === "cdk:asset-manifest")) {
+              const file = artifact.properties.file;
+              if (file !== `${expected}.assets.json`) throw new Error("Unexpected asset manifest");
+              const assets = JSON.parse(fs.readFileSync(path.join(root, file)));
+              if (Object.keys(assets.dockerImages || {}).length) throw new Error("Docker assets are not supported");
+              for (const asset of Object.values(assets.files || {})) {
+                const source = asset.source;
+                if (!source || Object.keys(source).some(k => k !== "path" && k !== "packaging") ||
+                    !(/^asset\.[0-9a-f]{64}$/.test(source.path) ||
+                      (source.path === `${expected}.template.json` && source.packaging === "file")) ||
+                    !["zip", "file"].includes(source.packaging) ||
+                    fs.lstatSync(path.join(root, source.path)).isSymbolicLink()) {
+                  throw new Error("Unexpected asset source");
+                }
+              }
+            }
+          '
 
       - name: Configure AWS Credentials
         id: configure_aws
@@ -134,23 +240,22 @@ jobs:
         env:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          DEPLOY_ENVIRONMENT: ${{ steps.download_artifact.outputs.deploy_environment }}
         run: |
-          npx cdk deploy --app cdk-out -c env="$DEPLOY_ENVIRONMENT" --require-approval never
+          npx cdk deploy --app cdk-out --require-approval never
 
       - name: Write Deploy Summary
         if: always()
         env:
-          DEPLOY_BRANCH: ${{ steps.download_artifact.outputs.deploy_branch || github.event.workflow_run.head_branch || github.ref_name }}
-          DEPLOY_ENVIRONMENT: ${{ steps.download_artifact.outputs.deploy_environment || inputs.environment || (github.event.workflow_run.head_branch == 'dev' && 'dev') || 'prod' }}
-          DEPLOY_BUILD_NUMBER: ${{ steps.download_artifact.outputs.build_number || github.event.workflow_run.run_number || inputs.build_number }}
-          DEPLOY_BUILD_RUN_ID: ${{ steps.download_artifact.outputs.build_run_id || github.event.workflow_run.id }}
+          DEPLOY_BRANCH: ${{ needs.prepare.outputs.deploy_branch }}
+          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
+          DEPLOY_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+          DEPLOY_BUILD_RUN_ID: ${{ needs.prepare.outputs.build_run_id }}
           JOB_STATUS: ${{ job.status }}
           CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
           SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
           INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
-          DOWNLOAD_ARTIFACT_OUTCOME: ${{ steps.download_artifact.outcome }}
+          DOWNLOAD_ASSEMBLY_OUTCOME: ${{ steps.download_assembly.outcome }}
+          VALIDATE_ASSEMBLY_OUTCOME: ${{ steps.validate_assembly.outcome }}
           CONFIGURE_AWS_OUTCOME: ${{ steps.configure_aws.outcome }}
           DEPLOY_CDK_OUTCOME: ${{ steps.deploy_cdk.outcome }}
         run: |
@@ -174,7 +279,8 @@ jobs:
                 "Checkout Repository:${CHECKOUT_OUTCOME}" \
                 "Setup Node.js:${SETUP_NODE_OUTCOME}" \
                 "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
-                "Download Build Artifact:${DOWNLOAD_ARTIFACT_OUTCOME}" \
+                "Download Deployment Assembly:${DOWNLOAD_ASSEMBLY_OUTCOME}" \
+                "Validate Deployment Assembly:${VALIDATE_ASSEMBLY_OUTCOME}" \
                 "Configure AWS Credentials:${CONFIGURE_AWS_OUTCOME}" \
                 "Deploy CDK Stack:${DEPLOY_CDK_OUTCOME}"; do
                 STEP_NAME="${step%%:*}"
