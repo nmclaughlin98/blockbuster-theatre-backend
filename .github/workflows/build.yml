@@ -42,20 +42,27 @@ jobs:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
         run: |
-          if [ "$BUILD_BRANCH" = "dev" ]; then
-            CDK_ENV=dev
-          else
-            CDK_ENV=prod
-          fi
-          echo "Synthesizing the ${CDK_ENV} environment."
-          npx cdk synth -c env="$CDK_ENV" --output cdk-out
+          for CDK_ENV in dev prod; do
+            echo "Synthesizing the ${CDK_ENV} environment."
+            npx cdk synth -c env="$CDK_ENV" --output "cdk-out/${CDK_ENV}"
+          done
 
-      - name: Upload Build Artifact
+      - name: Upload Dev Build Artifact
         id: upload_artifact
         uses: actions/upload-artifact@v7
         with:
-          name: build-artifact-${{ github.run_number }}
-          path: cdk-out
+          name: build-artifact-${{ github.run_number }}-dev
+          path: cdk-out/dev
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: Upload Prod Build Artifact
+        id: upload_prod_artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-artifact-${{ github.run_number }}-prod
+          path: cdk-out/prod
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
@@ -72,6 +79,7 @@ jobs:
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
           SYNTHESIZE_OUTCOME: ${{ steps.synthesize.outcome }}
           UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
+          UPLOAD_PROD_ARTIFACT_OUTCOME: ${{ steps.upload_prod_artifact.outcome }}
         run: |
           COMPLETED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           {
@@ -80,7 +88,7 @@ jobs:
             echo "**Status:** \`${JOB_STATUS}\`"
             echo "**Branch:** \`${BUILD_BRANCH}\`"
             echo "**Build Number:** \`${BUILD_NUMBER}\`"
-            echo "**Artifact Name:** \`build-artifact-${BUILD_NUMBER}\`"
+            echo "**Artifact Names:** \`build-artifact-${BUILD_NUMBER}-dev\`, \`build-artifact-${BUILD_NUMBER}-prod\`"
 
             if [ "$JOB_STATUS" = "failure" ]; then
               echo
@@ -92,7 +100,8 @@ jobs:
                 "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
                 "Check TypeScript Compilation:${COMPILE_OUTCOME}" \
                 "Synthesize CDK App:${SYNTHESIZE_OUTCOME}" \
-                "Upload Build Artifact:${UPLOAD_ARTIFACT_OUTCOME}"; do
+                "Upload Dev Build Artifact:${UPLOAD_ARTIFACT_OUTCOME}" \
+                "Upload Prod Build Artifact:${UPLOAD_PROD_ARTIFACT_OUTCOME}"; do
                 STEP_NAME="${step%%:*}"
                 STEP_OUTCOME="${step#*:}"
                 if [ "$STEP_OUTCOME" = "failure" ]; then
