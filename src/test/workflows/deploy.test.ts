@@ -3,6 +3,90 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+describe('deploy Cognito parameters', () => {
+    let directory: string;
+    let script: string;
+
+    beforeEach(() => {
+        directory = mkdtempSync(join(tmpdir(), 'deploy-cognito-test-'));
+        const workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
+            .replace(/\r\n/g, '\n');
+        const step = workflow.split('      - name: Deploy CDK Stack\n')[1]
+            .split('      - name: Write Deploy Summary\n')[0];
+        script = step.split('        run: |\n')[1].replace(/^          /gm, '');
+        mkdirSync(join(directory, 'cdk-out'));
+    });
+
+    afterEach(() => {
+        rmSync(directory, { recursive: true, force: true });
+    });
+
+    function runStep(parameters: Record<string, unknown>, outputs: unknown, environment = 'dev') {
+        writeFileSync(join(directory, 'cdk-out/BlockbusterTheatreBackendStack-dev.template.json'),
+            JSON.stringify({ Parameters: parameters }));
+        return spawnSync('bash', ['-e', '-c', `
+            aws() {
+                echo "$*" >> "$CALLS"
+                printf '%s' "$OUTPUTS"
+            }
+            npx() {
+                printf '%s\\n' "$@" >> "$ARGS"
+            }
+            ${script}
+        `], {
+            cwd: directory,
+            encoding: 'utf8',
+            env: {
+                ...process.env,
+                DEPLOY_ENVIRONMENT: environment,
+                OUTPUTS: JSON.stringify(outputs),
+                CALLS: join(directory, 'calls'),
+                ARGS: join(directory, 'args'),
+            },
+        });
+    }
+
+    it('passes production stack outputs to the dev template', () => {
+        const result = runStep({ ProdUserPoolId: {}, ProdUserPoolClientId: {} }, {
+            Stacks: [{ Outputs: [
+                { OutputKey: 'UserPoolId', OutputValue: 'eu-west-2_pool' },
+                { OutputKey: 'UserPoolClientId', OutputValue: 'clientid' },
+            ] }],
+        });
+        expect(result.status).toBe(0);
+        expect(readFileSync(join(directory, 'calls'), 'utf8'))
+            .toContain('describe-stacks --stack-name BlockbusterTheatreBackendStack');
+        expect(readFileSync(join(directory, 'args'), 'utf8'))
+            .toContain('--parameters\nProdUserPoolId=eu-west-2_pool\n--parameters\nProdUserPoolClientId=clientid\n');
+    });
+
+    it('fails before deployment when a required output is missing', () => {
+        const result = runStep({ ProdUserPoolClientId: {} }, { Stacks: [{ Outputs: [] }] });
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).toContain('Production stack output UserPoolClientId is missing');
+        expect(() => readFileSync(join(directory, 'args'))).toThrow();
+    });
+
+    it('only supplies the output for an unconfigured pool value', () => {
+        const result = runStep({ ProdUserPoolClientId: {} }, {
+            Stacks: [{ Outputs: [{ OutputKey: 'UserPoolClientId', OutputValue: 'clientid' }] }],
+        });
+        expect(result.status).toBe(0);
+        const args = readFileSync(join(directory, 'args'), 'utf8');
+        expect(args).toContain('--parameters\nProdUserPoolClientId=clientid\n');
+        expect(args).not.toContain('ProdUserPoolId=');
+    });
+
+    it('does not fetch or pass outputs for prod or an explicitly configured dev template', () => {
+        for (const environment of ['dev', 'prod']) {
+            const result = runStep({}, {}, environment);
+            expect(result.status).toBe(0);
+            expect(() => readFileSync(join(directory, 'calls'))).toThrow();
+            expect(readFileSync(join(directory, 'args'), 'utf8')).not.toContain('--parameters');
+        }
+    });
+});
+
 describe('deploy build selection', () => {
     let directory: string;
     let workflow: string;

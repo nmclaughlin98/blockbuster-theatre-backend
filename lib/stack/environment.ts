@@ -2,10 +2,6 @@ export const ENVIRONMENT_NAMES = ['prod', 'dev'] as const;
 
 export type EnvironmentName = (typeof ENVIRONMENT_NAMES)[number];
 
-export const PROD_USER_POOL_ID_PARAMETER = '/blockbuster-theatre/prod/user-pool-id';
-export const PROD_USER_POOL_CLIENT_ID_PARAMETER =
-    '/blockbuster-theatre/prod/user-pool-client-id';
-
 export function parseEnvironmentName(value: unknown): EnvironmentName {
     const envName = value ?? 'prod';
     if (envName !== 'prod' && envName !== 'dev') {

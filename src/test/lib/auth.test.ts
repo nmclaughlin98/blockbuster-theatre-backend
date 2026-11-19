@@ -17,7 +17,7 @@ describe('AuthenticationConstruct', () => {
         expect(auth.jwtAuthorizer).toBeDefined();
     });
 
-    it('uses deploy-time SSM references when dev pool values are not supplied', () => {
+    it('uses CloudFormation parameters when dev pool values are not supplied', () => {
         const stack = new cdk.Stack();
         const auth = new AuthenticationConstruct(stack, 'Auth', { envName: 'dev' });
         new cdk.CfnOutput(stack, 'ImportedPoolId', { value: auth.userPool.userPoolId });
@@ -25,10 +25,25 @@ describe('AuthenticationConstruct', () => {
             value: auth.userPoolClient.userPoolClientId,
         });
 
-        expect(JSON.stringify(Template.fromStack(stack).toJSON()))
-            .toContain('/blockbuster-theatre/prod/user-pool-id');
-        expect(JSON.stringify(Template.fromStack(stack).toJSON()))
-            .toContain('/blockbuster-theatre/prod/user-pool-client-id');
+        const template = Template.fromStack(stack).toJSON();
+        expect(template.Parameters).toMatchObject({
+            ProdUserPoolId: { Type: 'String' },
+            ProdUserPoolClientId: { Type: 'String' },
+        });
+        expect(template.Outputs.ImportedPoolId.Value).toEqual({ Ref: 'ProdUserPoolId' });
+        expect(template.Outputs.ImportedClientId.Value).toEqual({ Ref: 'ProdUserPoolClientId' });
+    });
+
+    it('only parameterizes values not explicitly configured', () => {
+        const stack = new cdk.Stack();
+        new AuthenticationConstruct(stack, 'Auth', {
+            envName: 'dev',
+            prodUserPoolId: 'eu-west-2_sharedpool',
+        });
+
+        const parameters = Template.fromStack(stack).toJSON().Parameters;
+        expect(parameters.ProdUserPoolId).toBeUndefined();
+        expect(parameters.ProdUserPoolClientId.Type).toBe('String');
     });
 
     it('creates an invite-only Cognito pool with backend and OAuth clients', () => {
