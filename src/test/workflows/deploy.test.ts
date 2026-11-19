@@ -63,10 +63,22 @@ describe('deploy build artifact selection', () => {
     it('downloads the selected successful build', () => {
         const result = runStep('12345\t42');
         expect(result.status).toBe(0);
-        expect(readFileSync(join(directory, 'calls'), 'utf8'))
-            .toContain('run download 12345 --name build-artifact-42 --dir cdk-out');
+        const calls = readFileSync(join(directory, 'calls'), 'utf8');
+        expect(calls).toContain('--branch dev --status success --limit 1');
+        expect(calls).toContain('run download 12345 --name build-artifact-42 --dir cdk-out');
         expect(readFileSync(join(directory, 'output'), 'utf8'))
-            .toContain('build_number=42\nbuild_run_id=12345');
+            .toContain('build_number=42\nbuild_run_id=12345\ndeploy_environment=dev\ndeploy_branch=dev');
+    });
+
+    it('downloads a specific production build', () => {
+        const result = runStep('23456\t17', { INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '17' });
+        expect(result.status).toBe(0);
+        const calls = readFileSync(join(directory, 'calls'), 'utf8');
+        expect(calls).toContain('--branch main --status success --limit 100');
+        expect(calls).toContain('select(.number == 17)');
+        expect(calls).toContain('run download 23456 --name build-artifact-17 --dir cdk-out');
+        expect(readFileSync(join(directory, 'output'), 'utf8'))
+            .toContain('build_number=17\nbuild_run_id=23456\ndeploy_environment=prod\ndeploy_branch=main');
     });
 
     it('rejects a missing numbered build and preserves workflow-run downloads', () => {
@@ -78,6 +90,7 @@ describe('deploy build artifact selection', () => {
             GITHUB_EVENT_NAME: 'workflow_run',
             TRIGGER_RUN_ID: '67890',
             TRIGGER_RUN_NUMBER: '43',
+            TRIGGER_HEAD_BRANCH: 'dev',
         });
         expect(triggered.status).toBe(0);
         expect(readFileSync(join(directory, 'calls'), 'utf8'))
