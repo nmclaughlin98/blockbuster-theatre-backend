@@ -647,7 +647,7 @@ npm run sync:dev
 npm run sync:dev -- --clear
 ```
 
-This copies production records, including customer and booking data. Restrict access to the sync role and dev environment accordingly. The manual `Sync Prod Data to Dev` GitHub Actions workflow runs from `main`, uses the existing OIDC deploy role in `eu-west-2`, and defaults `clear_dev_tables` to `true`. That role needs `dynamodb:ListTables`, `dynamodb:DescribeTable`, and `dynamodb:Scan` for the mapped source/target tables, plus `dynamodb:BatchWriteItem` for the `-DEV` targets.
+This copies production records, including customer and booking data. Restrict access to the sync role and dev environment accordingly. The manual `Sync Prod Data to Dev` GitHub Actions workflow runs from `main`, uses the existing OIDC deploy role in `eu-west-2`, and defaults `clear_dev_tables` to `true`. That role needs `dynamodb:DescribeTable` and `dynamodb:Scan` for the mapped source/target tables, plus `dynamodb:BatchWriteItem` for the `-DEV` targets.
 
 ### GitHub Actions deployments
 
