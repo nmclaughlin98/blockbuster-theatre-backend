@@ -10,6 +10,12 @@ Without a `limit`, the endpoint combines DynamoDB pages, up to 20 queries or a 4
 
 All Lambda functions use CloudWatch Logs with a seven-day retention period and the standard Lambda execution permissions for writing logs. API responses are logged by status only: successful responses at `INFO`, client errors at `WARN`, and server errors at `ERROR`; response bodies are not included. Guest booking logs request start and successful booking creation without logging guest details. Guest booking and booking confirmation also temporarily log the resolved maximum-ticket value and whether it came from Parameter Store or the fallback.
 
+## API Gateway access logging
+
+The HTTP API default stage writes access logs to CloudWatch Logs in `eu-west-2`: `/aws/vendedlogs/blockbuster-theatre-api-access` for prod and `/aws/vendedlogs/blockbuster-theatre-api-access-DEV` for dev. Logs are retained for seven days. The prod log group is retained if its stack is deleted; the dev log group is deleted with its stack.
+
+Logs include the request ID, time, method, route key, response status and latency, integration status, and available gateway or authorizer errors. They do not explicitly include request bodies, authorization headers, tokens, query strings, or JWT claims. An authorizer error may not contain the reason for every JWT rejection. Logs begin after deployment and access logging can incur CloudWatch charges. The deploying role needs the permissions listed in the [AWS HTTP API logging documentation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html#http-api-logging.permissions).
+
 ## Public featured movie endpoints
 
 `GET /movies/newest` returns movies ordered by release date, newest first, excluding records where `isComingSoon` is `true`. Legacy records without an `isComingSoon` field are included.

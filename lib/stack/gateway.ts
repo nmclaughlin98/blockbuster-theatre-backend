@@ -1,7 +1,9 @@
 import * as apigw2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import { RemovalPolicy } from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import { resourceName, type EnvironmentName } from './environment';
 
@@ -44,7 +46,7 @@ export class ApiGatewayConstruct extends Construct {
         this.httpApi = new apigw2.HttpApi(this, 'HttpApi', {
             apiName: resourceName('blockbuster-theatre-api-gateway', envName),
             corsPreflight: {
-                allowOrigins: isDev
+                allowOrigins: !isDev
                     ? [
                         'https://blockbuster-theatre.nml-applications.com',
                         'https://*',
@@ -56,35 +58,49 @@ export class ApiGatewayConstruct extends Construct {
                         'http://127.0.0.1:5173',
                     ]
                     : ['*'],
-                allowMethods: isDev
+                allowMethods: !isDev
                     ? [
+                        apigw2.CorsHttpMethod.GET,
+                        apigw2.CorsHttpMethod.POST,
+                        apigw2.CorsHttpMethod.PUT,
+                        apigw2.CorsHttpMethod.PATCH,
+                        apigw2.CorsHttpMethod.OPTIONS,
+                    ]
+                    : [
                         apigw2.CorsHttpMethod.GET,
                         apigw2.CorsHttpMethod.POST,
                         apigw2.CorsHttpMethod.PUT,
                         apigw2.CorsHttpMethod.PATCH,
                         apigw2.CorsHttpMethod.DELETE,
                         apigw2.CorsHttpMethod.OPTIONS,
-                    ]
-                    : [
-                        apigw2.CorsHttpMethod.GET,
-                        apigw2.CorsHttpMethod.POST,
-                        apigw2.CorsHttpMethod.PATCH,
-                        apigw2.CorsHttpMethod.OPTIONS,
                     ],
-                allowHeaders: isDev
-                    ? [
-                        'Accept',
-                        'Authorization',
-                        'Content-Type',
-                        'Origin',
-                        'X-Amz-Date',
-                        'X-Amz-Security-Token',
-                        'X-Api-Key',
-                        'X-Requested-With',
-                    ]
-                    : ['Content-Type', 'Authorization'],
+                allowHeaders: ['Content-Type', 'Authorization'],
             },
         });
+
+        const accessLogGroup = new logs.LogGroup(this, 'AccessLogGroup', {
+            logGroupName: resourceName('/aws/vendedlogs/blockbuster-theatre-api-access', envName),
+            retention: logs.RetentionDays.ONE_WEEK,
+            removalPolicy: isDev ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
+        });
+        const defaultStage = this.httpApi.defaultStage?.node.defaultChild;
+        if (!(defaultStage instanceof apigw2.CfnStage)) {
+            throw new Error('HTTP API default stage is required for access logging.');
+        }
+        defaultStage.accessLogSettings = {
+            destinationArn: accessLogGroup.logGroupArn,
+            format: JSON.stringify({
+                requestId: '$context.requestId',
+                requestTime: '$context.requestTime',
+                httpMethod: '$context.httpMethod',
+                routeKey: '$context.routeKey',
+                status: '$context.status',
+                responseLatency: '$context.responseLatency',
+                integrationStatus: '$context.integration.status',
+                authorizerError: '$context.authorizer.error',
+                gatewayError: '$context.error.message',
+            }),
+        };
 
         const customDomainName = isDev
             ? 'api-dev.blockbuster-theatre.nml-applications.com'
