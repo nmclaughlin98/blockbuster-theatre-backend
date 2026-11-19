@@ -40,7 +40,7 @@ const MAX_RETRY_DELAY_MS = 5000;
 
 export const PROD_TO_DEV_TABLES: TableMapping[] = PROD_TABLE_NAMES.map((sourceTable) => ({
     sourceTable,
-    targetTable: `${sourceTable}-dev`,
+    targetTable: `${sourceTable}-DEV`,
 }));
 
 export function assertSafeTargetTables(
@@ -55,15 +55,14 @@ export function assertSafeTargetTables(
     for (const { sourceTable, targetTable } of mappings) {
         if (
             !PROD_TABLE_NAMES.some((name) => name === sourceTable)
-            || targetTable !== `${sourceTable}-dev`
-            || !targetTable.includes('-dev')
-            || !targetTable.endsWith('-dev')
+            || targetTable !== `${sourceTable}-DEV`
+            || !targetTable.endsWith('-DEV')
             || productionTableNames.has(targetTable)
             || targetTable === sourceTable
             || seenTargets.has(targetTable)
         ) {
             throw new Error(
-                `Unsafe sync target "${targetTable}". Every target must be a unique -dev table and must not match a production table.`
+                `Unsafe sync target "${targetTable}". Every target must be a unique -DEV table and must not match a production table.`
             );
         }
         seenTargets.add(targetTable);
@@ -250,7 +249,7 @@ export async function syncProdToDev(
     assertSafeTargetTables(mappings, new Set(PROD_TABLE_NAMES));
     const availableTableNames = await listAllTableNames(dynamoClient);
     const availableProductionTableNames = new Set(
-        [...availableTableNames].filter((tableName) => !tableName.endsWith('-dev'))
+        [...availableTableNames].filter((tableName) => !tableName.endsWith('-DEV'))
     );
     assertSafeTargetTables(mappings, availableProductionTableNames);
 

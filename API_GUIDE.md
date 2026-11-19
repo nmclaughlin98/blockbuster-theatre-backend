@@ -45,7 +45,7 @@ The stack creates an SES email identity for `niallmclaughlin1998@gmail.com`. Aft
 
 The endpoint is intended for the deployed demo booking flow and is not available through the local API adapter. It accepts the client-provided booking summary and does not persist or independently verify a booking or price. Do not treat the email as proof of payment or a confirmed seat reservation.
 
-The maximum accepted ticket count is read from the AWS Systems Manager Parameter Store string parameter `/blockbuster-theatre/booking-configuration/max-tickets-value`. If the parameter is not configured or does not exist, the handlers use a limit of 10. The guest-booking and booking-confirmation Lambda roles have read access to this parameter.
+The maximum accepted ticket count is read from the AWS Systems Manager Parameter Store string parameter `/blockbuster-theatre/booking-configuration/max-tickets-value` in prod and `/blockbuster-theatre/booking-configuration/max-tickets-value-dev` in dev. If the parameter is not configured or does not exist, the handlers use a limit of 10. The guest-booking and booking-confirmation Lambda roles have read access to their environment's parameter.
 
 Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
 
@@ -565,20 +565,20 @@ The local admin endpoints require `Authorization: Bearer local-dev-token` by def
 
 ### Use local handlers with cloud DynamoDB dev/test tables
 
-To run the same local HTTP adapter and Lambda handlers against existing AWS DynamoDB dev/test tables, configure AWS credentials and all nine table names before starting the cloud mode. The names must end in `-dev`, `-test`, `-testing`, `-staging`, or `-sandbox`; this guard prevents accidentally targeting the production table names. Cloud mode does not start or initialize DynamoDB Local and does not create AWS resources.
+To run the same local HTTP adapter and Lambda handlers against existing AWS DynamoDB dev/test tables, configure AWS credentials and all nine table names before starting the cloud mode. The names must end in `-DEV`, `-development`, `-test`, `-testing`, `-staging`, or `-sandbox` (case-insensitive); this guard prevents accidentally targeting the production table names. Cloud mode does not start or initialize DynamoDB Local and does not create AWS resources.
 
 ```powershell
 $env:AWS_PROFILE = "your-aws-profile"
 $env:AWS_REGION = "eu-west-2"
-$env:LOCAL_CLOUD_TABLE_NAME = "blockbuster-theatre-movie-catalogue-dev"
-$env:LOCAL_CLOUD_PRICING_TABLE_NAME = "blockbuster-theatre-ticket-pricing-dev"
-$env:LOCAL_CLOUD_OFFERS_TABLE_NAME = "blockbuster-theatre-booking-offers-dev"
-$env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections-dev"
-$env:LOCAL_CLOUD_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-by-showtime-dev"
-$env:LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-dev"
-$env:LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry-dev"
-$env:LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME = "blockbuster-theatre-booking-references-dev"
-$env:LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME = "blockbuster-theatre-guest-conversion-tokens-dev"
+$env:LOCAL_CLOUD_TABLE_NAME = "blockbuster-theatre-movie-catalogue-DEV"
+$env:LOCAL_CLOUD_PRICING_TABLE_NAME = "blockbuster-theatre-ticket-pricing-DEV"
+$env:LOCAL_CLOUD_OFFERS_TABLE_NAME = "blockbuster-theatre-booking-offers-DEV"
+$env:LOCAL_CLOUD_COLLECTIONS_TABLE_NAME = "blockbuster-theatre-movie-collections-DEV"
+$env:LOCAL_CLOUD_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-by-showtime-DEV"
+$env:LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME = "blockbuster-theatre-bookings-DEV"
+$env:LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry-DEV"
+$env:LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME = "blockbuster-theatre-booking-references-DEV"
+$env:LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME = "blockbuster-theatre-guest-conversion-tokens-DEV"
 $env:LOCAL_CLOUD_USER_POOL_ID = "eu-west-2_example"
 $env:LOCAL_CLOUD_USER_POOL_CLIENT_ID = "exampleclientid"
 npm run local:cloud
@@ -596,7 +596,9 @@ npx cdk synth -c env=prod
 npx cdk synth -c env=dev
 ```
 
-Prod keeps the existing stack ID, table names, Lambda names, API name, SES identity, API domain, and Cognito pool/client. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-dev`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. No S3 buckets are defined by this stack.
+Prod keeps the existing stack ID, table names, Lambda names, API name, SES identity, API domain, and Cognito pool/client. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming existing dev tables replaces them and can delete their data. No S3 buckets are defined by this stack.
+
+CDK applies `Environment=prod` or `Environment=dev` and `Project=blockbuster-theatre` to supported stack-managed resources. Adding the prod environment tag changes the prod template; imported resources and resource types without tag support cannot be tagged by this stack.
 
 The custom API domain is imported, not created, by CDK. Before deploying dev, provision `api-dev.blockbuster-theatre.nml-applications.com` in API Gateway with its certificate and DNS mapping. Prod's existing `api.blockbuster-theatre.nml-applications.com` mapping is unchanged.
 
@@ -612,9 +614,9 @@ The dev booking Lambdas also use the existing prod SES identity. Exercise email-
 
 ### Production data sync to dev
 
-`npm run sync:dev` scans the nine configured prod tables and writes to their `-dev` counterparts in batches of 25, retrying DynamoDB unprocessed writes with exponential backoff. It verifies all source/target tables and key schemas before any writes. Every target must exactly end in `-dev`, must not match a prod table, and all mappings are validated before the optional clear begins.
+`npm run sync:dev` scans the nine configured prod tables and writes to their `-DEV` counterparts in batches of 25, retrying DynamoDB unprocessed writes with exponential backoff. It verifies all source/target tables and key schemas before any writes. Every target must exactly end in `-DEV`, must not match a prod table, and all mappings are validated before the optional clear begins.
 
-By default, sync overwrites matching keys but leaves other existing dev rows intact. Use `-- --clear` to delete every current item from all `-dev` tables before copying. Run a clear-and-copy during a quiet period so concurrent dev writes do not race with the synchronization:
+By default, sync overwrites matching keys but leaves other existing dev rows intact. Use `-- --clear` to delete every current item from all `-DEV` tables before copying. Run a clear-and-copy during a quiet period so concurrent dev writes do not race with the synchronization:
 
 ```powershell
 $env:AWS_PROFILE = "your-aws-profile"
@@ -623,7 +625,7 @@ npm run sync:dev
 npm run sync:dev -- --clear
 ```
 
-This copies production records, including customer and booking data. Restrict access to the sync role and dev environment accordingly. The manual `Sync Prod Data to Dev` GitHub Actions workflow runs from `main`, uses the existing OIDC deploy role in `eu-west-2`, and defaults `clear_dev_tables` to `true`. That role needs `dynamodb:ListTables`, `dynamodb:DescribeTable`, and `dynamodb:Scan` for the mapped source/target tables, plus `dynamodb:BatchWriteItem` for the `-dev` targets.
+This copies production records, including customer and booking data. Restrict access to the sync role and dev environment accordingly. The manual `Sync Prod Data to Dev` GitHub Actions workflow runs from `main`, uses the existing OIDC deploy role in `eu-west-2`, and defaults `clear_dev_tables` to `true`. That role needs `dynamodb:ListTables`, `dynamodb:DescribeTable`, and `dynamodb:Scan` for the mapped source/target tables, plus `dynamodb:BatchWriteItem` for the `-DEV` targets.
 
 ### GitHub Actions deployments
 

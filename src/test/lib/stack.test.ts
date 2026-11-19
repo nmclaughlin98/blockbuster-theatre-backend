@@ -32,12 +32,12 @@ describe('BackendStack', () => {
         const tables = Object.values(template.findResources('AWS::DynamoDB::Table'));
         expect(tables).toHaveLength(9);
         expect(tables.every((table) =>
-            String(table.Properties?.TableName).endsWith('-dev')
+            String(table.Properties?.TableName).endsWith('-DEV')
         )).toBe(true);
         template.hasResource('AWS::DynamoDB::Table', {
             DeletionPolicy: 'Delete',
             Properties: Match.objectLike({
-                TableName: 'blockbuster-theatre-movie-catalogue-dev',
+                TableName: 'blockbuster-theatre-movie-catalogue-DEV',
             }),
         });
 
@@ -45,13 +45,27 @@ describe('BackendStack', () => {
             .map((fn) => fn.Properties?.FunctionName)
             .filter((name): name is string => typeof name === 'string');
         expect(functions.length).toBeGreaterThan(0);
-        expect(functions.every((name) => name.endsWith('-dev'))).toBe(true);
+        expect(functions.every((name) => name.endsWith('-DEV'))).toBe(true);
+        for (const name of [
+            'blockbuster-theatre-booking-confirmation-handler-DEV',
+            'blockbuster-theatre-guest-booking-handler-DEV',
+        ]) {
+            template.hasResourceProperties('AWS::Lambda::Function', {
+                FunctionName: name,
+                Environment: {
+                    Variables: Match.objectLike({
+                        MAX_TICKETS_PARAMETER_NAME:
+                            '/blockbuster-theatre/booking-configuration/max-tickets-value-DEV',
+                    }),
+                },
+            });
+        }
         expect(template.findResources('AWS::Cognito::UserPool')).toEqual({});
         expect(template.findResources('AWS::Cognito::UserPoolClient')).toEqual({});
         expect(template.findResources('AWS::SES::EmailIdentity')).toEqual({});
 
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'blockbuster-theatre-api-gateway-dev',
+            Name: 'blockbuster-theatre-api-gateway-DEV',
             CorsConfiguration: Match.objectLike({
                 AllowOrigins: Match.arrayWith([
                     'https://blockbuster-theatre.nml-applications.com',
@@ -67,7 +81,7 @@ describe('BackendStack', () => {
             DomainName: 'api-dev.blockbuster-theatre.nml-applications.com',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Authorizer', {
-            Name: 'CognitoJwtAuthorizer-dev',
+            Name: 'CognitoJwtAuthorizer-DEV',
             AuthorizerType: 'JWT',
             JwtConfiguration: {
                 Audience: ['sharedclientid'],
@@ -76,21 +90,40 @@ describe('BackendStack', () => {
         });
     });
 
-    it('should tag taggable resources with the project name', () => {
-        const template = Template.fromStack(stack);
-        template.hasResourceProperties('AWS::DynamoDB::Table', {
-            Tags: Match.arrayWith([
-                { Key: 'Project', Value: 'blockbuster-theatre' },
-            ]),
+    it.each(['prod', 'dev'] as const)('tags managed resources for %s', (envName) => {
+        const app = new cdk.App();
+        const taggedStack = new BlockbusterTheatreBackendStack(app, 'TaggedStack', {
+            envName,
+            prodUserPoolId: 'eu-west-2_sharedpool',
+            prodUserPoolClientId: 'sharedclientid',
         });
-        template.hasResourceProperties('AWS::Lambda::Function', {
-            Tags: Match.arrayWith([
-                { Key: 'Project', Value: 'blockbuster-theatre' },
-            ]),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Tags: Match.objectLike({ Project: 'blockbuster-theatre' }),
-        });
+        const template = Template.fromStack(taggedStack);
+        for (const resourceType of ['AWS::DynamoDB::Table', 'AWS::Lambda::Function', 'AWS::IAM::Role']) {
+            const resources = Object.values(template.findResources(resourceType));
+            expect(resources.length).toBeGreaterThan(0);
+            for (const resource of resources) {
+                expect(resource.Properties?.Tags).toEqual(expect.arrayContaining([
+                    { Key: 'Project', Value: 'blockbuster-theatre' },
+                    { Key: 'Environment', Value: envName },
+                ]));
+            }
+        }
+        for (const resourceType of ['AWS::ApiGatewayV2::Api', 'AWS::ApiGatewayV2::Stage']) {
+            template.hasResourceProperties(resourceType, {
+                Tags: Match.objectLike({ Project: 'blockbuster-theatre', Environment: envName }),
+            });
+        }
+        if (envName === 'prod') {
+            template.hasResourceProperties('AWS::Cognito::UserPool', {
+                UserPoolTags: Match.objectLike({
+                    Project: 'blockbuster-theatre',
+                    Environment: envName,
+                }),
+            });
+            template.hasResourceProperties('AWS::SES::EmailIdentity', {
+                Tags: Match.arrayWith([{ Key: 'Environment', Value: envName }]),
+            });
+        }
     });
 
     it('should create DynamoDB table', () => {

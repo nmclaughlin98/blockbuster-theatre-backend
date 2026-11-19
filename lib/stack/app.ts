@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { BlockbusterTheatreBackendStack } from '../stack-configuration';
-import { parseEnvironmentName, resourceName } from './environment';
+import { parseEnvironmentName } from './environment';
 
 const app = new cdk.App();
 const envName = parseEnvironmentName(app.node.tryGetContext('env'));
@@ -17,7 +17,9 @@ function optionalConfigValue(contextKey: string, environmentKey: string): string
     return environmentValue || undefined;
 }
 
-new BlockbusterTheatreBackendStack(app, resourceName('BlockbusterTheatreBackendStack', envName), {
+new BlockbusterTheatreBackendStack(app, envName === 'dev'
+    ? 'BlockbusterTheatreBackendStack-dev'
+    : 'BlockbusterTheatreBackendStack', {
     description: 'BlockbusterTheatre Backend Infrastructure',
     envName,
     prodUserPoolId: optionalConfigValue('prodUserPoolId', 'PROD_USER_POOL_ID'),

@@ -10,7 +10,7 @@ describe('CDK environment helpers', () => {
     it('adds the dev suffix and rejects unsupported environments', () => {
         expect(parseEnvironmentName('dev')).toBe('dev');
         expect(resourceName('blockbuster-theatre-api-gateway', 'dev'))
-            .toBe('blockbuster-theatre-api-gateway-dev');
+            .toBe('blockbuster-theatre-api-gateway-DEV');
         expect(() => parseEnvironmentName('staging')).toThrow(
             'Unsupported CDK environment "staging"; expected "prod" or "dev".'
         );

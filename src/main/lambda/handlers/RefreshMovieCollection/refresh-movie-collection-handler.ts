@@ -7,7 +7,7 @@ import {
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
-import type { MovieCollectionRecord } from '../interfaces';
+import type { MovieCollectionRecord } from '../../lib/interfaces';
 import {
     intEnv,
     json,

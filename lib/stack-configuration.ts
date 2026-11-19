@@ -26,9 +26,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         super(scope, id, stackProps);
 
         cdk.Tags.of(this).add('Project', 'blockbuster-theatre');
-        if (envName === 'dev') {
-            cdk.Tags.of(this).add('Environment', 'dev');
-        }
+        cdk.Tags.of(this).add('Environment', envName);
 
         // 1. Instantiate DynamoDB
         const database = new DatabaseConstruct(this, 'MoviesDatabase', envName);

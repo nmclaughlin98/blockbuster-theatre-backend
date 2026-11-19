@@ -1,4 +1,4 @@
-import type { PricingRecord } from '../interfaces';
+import type { PricingRecord } from '../../lib/interfaces';
 import { isPricingRecord } from '../Shared/pricing-service';
 import { createBulkUpsertHandler } from '../Shared/bulk-upsert-handler';
 

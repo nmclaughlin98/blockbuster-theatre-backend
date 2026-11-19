@@ -1,6 +1,6 @@
 import type {
     MovieCollectionRecord,
-} from '../interfaces';
+} from '../../lib/interfaces';
 
 type UnknownRecord = Record<string, unknown>;
 

@@ -9,7 +9,7 @@ import { createDynamoDBClient } from '../Shared/dynamodb-client';
 import type {
     ProcessResult,
     TmdbMovieResponse,
-} from '../interfaces';
+} from '../../lib/interfaces';
 import {
     intEnv,
     json,

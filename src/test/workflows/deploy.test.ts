@@ -361,7 +361,7 @@ describe('deploy build selection', () => {
             ].map((name, index) => [`Function${index}`, {
                 Type: 'AWS::Lambda::Function',
                 Properties: {
-                    FunctionName: `${name}-dev`,
+                    FunctionName: `${name}-DEV`,
                     Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
                 },
             }])),

@@ -8,7 +8,7 @@ import {
     QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
-import type { MovieCollectionRecord, MovieRecord } from '../interfaces';
+import type { MovieCollectionRecord, MovieRecord } from '../../lib/interfaces';
 import { json, log, mapWithConcurrency } from '../utils/common';
 import { projectMovieSummary } from '../utils/movie-projection';
 import { isMovieRecord } from '../utils/movie-validation';

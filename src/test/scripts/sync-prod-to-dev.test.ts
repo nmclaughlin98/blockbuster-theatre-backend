@@ -29,20 +29,23 @@ describe('sync production data to dev', () => {
         jest.restoreAllMocks();
     });
 
-    it('defines a -dev counterpart for every production table', () => {
+    it('defines a -DEV counterpart for every production table', () => {
         expect(PROD_TO_DEV_TABLES).toHaveLength(PROD_TABLE_NAMES.length);
         for (const mapping of PROD_TO_DEV_TABLES) {
-            expect(mapping.targetTable).toBe(`${mapping.sourceTable}-dev`);
+            expect(mapping.targetTable).toBe(`${mapping.sourceTable}-DEV`);
         }
     });
 
-    it('rejects unsafe targets before any DynamoDB operation', async () => {
+    it.each(['production', 'lowercase'])('rejects %s targets before any DynamoDB operation', async (kind) => {
         const sourceTable = PROD_TABLE_NAMES[0];
         await expect(syncProdToDev(
             {} as DynamoDBClient,
             {} as DynamoDBDocumentClient,
             {
-                mappings: [{ sourceTable, targetTable: sourceTable }],
+                mappings: [{
+                    sourceTable,
+                    targetTable: kind === 'production' ? sourceTable : `${sourceTable}-dev`,
+                }],
                 clear: true,
             }
         )).rejects.toThrow('Unsafe sync target');

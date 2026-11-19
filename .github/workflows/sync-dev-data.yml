@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       clear_dev_tables:
-        description: 'Clear the existing -dev tables before copying production data'
+        description: 'Clear the existing development tables before copying production data'
         required: false
         type: boolean
         default: true
