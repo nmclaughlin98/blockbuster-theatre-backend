@@ -113,6 +113,14 @@ export class LambdaConstruct extends Construct {
             'MaxTicketsParameter',
             scopedMaxTicketsParameterName
         );
+        const allowLinkBookingsParameterName = envName === 'prod'
+            ? '/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS'
+            : '/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS';
+        const allowLinkBookingsParameter = ssm.StringParameter.fromStringParameterName(
+            this,
+            'AllowLinkBookingsParameter',
+            allowLinkBookingsParameterName
+        );
 
         this.addMoviesFunction = createNodejsFunction(this, 'AddMoviesHandler', {
             functionName: functionName('blockbuster-theatre-add-movies-handler'),
@@ -552,6 +560,7 @@ export class LambdaConstruct extends Construct {
                     LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                     SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                     BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
+                    ALLOW_LINK_BOOKINGS_PARAMETER_NAME: allowLinkBookingsParameterName,
                 },
             }
         );
@@ -559,6 +568,10 @@ export class LambdaConstruct extends Construct {
         props.legacyBookingsTable.grantReadWriteData(this.guestBookedSeatsFunction);
         props.showtimeRegistryTable.grantReadData(this.guestBookedSeatsFunction);
         props.bookingEmailIdentity.grantSendEmail(this.guestBookedSeatsFunction);
+        this.guestBookedSeatsFunction.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ssm:GetParameter'],
+            resources: [allowLinkBookingsParameter.parameterArn],
+        }));
 
         this.guestBookingFunction = createNodejsFunction(
             this,

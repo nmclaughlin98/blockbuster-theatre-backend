@@ -5,6 +5,22 @@ import { BlockbusterTheatreBackendStack } from '../../../lib/stack-configuration
 describe('BackendStack', () => {
     let stack: BlockbusterTheatreBackendStack;
 
+    function expectLinkingParameter(template: Template, functionName: string, parameterName: string): void {
+        const functions = template.findResources('AWS::Lambda::Function', {
+            Properties: { FunctionName: functionName },
+        });
+        const fn = Object.values(functions)[0];
+        expect(fn.Properties.Environment.Variables.ALLOW_LINK_BOOKINGS_PARAMETER_NAME).toBe(parameterName);
+        const roleId = fn.Properties.Role['Fn::GetAtt'][0];
+        const policies = Object.values(template.findResources('AWS::IAM::Policy')).filter((policy) =>
+            policy.Properties.Roles.some((role: { Ref?: string }) => role.Ref === roleId)
+        );
+        const statements = policies.flatMap((policy) => policy.Properties.PolicyDocument.Statement);
+        const ssmStatement = statements.find((statement) => statement.Action === 'ssm:GetParameter');
+        expect(ssmStatement).toBeDefined();
+        expect(JSON.stringify(ssmStatement.Resource)).toContain(`parameter${parameterName}`);
+    }
+
     beforeEach(() => {
         const app = new cdk.App();
         stack = new BlockbusterTheatreBackendStack(app, 'TestBackendStack');
@@ -13,6 +29,21 @@ describe('BackendStack', () => {
     it('should create a complete stack with all resources', () => {
         const template = Template.fromStack(stack);
         expect(template).toBeDefined();
+    });
+
+    it.each([
+        ['prod', 'blockbuster-theatre-guest-booked-seats-handler', '/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS'],
+        ['dev', 'blockbuster-theatre-guest-booked-seats-handler-DEV', '/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS'],
+    ] as const)('configures guest booking linking for %s', (envName, functionName, parameterName) => {
+        const app = new cdk.App();
+        const configuredStack = new BlockbusterTheatreBackendStack(app, 'FlagStack', {
+            envName,
+            prodUserPoolId: 'eu-west-2_sharedpool',
+            prodUserPoolClientId: 'sharedclientid',
+            prodPostmanClientId: 'postmanclientid',
+            env: { account: '334624057595', region: 'eu-west-2' },
+        });
+        expectLinkingParameter(Template.fromStack(configuredStack), functionName, parameterName);
     });
 
     it('synthesizes an isolated dev stack without creating prod Cognito or SES resources', () => {
@@ -29,7 +60,6 @@ describe('BackendStack', () => {
             }
         );
         const template = Template.fromStack(devStack);
-
         const tables = Object.values(template.findResources('AWS::DynamoDB::Table'));
         expect(tables).toHaveLength(9);
         expect(tables.every((table) =>
