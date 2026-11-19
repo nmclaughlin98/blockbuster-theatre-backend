@@ -44,6 +44,38 @@ describe('DatabaseConstruct', () => {
             KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
             BillingMode: 'PAY_PER_REQUEST',
         });
+
+    });
+
+    it('indexes guest email on both booking tables', () => {
+        const template = Template.fromStack(stack);
+        for (const TableName of ['blockbuster-theatre-bookings', 'blockbuster-theatre-bookings-by-showtime']) {
+            template.hasResourceProperties('AWS::DynamoDB::Table', {
+                TableName,
+                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
+                    IndexName: 'CustomerEmailBookings',
+                    KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
+                    Projection: { ProjectionType: 'ALL' },
+                })]),
+            });
+        }
+    });
+
+    it('indexes guest email and date for upcoming booking lookups', () => {
+        const template = Template.fromStack(stack);
+        for (const TableName of ['blockbuster-theatre-bookings', 'blockbuster-theatre-bookings-by-showtime']) {
+            template.hasResourceProperties('AWS::DynamoDB::Table', {
+                TableName,
+                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
+                    IndexName: 'CustomerEmailUpcomingBookings',
+                    KeySchema: [
+                        { AttributeName: 'customerEmail', KeyType: 'HASH' },
+                        { AttributeName: 'date', KeyType: 'RANGE' },
+                    ],
+                    Projection: { ProjectionType: 'ALL' },
+                })]),
+            });
+        }
     });
 
     it('should have string type for id attribute', () => {
@@ -77,8 +109,8 @@ describe('DatabaseConstruct', () => {
     });
 
     it('should export table property', () => {
-        expect(construct.table).toBeDefined();
-        expect(construct.table).toHaveProperty('tableName');
+        expect(construct.movieCatalogueTable).toBeDefined();
+        expect(construct.movieCatalogueTable).toHaveProperty('tableName');
     });
 
     it('should retain the movie table when the stack is removed or replaced', () => {

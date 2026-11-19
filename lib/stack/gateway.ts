@@ -3,6 +3,7 @@ import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
+import { resourceName, type EnvironmentName } from './environment';
 
 interface ApiGatewayConstructProps {
     addMoviesFunction: lambda.IFunction;
@@ -23,10 +24,13 @@ interface ApiGatewayConstructProps {
     refreshMovieCollectionFunction: lambda.IFunction;
     listBookingsFunction: lambda.IFunction;
     createBookingFunction: lambda.IFunction;
+    rescheduleBookingFunction: lambda.IFunction;
     guestBookedSeatsFunction: lambda.IFunction;
     guestBookingFunction: lambda.IFunction;
     guestConversionFunction: lambda.IFunction;
+    downloadTicketFunction: lambda.IFunction;
     jwtAuthorizer: authorizers.HttpJwtAuthorizer;
+    envName?: EnvironmentName;
 }
 
 export class ApiGatewayConstruct extends Construct {
@@ -34,25 +38,61 @@ export class ApiGatewayConstruct extends Construct {
 
     constructor(scope: Construct, id: string, props: ApiGatewayConstructProps) {
         super(scope, id);
+        const envName = props.envName ?? 'prod';
+        const isDev = envName === 'dev';
 
         this.httpApi = new apigw2.HttpApi(this, 'HttpApi', {
-            apiName: 'blockbuster-theatre-api-gateway',
+            apiName: resourceName('blockbuster-theatre-api-gateway', envName),
             corsPreflight: {
-                allowOrigins: ['*'],
-                allowMethods: [
-                    apigw2.CorsHttpMethod.GET,
-                    apigw2.CorsHttpMethod.POST,
-                    apigw2.CorsHttpMethod.PATCH,
-                    apigw2.CorsHttpMethod.OPTIONS,
-                ],
-                allowHeaders: ['Content-Type', 'Authorization'],
+                allowOrigins: isDev
+                    ? [
+                        'https://blockbuster-theatre.nml-applications.com',
+                        'https://*',
+                        'http://localhost:3000',
+                        'http://localhost:4173',
+                        'http://localhost:5173',
+                        'http://127.0.0.1:3000',
+                        'http://127.0.0.1:4173',
+                        'http://127.0.0.1:5173',
+                    ]
+                    : ['*'],
+                allowMethods: isDev
+                    ? [
+                        apigw2.CorsHttpMethod.GET,
+                        apigw2.CorsHttpMethod.POST,
+                        apigw2.CorsHttpMethod.PUT,
+                        apigw2.CorsHttpMethod.PATCH,
+                        apigw2.CorsHttpMethod.DELETE,
+                        apigw2.CorsHttpMethod.OPTIONS,
+                    ]
+                    : [
+                        apigw2.CorsHttpMethod.GET,
+                        apigw2.CorsHttpMethod.POST,
+                        apigw2.CorsHttpMethod.PATCH,
+                        apigw2.CorsHttpMethod.OPTIONS,
+                    ],
+                allowHeaders: isDev
+                    ? [
+                        'Accept',
+                        'Authorization',
+                        'Content-Type',
+                        'Origin',
+                        'X-Amz-Date',
+                        'X-Amz-Security-Token',
+                        'X-Api-Key',
+                        'X-Requested-With',
+                    ]
+                    : ['Content-Type', 'Authorization'],
             },
         });
 
+        const customDomainName = isDev
+            ? 'api-dev.blockbuster-theatre.nml-applications.com'
+            : 'api.blockbuster-theatre.nml-applications.com';
         const customDomain = apigw2.CfnDomainName.fromDomainName(
             this,
             'ImportedCustomDomain',
-            'api.blockbuster-theatre.nml-applications.com'
+            customDomainName
         );
 
         new apigw2.ApiMapping(this, 'ApiMapping', {
@@ -132,6 +172,10 @@ export class ApiGatewayConstruct extends Construct {
             'CreateBookingIntegration',
             props.createBookingFunction
         );
+        const rescheduleBookingIntegration = new integrations.HttpLambdaIntegration(
+            'RescheduleBookingIntegration',
+            props.rescheduleBookingFunction
+        );
         const guestBookedSeatsIntegration = new integrations.HttpLambdaIntegration(
             'GuestBookedSeatsIntegration',
             props.guestBookedSeatsFunction
@@ -143,6 +187,10 @@ export class ApiGatewayConstruct extends Construct {
         const guestConversionIntegration = new integrations.HttpLambdaIntegration(
             'GuestConversionIntegration',
             props.guestConversionFunction
+        );
+        const downloadTicketIntegration = new integrations.HttpLambdaIntegration(
+            'DownloadTicketIntegration',
+            props.downloadTicketFunction
         );
 
         this.httpApi.addRoutes({
@@ -268,6 +316,12 @@ export class ApiGatewayConstruct extends Construct {
         });
 
         this.httpApi.addRoutes({
+            path: '/bookings/reschedule-booking',
+            methods: [apigw2.HttpMethod.PATCH],
+            integration: rescheduleBookingIntegration,
+        });
+
+        this.httpApi.addRoutes({
             path: '/api/v1/bookings/guest',
             methods: [apigw2.HttpMethod.GET],
             integration: guestBookedSeatsIntegration,
@@ -281,6 +335,20 @@ export class ApiGatewayConstruct extends Construct {
 
         this.httpApi.addRoutes({
             path: '/api/v1/bookings/account',
+            methods: [apigw2.HttpMethod.GET],
+            integration: guestBookedSeatsIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/api/v1/bookings/account/history',
+            methods: [apigw2.HttpMethod.GET],
+            integration: guestBookedSeatsIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/api/v1/bookings/account',
             methods: [apigw2.HttpMethod.POST],
             integration: guestBookingIntegration,
             authorizer: props.jwtAuthorizer,
@@ -290,6 +358,13 @@ export class ApiGatewayConstruct extends Construct {
             path: '/api/v1/auth/convert-guest',
             methods: [apigw2.HttpMethod.POST],
             integration: guestConversionIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/bookings/{bookingId}/ticket',
+            methods: [apigw2.HttpMethod.GET],
+            integration: downloadTicketIntegration,
+            authorizer: props.jwtAuthorizer,
         });
     }
 }

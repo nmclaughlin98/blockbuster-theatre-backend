@@ -15,6 +15,67 @@ describe('BackendStack', () => {
         expect(template).toBeDefined();
     });
 
+    it('synthesizes an isolated dev stack without creating prod Cognito or SES resources', () => {
+        const app = new cdk.App();
+        const devStack = new BlockbusterTheatreBackendStack(
+            app,
+            'BlockbusterTheatreBackendStack-dev',
+            {
+                envName: 'dev',
+                prodUserPoolId: 'eu-west-2_sharedpool',
+                prodUserPoolClientId: 'sharedclientid',
+                env: { account: '334624057595', region: 'eu-west-2' },
+            }
+        );
+        const template = Template.fromStack(devStack);
+
+        const tables = Object.values(template.findResources('AWS::DynamoDB::Table'));
+        expect(tables).toHaveLength(9);
+        expect(tables.every((table) =>
+            String(table.Properties?.TableName).endsWith('-dev')
+        )).toBe(true);
+        template.hasResource('AWS::DynamoDB::Table', {
+            DeletionPolicy: 'Delete',
+            Properties: Match.objectLike({
+                TableName: 'blockbuster-theatre-movie-catalogue-dev',
+            }),
+        });
+
+        const functions = Object.values(template.findResources('AWS::Lambda::Function'))
+            .map((fn) => fn.Properties?.FunctionName)
+            .filter((name): name is string => typeof name === 'string');
+        expect(functions.length).toBeGreaterThan(0);
+        expect(functions.every((name) => name.endsWith('-dev'))).toBe(true);
+        expect(template.findResources('AWS::Cognito::UserPool')).toEqual({});
+        expect(template.findResources('AWS::Cognito::UserPoolClient')).toEqual({});
+        expect(template.findResources('AWS::SES::EmailIdentity')).toEqual({});
+
+        template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+            Name: 'blockbuster-theatre-api-gateway-dev',
+            CorsConfiguration: Match.objectLike({
+                AllowOrigins: Match.arrayWith([
+                    'https://blockbuster-theatre.nml-applications.com',
+                    'https://*',
+                    'http://localhost:3000',
+                    'http://localhost:5173',
+                ]),
+                AllowHeaders: Match.arrayWith(['Authorization', 'Content-Type']),
+                AllowMethods: Match.arrayWith(['GET', 'POST', 'PATCH', 'DELETE']),
+            }),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::ApiMapping', {
+            DomainName: 'api-dev.blockbuster-theatre.nml-applications.com',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Authorizer', {
+            Name: 'CognitoJwtAuthorizer-dev',
+            AuthorizerType: 'JWT',
+            JwtConfiguration: {
+                Audience: ['sharedclientid'],
+                Issuer: 'https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_sharedpool',
+            },
+        });
+    });
+
     it('should tag taggable resources with the project name', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
@@ -79,7 +140,7 @@ describe('BackendStack', () => {
                     { AttributeName: 'showingId', KeyType: 'HASH' },
                     { AttributeName: 'seatId', KeyType: 'RANGE' },
                 ],
-                GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
+                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
             }),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
@@ -89,7 +150,7 @@ describe('BackendStack', () => {
                 { AttributeName: 'showtimeId', KeyType: 'HASH' },
                 { AttributeName: 'seatId', KeyType: 'RANGE' },
             ],
-            GlobalSecondaryIndexes: [Match.objectLike({ IndexName: 'UserBookings' })],
+            GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-showtime-registry',
@@ -110,6 +171,36 @@ describe('BackendStack', () => {
                 Enabled: true,
             },
         });
+    });
+
+    it('grants the ticket handler read access to both booking tables and their indexes', () => {
+        const template = Template.fromStack(stack);
+        const currentTable = Match.stringLikeRegexp('MoviesDatabaseBlockbusterTheatreBookingsByShowtime');
+        const legacyTable = Match.stringLikeRegexp('MoviesDatabaseBlockbusterTheatreBookings[A-F0-9]+');
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-download-ticket-handler',
+            Environment: {
+                Variables: {
+                    BOOKINGS_TABLE_NAME: { Ref: currentTable },
+                    LEGACY_BOOKINGS_TABLE_NAME: { Ref: legacyTable },
+                },
+            },
+        });
+        for (const table of [currentTable, legacyTable]) {
+            template.hasResourceProperties('AWS::IAM::Policy', {
+                Roles: [{ Ref: Match.stringLikeRegexp('DownloadTicketHandlerServiceRole') }],
+                PolicyDocument: Match.objectLike({
+                    Statement: Match.arrayWith([Match.objectLike({
+                        Effect: 'Allow',
+                        Action: Match.arrayWith(['dynamodb:Query', 'dynamodb:GetItem']),
+                        Resource: Match.arrayWith([
+                            { 'Fn::GetAtt': [table, 'Arn'] },
+                            { 'Fn::Join': ['', [{ 'Fn::GetAtt': [table, 'Arn'] }, '/index/*']] },
+                        ]),
+                    })]),
+                }),
+            });
+        }
     });
 
     it('should create Lambda function', () => {
@@ -135,12 +226,16 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 22);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 27);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /bookings',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'PATCH /bookings/reschedule-booking',
+            AuthorizationType: 'NONE',
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/guest',
@@ -209,7 +304,7 @@ describe('BackendStack', () => {
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 21);
+        template.resourceCountIs('AWS::IAM::Policy', 25);
         template.hasResourceProperties('AWS::SES::EmailIdentity', {
             EmailIdentity: 'niallmclaughlin1998@gmail.com',
         });

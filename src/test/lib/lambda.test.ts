@@ -3,8 +3,11 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
+import { execFileSync } from 'child_process';
+import * as path from 'path';
 import { LambdaConstruct } from '../../../lib/stack';
 import {
+    maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
 } from '../../../lib/stack/lambda';
@@ -101,6 +104,51 @@ describe('LambdaConstruct', () => {
         template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-add-movies-handler',
         });
+    });
+
+    it('configures the reschedule handler with only the required booking-table permissions', () => {
+        const template = Template.fromStack(stack);
+        const table = Match.stringLikeRegexp('TestBookingsTable');
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-reschedule-booking-handler',
+            Environment: {
+                Variables: {
+                    BOOKINGS_TABLE_NAME: { Ref: table },
+                },
+            },
+        });
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            Roles: [{ Ref: Match.stringLikeRegexp('RescheduleBookingHandlerServiceRole') }],
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([Match.objectLike({
+                    Effect: 'Allow',
+                    Action: Match.arrayWith([
+                        'dynamodb:Query',
+                        'dynamodb:DeleteItem',
+                        'dynamodb:PutItem',
+                    ]),
+                    Resource: Match.arrayWith([{ 'Fn::GetAtt': [table, 'Arn'] }]),
+                })]),
+            }),
+        });
+    });
+
+    it('should retain CloudWatch logs for one week for every Lambda function', () => {
+        const template = Template.fromStack(stack);
+        template.resourceCountIs('Custom::LogRetention', 23);
+        template.hasResourceProperties('Custom::LogRetention', {
+            RetentionInDays: 7,
+        });
+    });
+
+    it('should allow every Lambda role to write CloudWatch logs', () => {
+        const template = Template.fromStack(stack);
+        const roles = Object.values(template.findResources('AWS::IAM::Role'));
+        const loggingRoles = roles.filter((role) =>
+            JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
+        );
+
+        expect(loggingRoles).toHaveLength(24);
     });
 
     it('should use Node.js 24.x runtime', () => {
@@ -214,8 +262,10 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(21);
-        expect(Object.values(functions)[0].Properties).not.toHaveProperty('ReservedConcurrentExecutions');
+        expect(Object.values(functions)).toHaveLength(24);
+        for (const fn of Object.values(functions)) {
+            expect(fn.Properties).not.toHaveProperty('ReservedConcurrentExecutions');
+        }
     });
 
     it('should set reserved concurrency when explicitly configured', () => {
@@ -365,6 +415,69 @@ describe('LambdaConstruct', () => {
         expect(construct.guestConversionFunction).toBeDefined();
     });
 
+    it('packages loadable PDF-dependent handlers and the fonts needed to render tickets', () => {
+        const resources = Template.fromStack(stack).toJSON().Resources as Record<string, {
+            Type: string;
+            Properties?: { FunctionName?: string; Code?: { S3Key?: string } };
+        }>;
+        const functionNames = [
+            'blockbuster-theatre-booking-confirmation-handler',
+            'blockbuster-theatre-guest-booked-seats-handler',
+            'blockbuster-theatre-guest-booking-handler',
+            'blockbuster-theatre-download-ticket-handler',
+        ];
+        const assetPaths = functionNames.map((name) => {
+            const resource = Object.values(resources).find(
+                (item) => item.Type === 'AWS::Lambda::Function'
+                    && item.Properties?.FunctionName === name
+            );
+            const key = resource?.Properties?.Code?.S3Key;
+            if (!key?.endsWith('.zip') || !process.env.CDK_OUTDIR) {
+                throw new Error(`Missing asset for ${name}`);
+            }
+            return path.resolve(process.env.CDK_OUTDIR, `asset.${key.slice(0, -4)}`);
+        });
+
+        execFileSync(process.execPath, ['-e', `
+            const path = require('path');
+            Promise.all(process.argv.slice(1).map(async (asset, index) => {
+                const { handler } = require(path.join(asset, 'index.js'));
+                if (typeof handler !== 'function') {
+                    throw new Error('Missing handler');
+                }
+                if (index === 1) {
+                    const response = await handler({
+                        routeKey: 'GET /api/v1/bookings/account/history',
+                        requestContext: { requestId: 'bundle-smoke-test' },
+                    });
+                    if (response.statusCode !== 401) throw new Error('Unexpected account response');
+                }
+                const resolved = require.resolve('pdfkit', { paths: [asset] });
+                if (!resolved.startsWith(path.join(asset, 'node_modules', 'pdfkit') + path.sep)) {
+                    throw new Error('PDFKit is missing from the asset');
+                }
+                const PDFDocument = require(resolved);
+                const doc = new PDFDocument();
+                const chunks = [];
+                doc.on('data', chunk => chunks.push(chunk));
+                const finished = new Promise((resolve, reject) => {
+                    doc.on('error', reject);
+                    doc.on('end', resolve);
+                });
+                doc.font('Helvetica-Bold').text('Ticket');
+                doc.font('Courier').text('Reference');
+                doc.end();
+                await finished;
+                if (!Buffer.concat(chunks).subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+                    throw new Error('Invalid PDF');
+                }
+            })).catch(error => {
+                console.error(error);
+                process.exitCode = 1;
+            });
+        `, ...assetPaths], { stdio: 'pipe', timeout: 30000 });
+    });
+
     it('should configure booking functions with least-privilege table access', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
@@ -398,6 +511,36 @@ describe('LambdaConstruct', () => {
                             'dynamodb:BatchGetItem',
                             'dynamodb:BatchWriteItem',
                         ]),
+                    }),
+                ]),
+            }),
+        });
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-guest-booking-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
+                }),
+            },
+        });
+    });
+
+    it('should allow the booking confirmation handler to read the max-ticket parameter', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::Lambda::Function', {
+            FunctionName: 'blockbuster-theatre-booking-confirmation-handler',
+            Environment: {
+                Variables: Match.objectLike({
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterName,
+                }),
+            },
+        });
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Action: Match.arrayWith(['ssm:GetParameter']),
+                        Resource: Match.anyValue(),
                     }),
                 ]),
             }),

@@ -11,8 +11,8 @@ import {
     GetCommand,
     PutCommand,
 } from '@aws-sdk/lib-dynamodb';
-import { createDynamoDBClient } from '../src/main/lambda/handlers/dynamodb-client';
-import type { MovieRecord } from '../src/main/lambda/handlers/interfaces';
+import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
+import type { MovieRecord } from '../src/main/lambda/lib/interfaces';
 import { pricingRecords } from './pricing-records';
 
 const endpoint = 'http://127.0.0.1:8000';
@@ -87,6 +87,7 @@ const tableDefinitions: CreateTableCommandInput[] = [
             { AttributeName: 'seatId', AttributeType: 'S' },
             { AttributeName: 'userId', AttributeType: 'S' },
             { AttributeName: 'bookedAt', AttributeType: 'S' },
+            { AttributeName: 'customerEmail', AttributeType: 'S' },
         ],
         KeySchema: [
             { AttributeName: 'showtimeId', KeyType: 'HASH' },
@@ -101,6 +102,11 @@ const tableDefinitions: CreateTableCommandInput[] = [
                 ],
                 Projection: { ProjectionType: 'ALL' },
             },
+            {
+                IndexName: 'CustomerEmailBookings',
+                KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
+                Projection: { ProjectionType: 'ALL' },
+            },
         ],
     },
     {
@@ -109,10 +115,28 @@ const tableDefinitions: CreateTableCommandInput[] = [
         AttributeDefinitions: [
             { AttributeName: 'showingId', AttributeType: 'S' },
             { AttributeName: 'seatId', AttributeType: 'S' },
+            { AttributeName: 'userId', AttributeType: 'S' },
+            { AttributeName: 'bookedAt', AttributeType: 'S' },
+            { AttributeName: 'customerEmail', AttributeType: 'S' },
         ],
         KeySchema: [
             { AttributeName: 'showingId', KeyType: 'HASH' },
             { AttributeName: 'seatId', KeyType: 'RANGE' },
+        ],
+        GlobalSecondaryIndexes: [
+            {
+                IndexName: 'UserBookings',
+                KeySchema: [
+                    { AttributeName: 'userId', KeyType: 'HASH' },
+                    { AttributeName: 'bookedAt', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+            {
+                IndexName: 'CustomerEmailBookings',
+                KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
+                Projection: { ProjectionType: 'ALL' },
+            },
         ],
     },
     {
@@ -176,32 +200,25 @@ async function createTableIfMissing(input: CreateTableCommandInput): Promise<voi
                 ?.map((attribute) => attribute.AttributeName)
                 .filter((name): name is string => typeof name === 'string') ?? []
         );
-        const requiredIndexAttributes = new Set(
-            missingIndexes.flatMap((index) =>
-                index.KeySchema?.flatMap((key) =>
-                    key.AttributeName ? [key.AttributeName] : []
-                ) ?? []
-            )
-        );
-        const newAttributeDefinitions = (input.AttributeDefinitions ?? []).filter(
-            (attribute) =>
-                typeof attribute.AttributeName === 'string' &&
-                requiredIndexAttributes.has(attribute.AttributeName) &&
-                !existingAttributes.has(attribute.AttributeName)
-        );
-
-        await client.send(
-            new UpdateTableCommand({
+        for (const index of missingIndexes) {
+            const requiredIndexAttributes = new Set(index.KeySchema?.map((key) => key.AttributeName));
+            const newAttributeDefinitions = (input.AttributeDefinitions ?? []).filter(
+                (attribute) => typeof attribute.AttributeName === 'string'
+                    && requiredIndexAttributes.has(attribute.AttributeName)
+                    && !existingAttributes.has(attribute.AttributeName)
+            );
+            await client.send(new UpdateTableCommand({
                 TableName: tableName,
                 ...(newAttributeDefinitions.length && {
                     AttributeDefinitions: newAttributeDefinitions,
                 }),
-                GlobalSecondaryIndexUpdates: missingIndexes.map((index) => ({
-                    Create: index,
-                })),
-            })
-        );
-        await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: tableName });
+                GlobalSecondaryIndexUpdates: [{ Create: index }],
+            }));
+            for (const attribute of newAttributeDefinitions) {
+                if (attribute.AttributeName) existingAttributes.add(attribute.AttributeName);
+            }
+            await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: tableName });
+        }
         return;
     } catch (error: unknown) {
         if (

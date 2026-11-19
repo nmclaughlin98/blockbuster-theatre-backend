@@ -1,5 +1,5 @@
-name: 1. Build and Package
-run-name: 'Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
+name: 1. Build and Package 🔨
+run-name: '🔨 Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
 
 on:
   push:
@@ -41,7 +41,14 @@ jobs:
         env:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
-        run: npx cdk synth --output cdk-out
+        run: |
+          if [ "$BUILD_BRANCH" = "dev" ]; then
+            CDK_ENV=dev
+          else
+            CDK_ENV=prod
+          fi
+          echo "Synthesizing the ${CDK_ENV} environment."
+          npx cdk synth -c env="$CDK_ENV" --output cdk-out
 
       - name: Upload Build Artifact
         id: upload_artifact
