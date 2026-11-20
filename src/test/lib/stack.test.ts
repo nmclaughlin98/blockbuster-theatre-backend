@@ -1,7 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { BlockbusterTheatreBackendStack } from '../../../lib/stack-configuration';
-import { PROD_TO_DEV_TABLES } from '../../../scripts/sync-prod-to-dev';
+
+const tableNames = (suffix: 'PROD' | 'DEV'): string[] => [
+    'movies', 'pricing', 'offers', 'collections', 'legacy-bookings',
+    'bookings', 'showtimes', 'booking-references', 'guest-conversion-tokens',
+].map((entity) => `blockbuster-theatre-${entity}-table-${suffix}`).sort();
 
 describe('BackendStack', () => {
     let stack: BlockbusterTheatreBackendStack;
@@ -41,11 +45,11 @@ describe('BackendStack', () => {
         expect(tables).toHaveLength(9);
         expect(tables.every((table) => String(table.Properties?.TableName).endsWith('-PROD'))).toBe(true);
         expect(tables.map((table) => table.Properties?.TableName).sort())
-            .toEqual(PROD_TO_DEV_TABLES.map((mapping) => mapping.sourceTable).sort());
+            .toEqual(tableNames('PROD'));
         expect(functions.length).toBeGreaterThan(0);
         expect(functions.every((name) => name.endsWith('-PROD'))).toBe(true);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-guest-booking-handler-PROD',
+            FunctionName: 'blockbuster-theatre-create-guest-booking-record-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     MAX_TICKETS_PARAMETER_NAME: '/blockbuster-theatre/booking-configuration/max-tickets-value-PROD',
@@ -55,8 +59,8 @@ describe('BackendStack', () => {
     });
 
     it.each([
-        ['prod', 'blockbuster-theatre-guest-booked-seats-handler-PROD', '/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS'],
-        ['dev', 'blockbuster-theatre-guest-booked-seats-handler-DEV', '/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS'],
+        ['prod', 'blockbuster-theatre-list-account-booking-records-PROD', '/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS'],
+        ['dev', 'blockbuster-theatre-list-account-booking-records-DEV', '/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS'],
     ] as const)('configures guest booking linking for %s', (envName, functionName, parameterName) => {
         const app = new cdk.App();
         const configuredStack = new BlockbusterTheatreBackendStack(app, 'FlagStack', {
@@ -89,11 +93,11 @@ describe('BackendStack', () => {
             String(table.Properties?.TableName).endsWith('-DEV')
         )).toBe(true);
         expect(tables.map((table) => table.Properties?.TableName).sort())
-            .toEqual(PROD_TO_DEV_TABLES.map((mapping) => mapping.targetTable).sort());
+            .toEqual(tableNames('DEV'));
         template.hasResource('AWS::DynamoDB::Table', {
             DeletionPolicy: 'Delete',
             Properties: Match.objectLike({
-                TableName: 'blockbuster-theatre-movie-catalogue-DEV',
+                TableName: 'blockbuster-theatre-movies-table-DEV',
             }),
         });
 
@@ -103,8 +107,8 @@ describe('BackendStack', () => {
         expect(functions.length).toBeGreaterThan(0);
         expect(functions.every((name) => name.endsWith('-DEV'))).toBe(true);
         for (const name of [
-            'blockbuster-theatre-booking-confirmation-handler-DEV',
-            'blockbuster-theatre-guest-booking-handler-DEV',
+            'blockbuster-theatre-send-booking-confirmation-DEV',
+            'blockbuster-theatre-create-guest-booking-record-DEV',
         ]) {
             template.hasResourceProperties('AWS::Lambda::Function', {
                 FunctionName: name,
@@ -121,21 +125,14 @@ describe('BackendStack', () => {
         expect(template.findResources('AWS::SES::EmailIdentity')).toEqual({});
 
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'blockbuster-theatre-api-gateway-DEV',
+            Name: 'blockbuster-theatre-api-DEV',
             CorsConfiguration: Match.objectLike({
-                AllowOrigins: Match.arrayWith([
-                    'https://blockbuster-theatre.nml-applications.com',
-                    'https://*',
-                    'http://localhost:3000',
-                    'http://localhost:5173',
-                ]),
-                AllowHeaders: Match.arrayWith(['Authorization', 'Content-Type']),
+                AllowOrigins: ['*'],
+                AllowHeaders: Match.arrayWith(['Content-Type', 'Authorization']),
                 AllowMethods: Match.arrayWith(['GET', 'POST', 'PATCH', 'DELETE']),
             }),
         });
-        template.hasResourceProperties('AWS::ApiGatewayV2::ApiMapping', {
-            DomainName: 'api-dev.blockbuster-theatre.nml-applications.com',
-        });
+        template.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 0);
         template.hasResourceProperties('AWS::ApiGatewayV2::Authorizer', {
             Name: 'CognitoJwtAuthorizer-DEV',
             AuthorizerType: 'JWT',
@@ -187,53 +184,44 @@ describe('BackendStack', () => {
                 Tags: Match.objectLike({ Project: 'blockbuster-theatre', Environment: envName }),
             });
         }
-        if (envName === 'prod') {
-            template.hasResourceProperties('AWS::Cognito::UserPool', {
-                UserPoolTags: Match.objectLike({
-                    Project: 'blockbuster-theatre',
-                    Environment: envName,
-                }),
-            });
-            template.hasResourceProperties('AWS::SES::EmailIdentity', {
-                Tags: Match.arrayWith([{ Key: 'Environment', Value: envName }]),
-            });
-        }
+        template.resourceCountIs('AWS::Cognito::UserPool', 0);
+        template.resourceCountIs('AWS::SES::EmailIdentity', 0);
     });
 
     it('should create DynamoDB table', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::DynamoDB::Table', 9);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movie-catalogue-PROD',
+            TableName: 'blockbuster-theatre-movies-table-PROD',
             BillingMode: 'PAY_PER_REQUEST',
         });
         template.hasResource('AWS::DynamoDB::Table', {
             DeletionPolicy: 'Retain',
             UpdateReplacePolicy: 'Retain',
-            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-movie-catalogue-PROD' }),
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-movies-table-PROD' }),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-ticket-pricing-PROD',
+            TableName: 'blockbuster-theatre-pricing-table-PROD',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'pricingId', KeyType: 'HASH' }],
         });
         template.hasResource('AWS::DynamoDB::Table', {
             DeletionPolicy: 'Retain',
             UpdateReplacePolicy: 'Retain',
-            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-ticket-pricing-PROD' }),
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-pricing-table-PROD' }),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-booking-offers-PROD',
+            TableName: 'blockbuster-theatre-offers-table-PROD',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'offerId', KeyType: 'HASH' }],
         });
         template.hasResource('AWS::DynamoDB::Table', {
             DeletionPolicy: 'Retain',
             UpdateReplacePolicy: 'Retain',
-            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-booking-offers-PROD' }),
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-offers-table-PROD' }),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movie-collections-PROD',
+            TableName: 'blockbuster-theatre-collections-table-PROD',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
         });
@@ -241,7 +229,7 @@ describe('BackendStack', () => {
             DeletionPolicy: 'Retain',
             UpdateReplacePolicy: 'Retain',
             Properties: Match.objectLike({
-                TableName: 'blockbuster-theatre-bookings-PROD',
+                TableName: 'blockbuster-theatre-legacy-bookings-table-PROD',
                 BillingMode: 'PAY_PER_REQUEST',
                 KeySchema: [
                     { AttributeName: 'showingId', KeyType: 'HASH' },
@@ -251,7 +239,7 @@ describe('BackendStack', () => {
             }),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-bookings-by-showtime-PROD',
+            TableName: 'blockbuster-theatre-bookings-table-PROD',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [
                 { AttributeName: 'showtimeId', KeyType: 'HASH' },
@@ -260,17 +248,17 @@ describe('BackendStack', () => {
             GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-showtime-registry-PROD',
+            TableName: 'blockbuster-theatre-showtimes-table-PROD',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-booking-references-PROD',
+            TableName: 'blockbuster-theatre-booking-references-table-PROD',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'bookingRef', KeyType: 'HASH' }],
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-guest-conversion-tokens-PROD',
+            TableName: 'blockbuster-theatre-guest-conversion-tokens-table-PROD',
             BillingMode: 'PAY_PER_REQUEST',
             KeySchema: [{ AttributeName: 'tokenHash', KeyType: 'HASH' }],
             TimeToLiveSpecification: {
@@ -282,10 +270,10 @@ describe('BackendStack', () => {
 
     it('grants the ticket handler read access to both booking tables and their indexes', () => {
         const template = Template.fromStack(stack);
-        const currentTable = Match.stringLikeRegexp('MoviesDatabaseBlockbusterTheatreBookingsByShowtime');
-        const legacyTable = Match.stringLikeRegexp('MoviesDatabaseBlockbusterTheatreBookings[A-F0-9]+');
+        const currentTable = 'BlockbusterTheatreBookingsPROD';
+        const legacyTable = 'BlockbusterTheatreLegacyBookingsPROD';
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-download-ticket-handler-PROD',
+            FunctionName: 'blockbuster-theatre-download-booking-ticket-PROD',
             Environment: {
                 Variables: {
                     BOOKINGS_TABLE_NAME: { Ref: currentTable },
@@ -313,14 +301,14 @@ describe('BackendStack', () => {
     it('should create Lambda function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
         });
     });
 
     it('should create HTTP API', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'blockbuster-theatre-api-gateway-PROD',
+            Name: 'blockbuster-theatre-api-PROD',
         });
     });
 
@@ -342,7 +330,8 @@ describe('BackendStack', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'PATCH /bookings/reschedule-booking',
-            AuthorizationType: 'NONE',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /showtimes',
@@ -416,19 +405,15 @@ describe('BackendStack', () => {
         template.hasOutput('UserPoolId', {});
         template.hasOutput('UserPoolClientId', {});
         template.hasOutput('UserPoolIssuer', {});
-        template.hasOutput('CognitoLoginUrl', {
-            Description: 'Dark-mode Cognito managed login URL for browser authorization',
-        });
+        expect(template.toJSON().Outputs.CognitoLoginUrl).toBeUndefined();
     });
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 27);
-        template.hasResourceProperties('AWS::SES::EmailIdentity', {
-            EmailIdentity: 'niallmclaughlin1998@gmail.com',
-        });
+        template.resourceCountIs('AWS::IAM::Policy', 25);
+        template.resourceCountIs('AWS::SES::EmailIdentity', 0);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-booking-confirmation-handler-PROD',
+            FunctionName: 'blockbuster-theatre-send-booking-confirmation-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     BOOKING_EMAIL_FROM: Match.anyValue(),
@@ -451,11 +436,11 @@ describe('BackendStack', () => {
         const template = Template.fromStack(stack);
         // Database should be created first (no dependencies)
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movie-catalogue-PROD',
+            TableName: 'blockbuster-theatre-movies-table-PROD',
         });
         // Lambda should be created with correct name
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
         });
         // API should integrate with Lambda
         template.hasResourceProperties('AWS::ApiGatewayV2::Integration', {

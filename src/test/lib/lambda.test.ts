@@ -102,14 +102,14 @@ describe('LambdaConstruct', () => {
     it('should create a Lambda function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
         });
     });
 
     it('uses a distinct, environment-scoped name for the rolling schedule handler', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-maintain-rolling-schedule-handler-PROD',
+            FunctionName: 'blockbuster-theatre-maintain-rolling-schedule-PROD',
         });
         template.hasResourceProperties('AWS::Events::Rule', {
             ScheduleExpression: 'rate(6 hours)',
@@ -121,8 +121,8 @@ describe('LambdaConstruct', () => {
         const json = template.toJSON();
         expect(json.Parameters.TmdbApiKey).toMatchObject({ Type: 'String', NoEcho: true });
         for (const name of [
-            'blockbuster-theatre-add-movies-handler-PROD',
-            'blockbuster-theatre-refresh-movie-collection-handler-PROD',
+            'blockbuster-theatre-add-movie-to-db-PROD',
+            'blockbuster-theatre-refresh-collection-records-PROD',
         ]) {
             template.hasResourceProperties('AWS::Lambda::Function', {
                 FunctionName: name,
@@ -145,7 +145,6 @@ describe('LambdaConstruct', () => {
                 })).toThrow('TMDB_API_KEY must be set and non-empty');
             }
         } finally {
-            reschedule - customer - booking - handler
             if (original === undefined) delete process.env.TMDB_API_KEY;
             else process.env.TMDB_API_KEY = original;
         }
@@ -155,7 +154,7 @@ describe('LambdaConstruct', () => {
         const template = Template.fromStack(stack);
         const table = Match.stringLikeRegexp('TestBookingsTable');
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-reschedule-booking-handler-PROD',
+            FunctionName: 'blockbuster-theatre-reschedule-booking-record-PROD',
             Environment: {
                 Variables: {
                     BOOKINGS_TABLE_NAME: { Ref: table },
@@ -181,8 +180,9 @@ describe('LambdaConstruct', () => {
 
     it('should retain CloudWatch logs for one week for every Lambda function', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('Custom::LogRetention', 25);
-        template.hasResourceProperties('Custom::LogRetention', {
+        template.resourceCountIs('Custom::LogRetention', 0);
+        template.resourceCountIs('AWS::Logs::LogGroup', 25);
+        template.hasResourceProperties('AWS::Logs::LogGroup', {
             RetentionInDays: 7,
         });
     });
@@ -194,7 +194,7 @@ describe('LambdaConstruct', () => {
             JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
         );
 
-        expect(loggingRoles).toHaveLength(26);
+        expect(loggingRoles).toHaveLength(25);
     });
 
     it('should use Node.js 24.x runtime', () => {
@@ -202,6 +202,12 @@ describe('LambdaConstruct', () => {
         template.hasResourceProperties('AWS::Lambda::Function', {
             Runtime: 'nodejs24.x',
         });
+    });
+
+    it('uses ARM64 for every application Lambda', () => {
+        const functions = Object.values(Template.fromStack(stack).findResources('AWS::Lambda::Function'));
+        expect(functions).toHaveLength(25);
+        expect(functions.every((fn) => JSON.stringify(fn.Properties.Architectures) === '["arm64"]')).toBe(true);
     });
 
     it('should set correct memory size', () => {
@@ -222,7 +228,7 @@ describe('LambdaConstruct', () => {
         expect(cfg.maxBatch).toBe(100);
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
             Environment: {
                 Variables: Match.objectLike({ MAX_BATCH: '100' }),
             },
@@ -233,7 +239,7 @@ describe('LambdaConstruct', () => {
         expect(movieUpdateMaxBatch).toBe(25);
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-update-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-update-movie-record-PROD',
             Environment: {
                 Variables: Match.objectLike({ MAX_BATCH: '25' }),
             },
@@ -243,32 +249,32 @@ describe('LambdaConstruct', () => {
     it('should use default sizing for lightweight API handlers', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-list-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-list-movie-records-PROD',
             MemorySize: 256,
             Timeout: 10,
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-list-featured-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-list-featured-movie-records-PROD',
             MemorySize: 256,
             Timeout: 10,
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-get-movie-collection-handler-PROD',
+            FunctionName: 'blockbuster-theatre-get-collection-record-PROD',
             MemorySize: 256,
             Timeout: 25,
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-refresh-movie-collection-handler-PROD',
+            FunctionName: 'blockbuster-theatre-refresh-collection-records-PROD',
             MemorySize: 512,
             Timeout: 25,
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-export-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-export-movie-records-PROD',
             MemorySize: 512,
             Timeout: 25,
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-update-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-update-movie-record-PROD',
             MemorySize: 256,
             Timeout: 15,
         });
@@ -277,7 +283,7 @@ describe('LambdaConstruct', () => {
     it('should set environment variables for movie imports', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
+            FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     TABLE_NAME: Match.anyValue(),
@@ -293,7 +299,7 @@ describe('LambdaConstruct', () => {
     it('should configure the TMDB collection refresh function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-refresh-movie-collection-handler-PROD',
+            FunctionName: 'blockbuster-theatre-refresh-collection-records-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     COLLECTIONS_TABLE_NAME: Match.anyValue(),
@@ -308,7 +314,7 @@ describe('LambdaConstruct', () => {
     it('should not set reserved concurrency by default', () => {
         const template = Template.fromStack(stack);
         const functions = template.findResources('AWS::Lambda::Function');
-        expect(Object.values(functions)).toHaveLength(26);
+        expect(Object.values(functions)).toHaveLength(25);
         for (const fn of Object.values(functions)) {
             expect(fn.Properties).not.toHaveProperty('ReservedConcurrentExecutions');
         }
@@ -447,7 +453,7 @@ describe('LambdaConstruct', () => {
         }>;
         const getMovieFunction = Object.values(resources).find((resource) => (
             resource.Type === 'AWS::Lambda::Function'
-            && resource.Properties?.FunctionName === 'blockbuster-theatre-get-movie-lambda-PROD'
+            && resource.Properties?.FunctionName === 'blockbuster-theatre-get-movie-record-PROD'
         ));
         const variables = getMovieFunction?.Properties?.Environment?.Variables;
 
@@ -508,10 +514,10 @@ describe('LambdaConstruct', () => {
             Properties?: { FunctionName?: string; Code?: { S3Key?: string } };
         }>;
         const functionNames = [
-            'blockbuster-theatre-booking-confirmation-handler-PROD',
-            'blockbuster-theatre-guest-booked-seats-handler-PROD',
-            'blockbuster-theatre-guest-booking-handler-PROD',
-            'blockbuster-theatre-download-ticket-handler-PROD',
+            'blockbuster-theatre-send-booking-confirmation-PROD',
+            'blockbuster-theatre-list-account-booking-records-PROD',
+            'blockbuster-theatre-create-guest-booking-record-PROD',
+            'blockbuster-theatre-download-booking-ticket-PROD',
         ];
         const assetPaths = functionNames.map((name) => {
             const resource = Object.values(resources).find(
@@ -568,13 +574,13 @@ describe('LambdaConstruct', () => {
     it('should configure booking functions with least-privilege table access', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-list-bookings-handler-PROD',
+            FunctionName: 'blockbuster-theatre-list-booking-records-PROD',
             Environment: {
                 Variables: { BOOKINGS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestBookingsTable') } },
             },
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-create-booking-handler-PROD',
+            FunctionName: 'blockbuster-theatre-create-booking-record-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     BOOKINGS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestBookingsTable') },
@@ -603,7 +609,7 @@ describe('LambdaConstruct', () => {
             }),
         });
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-guest-booking-handler-PROD',
+            FunctionName: 'blockbuster-theatre-create-guest-booking-record-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     MAX_TICKETS_PARAMETER_NAME: `${maxTicketsParameterName}-PROD`,
@@ -615,7 +621,7 @@ describe('LambdaConstruct', () => {
     it('should allow the booking confirmation handler to read the max-ticket parameter', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-booking-confirmation-handler-PROD',
+            FunctionName: 'blockbuster-theatre-send-booking-confirmation-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     MAX_TICKETS_PARAMETER_NAME: `${maxTicketsParameterName}-PROD`,

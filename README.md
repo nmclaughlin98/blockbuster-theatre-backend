@@ -2,6 +2,8 @@
 
 Backend API and AWS CDK infrastructure for the Blockbuster Theatre website. The API runs on AWS Lambda behind API Gateway and uses DynamoDB for movie catalogue, movie collections, ticket pricing, and booking offer data.
 
+> **Backend refactor in progress:** Do not deploy yet. The stack name is being updated, but resource names, handlers and the deployment workflow have not all been migrated. Existing production resources already use `-PROD` names, so names must be checked for collisions before deployment.
+
 ## Requirements
 
 - Node.js 24 or newer
@@ -59,19 +61,15 @@ Cloud mode requires existing dev/test tables and AWS credentials. The local adap
 
 ## AWS infrastructure
 
-The AWS CDK app is defined in `lib/stack/`. Set `TMDB_API_KEY` to a non-empty TMDB read access token before synthesis. A direct deployment must also provide it as the masked CloudFormation parameter `TmdbApiKey`:
+The existing CDK app is being refactored in place. It now synthesizes
+`BlockbusterTheatreBackendStack-PROD` or `BlockbusterTheatreBackendStack-DEV`.
+Both environments reference the existing shared Cognito pool, frontend client,
+Postman client, and SES identity. They do not create an API custom-domain mapping.
+The shared Cognito pre-token trigger remains owned by the existing stack.
 
-```bash
-npm run deploy -- --parameters "TmdbApiKey=$TMDB_API_KEY"
-```
-
-Command-line arguments can be visible to local processes. Deployment requires AWS credentials and targets the account and region configured for CDK. Review the synthesized template with `npm run synth` before deploying. The first deployment after this change requires the parameter.
-
-The dev stack has its own API Gateway, application Lambdas and DynamoDB tables, but shares the production Cognito pool and client and the SES email identity. Cognito users and changes to those users are therefore shared; the Cognito pre-token Lambda belongs to the shared pool. Named production resources use `-PROD`; dev resources use `-DEV`. Dev tables are deleted with the dev stack; production tables are retained. The new production tables are empty until data is copied from the retained unsuffixed tables.
-
-GitHub Actions assumes the CDK bootstrap deployment role to read the `UserPoolId` and `UserPoolClientId` outputs from the deployed `BlockbusterTheatreBackendStack`, then passes them as dev CloudFormation parameters. The production stack and outputs must already exist, and the GitHub Actions role must be allowed to assume the bootstrap deployment role. Set the dev GitHub Environment variable `PROD_POSTMAN_CLIENT_ID` to the shared Cognito `postman-test-client-PROD` ID so the dev authorizer accepts Postman tokens. Recreating Cognito requires new frontend and Postman IDs and a dev redeployment. For a local dev deployment, supply `--parameters ProdUserPoolId=<pool-id> --parameters ProdUserPoolClientId=<client-id> --parameters ProdPostmanClientId=<postman-client-id>` to `cdk deploy -c env=dev`, or synthesize with the corresponding `prodUserPoolId`, `prodUserPoolClientId`, and `prodPostmanClientId` CDK context values.
-
-For a manual GitHub Actions deployment, select `target_env` and optionally a build number. The job binds to the matching GitHub Environment and requires its `TMDB_API_KEY` secret. By default prod requires a successful `main` push build; dev can select builds across branches. The `allow_non_main_prod` override deliberately weakens the production restriction. Check the build and its source before deploying, especially to production. The workflow synthesizes the selected source and rejects older builds that do not support the masked TMDB parameter. The deployment assembly supports file assets, not Docker or executable assets. Automatic deployments remain limited to successful push builds on `dev` and `main`. See [API_GUIDE.md](./API_GUIDE.md) for environment and OIDC setup.
+The table, Lambda and API changes and the GitHub Actions workflow are not yet
+complete. Do not deploy the synthesized stack until those changes are finished
+and physical names have been checked against deployed resources.
 
 ## Project layout
 

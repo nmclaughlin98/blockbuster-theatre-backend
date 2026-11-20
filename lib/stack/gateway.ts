@@ -45,7 +45,7 @@ export class ApiGatewayConstruct extends Construct {
         const isDev = envName === 'dev';
 
         this.httpApi = new apigw2.HttpApi(this, 'HttpApi', {
-            apiName: resourceName('blockbuster-theatre-api-gateway', envName),
+            apiName: resourceName('blockbuster-theatre-api', envName),
             corsPreflight: {
                 allowOrigins: !isDev
                     ? [
@@ -80,7 +80,7 @@ export class ApiGatewayConstruct extends Construct {
         });
 
         const accessLogGroup = new logs.LogGroup(this, 'AccessLogGroup', {
-            logGroupName: resourceName('/aws/vendedlogs/blockbuster-theatre-api-access', envName),
+            logGroupName: resourceName('/aws/vendedlogs/blockbuster-theatre-api-v1-access', envName),
             retention: logs.RetentionDays.ONE_WEEK,
             removalPolicy: isDev ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
         });
@@ -102,20 +102,6 @@ export class ApiGatewayConstruct extends Construct {
                 gatewayError: '$context.error.message',
             }),
         };
-
-        const customDomainName = isDev
-            ? 'api-dev.blockbuster-theatre.nml-applications.com'
-            : 'api.blockbuster-theatre.nml-applications.com';
-        const customDomain = apigw2.CfnDomainName.fromDomainName(
-            this,
-            'ImportedCustomDomain',
-            customDomainName
-        );
-
-        new apigw2.ApiMapping(this, 'ApiMapping', {
-            api: this.httpApi,
-            domainName: customDomain,
-        });
 
         const integration = new integrations.HttpLambdaIntegration(
             'AddMoviesIntegration',
@@ -340,6 +326,7 @@ export class ApiGatewayConstruct extends Construct {
             path: '/bookings/reschedule-booking',
             methods: [apigw2.HttpMethod.PATCH],
             integration: rescheduleBookingIntegration,
+            authorizer: props.jwtAuthorizer,
         });
 
         this.httpApi.addRoutes({

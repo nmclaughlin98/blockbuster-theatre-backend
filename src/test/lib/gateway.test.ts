@@ -59,19 +59,15 @@ describe('ApiGatewayConstruct', () => {
     it('should create an HTTP API', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'blockbuster-theatre-api-gateway-PROD',
+            Name: 'blockbuster-theatre-api-PROD',
             ProtocolType: 'HTTP',
         });
     });
 
-    it('should map the default stage to the custom domain', () => {
+    it('does not claim the existing custom-domain mapping', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 1);
-        template.hasResourceProperties('AWS::ApiGatewayV2::ApiMapping', {
-            ApiId: Match.anyValue(),
-            DomainName: 'api.blockbuster-theatre.nml-applications.com',
-            Stage: '$default',
-        });
+        template.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 0);
+        template.resourceCountIs('AWS::ApiGatewayV2::DomainName', 0);
     });
 
     it('should create API routes', () => {
@@ -114,7 +110,8 @@ describe('ApiGatewayConstruct', () => {
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'PATCH /bookings/reschedule-booking',
-            AuthorizationType: 'NONE',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /showtimes',
@@ -245,7 +242,7 @@ describe('ApiGatewayConstruct', () => {
     it.each(['prod', 'dev'] as const)('logs %s API access through the existing default stage', (envName) => {
         if (envName === 'dev') createGateway('dev');
         const template = Template.fromStack(stack);
-        const logName = `/aws/vendedlogs/blockbuster-theatre-api-access-${envName.toUpperCase()}`;
+        const logName = `/aws/vendedlogs/blockbuster-theatre-api-v1-access-${envName.toUpperCase()}`;
         const groups = template.findResources('AWS::Logs::LogGroup', {
             Properties: { LogGroupName: logName },
         });

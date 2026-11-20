@@ -38,15 +38,11 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             prodUserPoolClientId,
             prodPostmanClientId,
         });
-        const bookingEmailIdentity = envName === 'prod'
-            ? new ses.EmailIdentity(this, 'BookingEmailIdentity', {
-                identity: ses.Identity.email('niallmclaughlin1998@gmail.com'),
-            })
-            : ses.EmailIdentity.fromEmailIdentityName(
-                this,
-                'ImportedBookingEmailIdentity',
-                'niallmclaughlin1998@gmail.com'
-            );
+        const bookingEmailIdentity = ses.EmailIdentity.fromEmailIdentityName(
+            this,
+            'ImportedBookingEmailIdentity',
+            'niallmclaughlin1998@gmail.com'
+        );
 
         // 2. Instantiate Lambda & pass DB table
         const lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {

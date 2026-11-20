@@ -548,6 +548,9 @@ When the booking comes from an offer, also send `offerId` (with the offer's feat
 
 `PATCH /bookings/reschedule-booking?showtimeId=559924_2026-11-02_1900&bookingRef=BBT-958000`
 
+This route requires a valid Cognito JWT. For now, any signed-in user can call it;
+guest requests are not authorized.
+
 ```json
 {
   "newShowtimeId": "559924_2026-11-05_1930",

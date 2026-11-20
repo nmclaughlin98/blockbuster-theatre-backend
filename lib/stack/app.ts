@@ -17,9 +17,7 @@ function optionalConfigValue(contextKey: string, environmentKey: string): string
     return environmentValue || undefined;
 }
 
-new BlockbusterTheatreBackendStack(app, envName === 'dev'
-    ? 'BlockbusterTheatreBackendStack-dev'
-    : 'BlockbusterTheatreBackendStack', {
+new BlockbusterTheatreBackendStack(app, `BlockbusterTheatreBackendStack-${envName.toUpperCase()}`, {
     description: 'BlockbusterTheatre Backend Infrastructure',
     envName,
     prodUserPoolId: optionalConfigValue('prodUserPoolId', 'PROD_USER_POOL_ID'),
