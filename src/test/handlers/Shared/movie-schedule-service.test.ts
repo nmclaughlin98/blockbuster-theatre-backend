@@ -77,14 +77,16 @@ describe('movie schedule service', () => {
             if (input.TableName === 'test-movies') return { Items: [movie] };
             if (
                 input.TableName === 'test-bookings' &&
-                input.ExpressionAttributeValues?.[':showtimeId'] === bookedShowtimeId
+                input.ExpressionAttributeValues?.[':showtimeId'] === `SHOWTIME#${bookedShowtimeId}`
             ) {
                 return { Items: [{ recordType: 'SEAT' }] };
             }
             return { Items: [] };
         });
         ddbMock.on(GetCommand).callsFake((input) => ({
-            Item: registry.get(input.Key?.registryKey as string),
+            Item: input.TableName === 'test-movies'
+                ? movie
+                : registry.get(input.Key?.registryKey as string),
         }));
         ddbMock.on(TransactWriteCommand).callsFake((input) => {
             for (const action of input.TransactItems ?? []) {

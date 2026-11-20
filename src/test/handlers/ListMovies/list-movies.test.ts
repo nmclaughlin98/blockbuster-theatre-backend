@@ -58,8 +58,7 @@ describe('List movies Lambda handler', () => {
 
     it('queries the movies index and returns a page and continuation token', async () => {
         const lastEvaluatedKey = {
-            tmdbId: '123',
-            slug: 'movie-123',
+            movieId: '123',
             GSI1PK: 'MOVIE',
             GSI1SK: '2025-01-02#123',
         };
@@ -98,7 +97,7 @@ describe('List movies Lambda handler', () => {
         );
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-movies-table',
-            IndexName: 'GSI1',
+            IndexName: 'MoviesByReleaseDate',
             KeyConditionExpression: 'GSI1PK = :movie',
             ExpressionAttributeValues: { ':movie': 'MOVIE' },
             Limit: 25,
@@ -108,8 +107,7 @@ describe('List movies Lambda handler', () => {
 
     it('uses the continuation token for the next page', async () => {
         const cursor = {
-            tmdbId: '123',
-            slug: 'movie-123',
+            movieId: '123',
             GSI1PK: 'MOVIE',
             GSI1SK: '2025-01-02#123',
         };
@@ -128,7 +126,7 @@ describe('List movies Lambda handler', () => {
     });
 
     it('filters hidden records while preserving explicit per-query limits', async () => {
-        const key = { tmdbId: '456', slug: 'a-movie', GSI1PK: 'MOVIE', GSI1SK: 'first' };
+        const key = { movieId: '456', GSI1PK: 'MOVIE', GSI1SK: 'first' };
         ddbMock.on(QueryCommand).resolves({
             Items: [{ ...movieRecord, visible: false }, movieRecord],
             LastEvaluatedKey: key,
@@ -153,8 +151,8 @@ describe('List movies Lambda handler', () => {
         const legacy = { ...records[12] };
         Reflect.deleteProperty(legacy, 'visible');
         records[12] = legacy;
-        const key1 = { tmdbId: '1014', slug: 'movie-14', GSI1PK: 'MOVIE', GSI1SK: '14' };
-        const key2 = { tmdbId: '1029', slug: 'movie-29', GSI1PK: 'MOVIE', GSI1SK: '29' };
+        const key1 = { movieId: '1014', GSI1PK: 'MOVIE', GSI1SK: '14' };
+        const key2 = { movieId: '1029', GSI1PK: 'MOVIE', GSI1SK: '29' };
         ddbMock.on(QueryCommand)
             .resolvesOnce({ Items: records.slice(0, 15), LastEvaluatedKey: key1 })
             .resolvesOnce({ Items: [], LastEvaluatedKey: key2 })
@@ -198,7 +196,7 @@ describe('List movies Lambda handler', () => {
     });
 
     it('returns a continuation at a page boundary before exceeding the proxy response budget', async () => {
-        const key = { tmdbId: '456', slug: 'a-movie', GSI1PK: 'MOVIE', GSI1SK: 'first' };
+        const key = { movieId: '456', GSI1PK: 'MOVIE', GSI1SK: 'first' };
         const first = { ...movieRecord, synopsis: '\0'.repeat(320_000) };
         const second = { ...movieRecord, tmdbId: '457', slug: 'next', synopsis: '\0'.repeat(320_000) };
         ddbMock.on(QueryCommand)
@@ -220,6 +218,7 @@ describe('List movies Lambda handler', () => {
     it('splits an oversized DynamoDB page without losing or duplicating movies', async () => {
         const records = Array.from({ length: 3 }, (_, index) => ({
             ...movieRecord,
+            movieId: String(500 + index),
             tmdbId: String(500 + index),
             slug: `large-${index}`,
             GSI1PK: 'MOVIE',
@@ -234,7 +233,7 @@ describe('List movies Lambda handler', () => {
         const body = responseBody(first);
         expect((body.movies as Array<{ movieId: number }>).map((movie) => movie.movieId)).toEqual([500, 501]);
         expect(Buffer.byteLength(JSON.stringify(first), 'utf8')).toBeLessThanOrEqual(4 * 1024 * 1024);
-        const cursor = { tmdbId: '501', slug: 'large-1', GSI1PK: 'MOVIE', GSI1SK: 'large-1' };
+        const cursor = { movieId: '501', GSI1PK: 'MOVIE', GSI1SK: 'large-1' };
         expect(JSON.parse(Buffer.from(String(body.nextToken), 'base64url').toString('utf8'))).toEqual(cursor);
         const second = await handler(createEvent({ nextToken: String(body.nextToken) }));
         expect(responseBody(second)).toMatchObject({ movies: [{ movieId: 502 }], nextToken: null });
@@ -242,7 +241,7 @@ describe('List movies Lambda handler', () => {
     });
 
     it('returns a token after the bounded number of DynamoDB pages', async () => {
-        const key = { tmdbId: '123', slug: 'movie-123', GSI1PK: 'MOVIE', GSI1SK: '2025#123' };
+        const key = { movieId: '123', GSI1PK: 'MOVIE', GSI1SK: '2025#123' };
         ddbMock.on(QueryCommand).resolves({ Items: [], LastEvaluatedKey: key });
         const result = await handler(createEvent());
         expect(responseBody(result)).toEqual({
@@ -305,7 +304,7 @@ describe('List movies Lambda handler', () => {
     });
 
     it('does not return a partial success if a later DynamoDB page fails', async () => {
-        const key = { tmdbId: '456', slug: 'a-movie', GSI1PK: 'MOVIE', GSI1SK: 'first' };
+        const key = { movieId: '456', GSI1PK: 'MOVIE', GSI1SK: 'first' };
         ddbMock.on(QueryCommand)
             .resolvesOnce({ Items: [movieRecord], LastEvaluatedKey: key })
             .rejectsOnce(new Error('DynamoDB unavailable'));

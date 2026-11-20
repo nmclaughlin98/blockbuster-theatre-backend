@@ -7,7 +7,8 @@ import type {
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import {
     JwtInvalidClaimError, JwtInvalidSignatureAlgorithmError, JwtInvalidSignatureError,
-    JwtParseError, JwtWithoutValidKidError, KidNotFoundInJwksError, WaitPeriodNotYetEndedJwkError,
+    JwtParseError, JwtWithoutValidKidError, KidNotFoundInJwksError, ParameterValidationError,
+    WaitPeriodNotYetEndedJwkError,
 } from 'aws-jwt-verify/error';
 
 export type OptionalJwtEvent = APIGatewayProxyEventV2WithRequestContext<
@@ -50,7 +51,11 @@ export async function authenticateOptional(
         if (error instanceof JwtInvalidClaimError || error instanceof JwtInvalidSignatureAlgorithmError
             || error instanceof JwtInvalidSignatureError || error instanceof JwtParseError
             || error instanceof JwtWithoutValidKidError || error instanceof KidNotFoundInJwksError
-            || error instanceof WaitPeriodNotYetEndedJwkError) throw new InvalidAuthorizationError();
+            || error instanceof WaitPeriodNotYetEndedJwkError
+            // The verifier selects an issuer before validating the token's claims.
+            || (error instanceof ParameterValidationError
+                && (error.message === 'issuer must be provided'
+                    || error.message.startsWith('issuer not configured:')))) throw new InvalidAuthorizationError();
         throw error;
     }
 }
