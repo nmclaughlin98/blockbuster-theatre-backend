@@ -95,6 +95,7 @@ describe('LambdaConstruct', () => {
             guestConversionTokensTable,
             userPool,
             userPoolClient,
+            postmanClientId: 'test-postman-client',
             bookingEmailIdentity,
         });
     });
@@ -103,6 +104,26 @@ describe('LambdaConstruct', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
+        });
+    });
+
+    it('allows booking creation to create and update offer showtime identities', () => {
+        const template = Template.fromStack(stack);
+        template.hasResourceProperties('AWS::IAM::Policy', {
+            Roles: [{ Ref: Match.stringLikeRegexp('CreateBookingRecordFunctionServiceRole') }],
+            PolicyDocument: Match.objectLike({
+                Statement: Match.arrayWith([Match.objectLike({
+                    Effect: 'Allow',
+                    Action: Match.arrayWith([
+                        'dynamodb:ConditionCheckItem',
+                        'dynamodb:PutItem',
+                        'dynamodb:UpdateItem',
+                    ]),
+                    Resource: Match.arrayWith([
+                        { 'Fn::GetAtt': [Match.stringLikeRegexp('TestShowtimeRegistryTable'), 'Arn'] },
+                    ]),
+                })]),
+            }),
         });
     });
 

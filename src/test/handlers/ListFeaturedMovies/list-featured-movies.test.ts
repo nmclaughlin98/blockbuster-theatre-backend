@@ -166,6 +166,25 @@ describe('Featured movie endpoints', () => {
         expect(responseBody(result)).toEqual({ movies: [], nextToken: null });
     });
 
+    it.each(['newest', 'top-picks'])(
+        'excludes hidden movies from %s while retaining legacy visible defaults',
+        async (sort) => {
+            const legacyMovie = { ...movieRecord, tmdbId: '789' };
+            Reflect.deleteProperty(legacyMovie, 'visible');
+            ddbMock.on(QueryCommand).resolves({
+                Items: [movieRecord, { ...movieRecord, tmdbId: '123', visible: false }, legacyMovie],
+            });
+
+            const result = await handler(createEvent(sort));
+
+            expect(result).toMatchObject({ statusCode: 200 });
+            expect(responseBody(result).movies).toMatchObject([
+                { movieId: 456, visible: true },
+                { movieId: 789, visible: true },
+            ]);
+        }
+    );
+
     it.each([
         ['invalid limit', 'newest', { limit: '0' }],
         ['malformed token', 'newest', { nextToken: 'not-json' }],

@@ -215,7 +215,7 @@ export async function createGuestBooking(
                 time: screening.time,
             },
             tickets: request.tickets,
-        });
+        }, screening);
     } catch (error: unknown) {
         if (error instanceof PricingServiceError) {
             throw new GuestBookingError(error.statusCode, error.message);

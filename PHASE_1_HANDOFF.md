@@ -5,6 +5,23 @@
 The current branch remains `complete-rework-of-api`. The deployment guard
 remains disabled and this refactor is still **not ready to deploy**.
 
+- Deployment-readiness continuation: booking creation now has the showtime
+  registry permissions needed for offer overrides and uses its strongly read
+  showtime instead of relying on immediate GSI propagation. Featured movie
+  views no longer expose hidden catalogue records.
+- Read-only live checks were performed after the approved AWS login; see
+  **Live deployment-readiness findings** below. These checks do not authorize
+  a deployment or establish end-to-end readiness.
+- Both environment templates synthesized after these changes. Their explicit
+  table, function, log-group and API names had no matches in the two old
+  local templates inspected; this is not a live collision check.
+- `npm run build` passed. The focused Lambda IAM assertion passed, as did
+  the four movie, booking and pricing suites (88 tests). The full suite was
+  not rerun in this continuation, in keeping with the deployment-first
+  priority; the earlier full-suite failures remain unresolved.
+- Updated documentation removes unapproved migration instructions. New tables
+  remain empty until separately approved initialization; shared production
+  resources must remain untouched.
 - Updated movie, collection, pricing, showtime, migration-script and API
   Gateway tests to exercise the new keys, routes and indexes.
 - Added locally signed JWT tests using the real Cognito verifier and an
@@ -29,6 +46,48 @@ remains disabled and this refactor is still **not ready to deploy**.
 
 The status and validation details below describe the **previous** handoff,
 not the latest continuation.
+
+## Live deployment-readiness findings
+
+The authenticated account matched the CDK account, in `eu-west-2`. No AWS
+resources were changed. The active identity was root; future operational work
+should use an appropriately scoped identity.
+
+- The existing `BlockbusterTheatreBackendStack` is `UPDATE_ROLLBACK_FAILED`.
+  CloudFormation reports that the legacy reschedule booking Lambda could not
+  be found during rollback; other updates were cancelled. Its Cognito pool,
+  clients, trigger, SES identity and production API mapping must remain intact.
+  Recovery requires separate approval and a reviewed plan; do not attempt it
+  as part of this refactor.
+- The legacy `BlockbusterTheatreBackendStack-dev` is `UPDATE_COMPLETE`.
+  Production and development custom domains currently map to their respective
+  legacy APIs. Neither new stack has a custom-domain mapping; cutover is not
+  authorized or validated.
+- Compared both freshly synthesized templates against the regional live
+  listings: for each environment, all 7 explicit table names, 23 Lambda names,
+  24 log-group names and 1 API name had zero exact matches. API names are not
+  unique identifiers; this is a point-in-time comparison, not a reservation or
+  a comprehensive deployability check.
+- Both shared clients are present in the production pool. The shared pre-token
+  Lambda is active and attached with V1_0 configuration, its resource policy
+  permits that pool to invoke it, and IAM simulation allowed its role to call
+  `AdminGetUser` on that pool. The local handler derives `member_since` from
+  `UserCreateDate`; the deployed code and issued claims were not verified.
+- The SES sender identity is verified and sending is enabled, but SES
+  production access is disabled in this region. The sandbox restricts
+  recipients to verified identities or the SES mailbox simulator, so normal
+  customer confirmation email is not production-ready. See
+  [SES sandbox documentation](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
+- Both guest-linking flags exist, are valid and disabled. Neither
+  environment-suffixed maximum-ticket parameter exists; the implemented
+  fallback is 10. The legacy unsuffixed parameter exists.
+- `CDKToolkit` is `CREATE_COMPLETE` and the standard bootstrap version is 32.
+  CI deployment-role permissions, GitHub Environment configuration, actual
+  token issuance, real email delivery and end-to-end routes remain unverified.
+  New tables are empty and require separately approved initialization.
+- DEV and PROD `npx cdk synth` passed serially with a placeholder TMDB key,
+  writing into the current session's files directory. No change set was
+  created, and the deployment guard remains disabled.
 
 ## Objective and current status
 
@@ -159,6 +218,9 @@ still imports a removed legacy handler and cannot run. Inspect each failure and
 retain meaningful coverage; do not delete tests merely to reduce the count.
 
 ## Recommended continuation
+
+**IMPORTANT** BEFORE EVEN APPROACHING ANY OF THE BELOW ITEMS THE HIGHEST PRIORITY IS TO MAKE THIS DEPLOYMENT READY. 
+THE MAIN FOCUS SHOULD BE ON THAT, AND TESTS ARE NOT IMPORTANT
 
 1. Inspect the current worktree, the listed failing tests, and their current
    handler/service implementations. Update tests in coherent groups, starting

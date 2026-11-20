@@ -6,7 +6,11 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../../main/lambda/handlers/Shared/dynamodb-client';
-import { addShowtimeIds, listShowtimesForDate } from '../../main/lambda/handlers/utils/showtime-ids';
+import {
+    addShowtimeIds,
+    listShowtimesForDate,
+    type ShowtimeIdentity,
+} from '../../main/lambda/handlers/utils/showtime-ids';
 import {
     hasUpcomingTemplateScreenings,
     isMovieScheduleDateAllowed,
@@ -271,7 +275,8 @@ async function validateScheduledTime(
     movie: MovieRecord,
     offer: OfferRecord | undefined,
     showtime: ShowtimeSelection,
-    date?: string
+    date?: string,
+    resolvedShowtime?: ShowtimeIdentity
 ): Promise<ShowtimeSelection> {
     const schedule = offer?.overrideShowtimes ?? generateShowtimes(
         movie.tmdbId,
@@ -292,6 +297,20 @@ async function validateScheduledTime(
         }
         if (offer?.overrideShowtimes !== undefined) {
             await addShowtimeIds(movie.tmdbId, offer.overrideShowtimes, date, 'OFFER');
+        }
+        if (resolvedShowtime) {
+            if (
+                resolvedShowtime.movieId !== movie.tmdbId
+                || resolvedShowtime.date !== date
+                || resolvedShowtime.day !== showtime.day
+                || resolvedShowtime.time !== showtime.time
+                || (showtime.screen !== undefined && resolvedShowtime.screen !== showtime.screen)
+                || resolvedShowtime.status === 'CANCELLED'
+                || resolvedShowtime.status === 'CLOSING'
+            ) {
+                throw new PricingServiceError(400, 'The selected showtime is not available.');
+            }
+            return { ...showtime, screen: resolvedShowtime.screen };
         }
         const showtimes = await listShowtimesForDate(date);
         const matchingRecord = showtimes.find(
@@ -325,14 +344,19 @@ function standardPricingId(showtime: ShowtimeSelection): string {
     return isWeekday && showtime.time < '17:00' ? 'OFF_PEAK_RATES' : 'STANDARD_RATES';
 }
 
-export async function resolvePricing(value: unknown): Promise<ResolvedPricing> {
+export async function resolvePricing(
+    value: unknown,
+    resolvedShowtime?: ShowtimeIdentity
+): Promise<ResolvedPricing> {
     const request = parseSelection(value);
     const offer = request.offerId ? await getOffer(request.offerId) : undefined;
     const movieId = offer?.featuredMovieId ?? request.movieId!;
     const movie = offer
         ? await getMovie(movieId, false)
         : await getMovie(movieId);
-    const showtime = await validateScheduledTime(movie, offer, request.showtime, request.date);
+    const showtime = await validateScheduledTime(
+        movie, offer, request.showtime, request.date, resolvedShowtime
+    );
 
     const pricingId = offer?.pricingId ?? standardPricingId(request.showtime);
     const pricing = await getPricing(pricingId);
@@ -381,7 +405,7 @@ function parseTicketRequest(value: unknown): TicketRequest[] {
     });
 }
 
-export async function validateCheckout(value: unknown): Promise<{
+export async function validateCheckout(value: unknown, resolvedShowtime?: ShowtimeIdentity): Promise<{
     movieId: string;
     movieTitle: string;
     offerId?: string;
@@ -408,7 +432,7 @@ export async function validateCheckout(value: unknown): Promise<{
         );
     }
     const tickets = parseTicketRequest(value.tickets);
-    const selected = await resolvePricing(value);
+    const selected = await resolvePricing(value, resolvedShowtime);
     const tiers = new Map(selected.pricing.ticketTiers.map((tier) => [tier.id, tier]));
     let totalPence = 0;
     const pricedTickets = tickets.map((ticket) => {

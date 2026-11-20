@@ -147,11 +147,13 @@ export const handler = async (
         const nextToken = result.LastEvaluatedKey
             ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64url')
             : null;
-        const movies = await mapWithConcurrency(result.Items ?? [], 5, async (item) => {
-            if (!isMovieRecord(item)) {
+        const visibleItems = (result.Items ?? []).filter((item) => item.visible !== false);
+        const movies = await mapWithConcurrency(visibleItems, 5, async (item) => {
+            const normalized = item.visible === undefined ? { ...item, visible: true } : item;
+            if (!isMovieRecord(normalized)) {
                 throw new Error('DynamoDB returned an invalid movie record.');
             }
-            return projectMovieSummary(item);
+            return projectMovieSummary(normalized);
         });
 
         return json(200, { movies, nextToken });

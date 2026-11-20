@@ -336,6 +336,32 @@ describe('unpaid guest bookings', () => {
         );
     });
 
+    it('books a strongly read showtime even before it appears in the date index', async () => {
+        mockPricing();
+        ddbMock.on(QueryCommand, {
+            TableName: 'test-showtime-registry',
+            IndexName: 'ShowtimesByDate',
+        }).resolves({ Items: [] });
+        ddbMock.on(TransactWriteCommand).resolves({});
+
+        const result = await guestBookingHandler(event(validGuestPayload()));
+
+        expect(result).toMatchObject({ statusCode: 201 });
+        expect(ddbMock.commandCalls(QueryCommand, {
+            TableName: 'test-showtime-registry',
+            IndexName: 'ShowtimesByDate',
+        })).toHaveLength(0);
+        const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
+        expect(transaction.TransactItems).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                ConditionCheck: expect.objectContaining({
+                    TableName: 'test-showtime-registry',
+                    Key: { registryKey: `SHOWTIME#${showtimeId}` },
+                }),
+            }),
+        ]));
+    });
+
     it('enforces the ticket limit for authenticated account bookings', async () => {
         const payload = validGuestPayload();
         payload.seats = Array.from({ length: 11 }, (_, index) => `A${index + 1}`);

@@ -520,7 +520,12 @@ export class LambdaConstruct extends Construct {
         props.offersTable.grantReadData(this.createBookingFunction);
         props.bookingsTable.grantWriteData(this.createBookingFunction);
         props.showtimeRegistryTable.grantReadData(this.createBookingFunction);
-        props.showtimeRegistryTable.grant(this.createBookingFunction, 'dynamodb:ConditionCheckItem');
+        props.showtimeRegistryTable.grant(
+            this.createBookingFunction,
+            'dynamodb:ConditionCheckItem',
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem'
+        );
         props.guestConversionTokensTable.grantWriteData(this.createBookingFunction);
         props.bookingEmailIdentity.grantSendEmail(this.createBookingFunction);
         maxTicketsParameter.grantRead(this.createBookingFunction);

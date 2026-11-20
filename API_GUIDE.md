@@ -14,7 +14,7 @@ All Lambda functions use CloudWatch Logs with a seven-day retention period and t
 
 ## API Gateway access logging
 
-The HTTP API default stage writes access logs to CloudWatch Logs in `eu-west-2`: `/aws/vendedlogs/blockbuster-theatre-api-access-PROD` for prod and `/aws/vendedlogs/blockbuster-theatre-api-access-DEV` for dev. Logs are retained for seven days. The prod log group is retained if its stack is deleted; the dev log group is deleted with its stack.
+The HTTP API default stage writes access logs to CloudWatch Logs in `eu-west-2`: `/aws/vendedlogs/blockbuster-theatre-api-v1-access-PROD` for prod and `/aws/vendedlogs/blockbuster-theatre-api-v1-access-DEV` for dev. Logs are retained for seven days. The prod log group is retained if its stack is deleted; the dev log group is deleted with its stack.
 
 Logs include the request ID, time, method, route key, response status and latency, integration status, and available gateway or authorizer errors. They do not explicitly include request bodies, authorization headers, tokens, query strings, or JWT claims. An authorizer error may not contain the reason for every JWT rejection. Logs begin after deployment and access logging can incur CloudWatch charges. The deploying role needs the permissions listed in the [AWS HTTP API logging documentation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html#http-api-logging.permissions).
 
@@ -25,6 +25,8 @@ Logs include the request ID, time, method, route key, response status and latenc
 `GET /api/v1/movies?sort=top-picks` returns movies ordered by TMDB score (`score`) from highest to lowest. This endpoint does not filter coming-soon records.
 
 Both endpoints are public and accept `limit` (1–100, default 50) and `nextToken` from the prior response. They return `{ "movies": [...], "nextToken": "..." }`, with `nextToken: null` when no additional page is available.
+Like the main catalogue, they omit hidden movies and treat records without a
+`visible` field as visible. Pages can contain fewer than `limit` movies.
 
 ## Booking confirmation email
 
@@ -34,15 +36,7 @@ The maximum accepted ticket count is read during booking creation from the envir
 
 Movie imports apply optional per-TMDB-ID metadata overrides from `src/main/lambda/handlers/utils/movie-metadata-overrides.ts`. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /api/v1/movies` to apply overrides.
 
-Movie records store TMDB `poster` and `still` URLs at original resolution. To backfill existing movie records, set `MOVIE_TABLE_NAME` and AWS credentials/region, then run `npm run migrate:movie-image-urls` to preview changes. The script scans every page and updates only those two URL attributes while preserving the rest of each record. Add `-- --apply` to write the changes after reviewing the dry-run output:
-
-```powershell
-$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movies-table-DEV"
-$env:AWS_PROFILE = "your-aws-profile"
-$env:AWS_REGION = "eu-west-2"
-npm run migrate:movie-image-urls
-npm run migrate:movie-image-urls -- --apply
-```
+Movie records store TMDB `poster` and `still` URLs at original resolution. No backfill or migration of existing production records is authorized for this phase.
 
 ## Cinema screening schedule
 
@@ -60,46 +54,11 @@ JWT-protected manual screening routes use the movie ID as a query parameter:
 
 Manual changes respect the run dates, four-screening daily cap, screen conflicts, and turnaround buffer. A screening with active bookings cannot be changed or cancelled; these requests return `409`.
 
-### Scheduling data migrations
+### Scheduling data
 
-After deploying the `ShowtimesByDate` index, backfill existing registry records before relying on date-based schedule queries:
-
-```powershell
-$env:SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry"
-$env:AWS_PROFILE = "your-aws-profile"
-$env:AWS_REGION = "eu-west-2"
-npm run migrate:showtime-registry
-npm run migrate:showtime-registry -- --apply
-```
-
-Legacy movie `showtimes` values are ignored by the new scheduler. Preview them before removal:
-
-```powershell
-$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movies-table-DEV"
-$env:AWS_PROFILE = "your-aws-profile"
-$env:AWS_REGION = "eu-west-2"
-npm run migrate:movie-showtimes
-```
-
-The legacy values may contain manually customized weekly schedules. Recreate any desired screenings with the manual API before removal; the migration requires an explicit confirmation flag:
-
-```powershell
-npm run migrate:movie-showtimes -- --apply --confirm-overrides-reviewed
-```
-
-Offer overrides are stored separately and continue to use screened showtime objects. Migrate legacy string-only offer overrides before deploying strict offer validation:
-
-### Migrating existing offer overrides
-
-Run this dry-run-first migration to assign a screen to each existing string-only offer override. It preserves every override day and time, skips offers without overrides, and leaves already-screened overrides unchanged. Run the preview and inspect it before applying:
-
-```bash
-export OFFERS_TABLE_NAME="blockbuster-theatre-booking-offers"
-npm run update:offer-showtimes
-npm run update:offer-showtimes -- --apply
-```
-
-Run `update:offer-showtimes` for legacy offer overrides. Movie schedules are now generated from rules and stored in the screening registry.
+The new environment-specific tables start empty. No migration, backfill, or
+production data copy is authorized for this phase. Legacy movie `showtimes`
+values are ignored; new screenings are stored in the showtime registry.
 
 ## Deprecated showtime format
 
@@ -550,6 +509,15 @@ npx cdk synth -c env=dev
 
 The new stack IDs are `BlockbusterTheatreBackendStack-PROD` and `BlockbusterTheatreBackendStack-DEV`. Tables start empty; no migration is planned. The existing production stack remains untouched and owns shared resources, including the Cognito trigger. Importing references does not make it safe to delete. Neither new stack creates a domain mapping. Prod tables use `RETAIN`; dev tables use `DESTROY`.
 
+The new pricing table must contain the appropriate pricing records before
+checkout or booking succeeds; movies and screenings must also exist. After a
+separately approved deployment, initialize only the intended new environment.
+The rolling scheduler runs every six hours rather than immediately on import.
+For ticket limits, the imported parameter names are
+`/blockbuster-theatre/booking-configuration/max-tickets-value-PROD` and
+`/blockbuster-theatre/booking-configuration/max-tickets-value-DEV`; a missing
+parameter falls back to 10.
+
 CDK applies `Environment=prod` or `Environment=dev` and `Project=blockbuster-theatre` to supported stack-managed resources. Adding the prod environment tag changes the prod template; imported resources and resource types without tag support cannot be tagged by this stack.
 
 The existing API domain mapping is not changed. Any future cutover needs explicit approval and live ownership and change-set review.
@@ -558,11 +526,16 @@ The existing API domain mapping is not changed. Any future cutover needs explici
 
 Dev imports the existing prod User Pool, backend App Client, and SES email identity; it does not create or modify Cognito pools/clients or an SES identity. The dev JWT authorizer accepts tokens issued to either the backend or the existing Postman app client. As in prod, both clients are accepted on all JWT-protected routes, not only movie administration.
 
+The latest read-only check found SES production access disabled in `eu-west-2`. While the account is in the [SES sandbox](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html), recipients must be verified identities or the SES mailbox simulator; ordinary customer confirmation delivery is not ready.
+
 The pool and frontend client IDs can be provided through CDK context (`prodUserPoolId`, `prodUserPoolClientId`) or environment variables (`PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`). Otherwise the template requires `ProdUserPoolId` and `ProdUserPoolClientId` CloudFormation parameters.
 
 For the Postman client, configure `PROD_POSTMAN_CLIENT_ID` or CDK context `prodPostmanClientId`; otherwise the template requires `ProdPostmanClientId`. Both deployment environments require all three shared Cognito IDs.
 
-The dev API accepts the production frontend origin, local development origins, and HTTPS Cloudflare Pages previews. API Gateway HTTP API's `https://*` origin pattern is used for preview hostnames; it permits any HTTPS origin, so bearer-token handling must remain explicit and API authorization must not rely on CORS alone. `Authorization`, `Content-Type`, and common AWS/request headers are allowed.
+The dev API allows all origins. Prod explicitly allows the production frontend,
+local development origins, and `https://*`, which permits any HTTPS origin.
+Both allow `Authorization` and `Content-Type`; authorization must not rely on
+CORS alone.
 
 Guest conversion tokens and booking records are read from the environment-specific DynamoDB tables. As requested, dev may create/authenticate an account in the shared prod Cognito pool when converting a dev guest booking; it only operates on the dev booking/token records.
 
@@ -582,4 +555,4 @@ Build and preparation syntheses use a non-secret placeholder to validate the tem
 
 By default, manual prod deployments must be run from `main` and select a successful `main` push build from this repository. The default-off `allow_non_main_prod` override allows dispatch from any branch and a numbered successful push build from any branch; with `latest`, it selects a successful push build from the branch selected when dispatching the workflow. The override deliberately bypasses the main-only protection and can deploy unreviewed code and infrastructure to production; use it only after reviewing the selected source. OIDC trust and IAM permissions may still prevent deployments from other branches. Manual dev deployments can select builds from other branches and synthesize the dev stack from that source. No release-tagging job exists in these workflows; any future SemVer tagging must remain restricted to `main`.
 
-The repository's OIDC role is external to this codebase. Environment-bound jobs use subjects `repo:nmclaughlin98/blockbuster-theatre-backend:environment:prod` and `repo:nmclaughlin98/blockbuster-theatre-backend:environment:dev`; update trust as appropriate, with separate least-privilege roles where possible. Protect the GitHub Environments with deployment branch rules and reviewers: a workflow can otherwise use an approved environment to deploy code from an untrusted selected build. Dev deployment also needs permission to assume the CDK deploy role and read the prod stack's Cognito outputs.
+The repository's OIDC role is external to this codebase. Environment-bound jobs use subjects `repo:nmclaughlin98/blockbuster-theatre-backend:environment:prod` and `repo:nmclaughlin98/blockbuster-theatre-backend:environment:dev`; update trust as appropriate, with separate least-privilege roles where possible. Protect the GitHub Environments with deployment branch rules and reviewers: a workflow can otherwise use an approved environment to deploy code from an untrusted selected build. The deployment role must have access to the CDK bootstrap roles and the configured shared resources.

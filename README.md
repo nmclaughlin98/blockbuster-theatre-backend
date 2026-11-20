@@ -26,10 +26,13 @@ Run the test suite:
 npm test
 ```
 
-Synthesize the CDK stack without deploying it:
+Synthesize each CDK stack without deploying it, using a non-secret placeholder
+and an output directory outside the checkout:
 
-```bash
-npm run synth
+```powershell
+$env:TMDB_API_KEY = 'synth-placeholder'
+npx cdk synth BlockbusterTheatreBackendStack-DEV -c env=dev --output "$env:TEMP\blockbuster-synth-dev" --quiet
+npx cdk synth BlockbusterTheatreBackendStack-PROD -c env=prod --output "$env:TEMP\blockbuster-synth-prod" --quiet
 ```
 
 ## API overview
@@ -69,6 +72,14 @@ stack until validation is complete and physical names have been checked against
 deployed resources. Before any future approved deployment, each GitHub Environment must
 provide `PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`, and
 `PROD_POSTMAN_CLIENT_ID` as variables and `TMDB_API_KEY` as a secret.
+
+The new tables start empty: catalogue, pricing, offers, and showtimes must be
+populated in the new environment before those flows can serve customers. No
+production data copy or seeding is authorized by this document. The optional
+linking and ticket-limit Parameter Store settings and their defaults are
+described in [API_GUIDE.md](./API_GUIDE.md). The schedule maintenance rule runs
+every six hours, so imported movies will not necessarily have screenings
+immediately.
 
 ## Project layout
 
