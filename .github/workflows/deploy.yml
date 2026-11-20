@@ -238,9 +238,6 @@ jobs:
           retention-days: 1
 
   deploy:
-    # Remove this guard only after the backend refactor and collision checks are complete.
-    if: ${{ false }}
-    needs: prepare
     runs-on: ubuntu-latest
     environment:
       name: ${{ needs.prepare.outputs.deploy_environment }}
