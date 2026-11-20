@@ -6,7 +6,7 @@ process.env.TABLE_NAME = 'test-movies-table';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const { handler } = require(
-    '../../../main/lambda/handlers/ListFeaturedMovies/list-featured-movies-handler'
+    '../../../services/movies/list-featured-movies'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };

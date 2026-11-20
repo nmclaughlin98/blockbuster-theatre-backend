@@ -11,7 +11,7 @@ import {
     cancelManualShowtime,
     createManualShowtime,
     maintainRollingSchedule,
-} from '../../../main/lambda/handlers/utils/movie-schedule-service';
+} from '../../../services/showtimes/movie-schedule-service';
 import { todayInTheatre } from '../../../main/lambda/handlers/utils/movie-lifecycle';
 import { generateShowtimes } from '../../../main/lambda/handlers/utils/showtime-schedule';
 import type { MovieRecord } from '../../../main/lambda/lib/interfaces';

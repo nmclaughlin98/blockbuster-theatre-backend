@@ -12,10 +12,10 @@ process.env.OFFERS_TABLE_NAME = 'test-booking-offers';
 process.env.PRICING_TABLE_NAME = 'test-ticket-pricing';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler: upsertOffers } = require('../../../main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler') as {
+const { handler: upsertOffers } = require('../../../handlers/offers/upsert-booking-offers') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
-const { handler: upsertPricing } = require('../../../main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler') as {
+const { handler: upsertPricing } = require('../../../handlers/pricing/upsert-ticket-pricing') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 

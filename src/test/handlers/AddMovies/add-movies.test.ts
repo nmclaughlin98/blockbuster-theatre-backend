@@ -18,7 +18,7 @@ process.env.TMDB_TIMEOUT_MS = '1000';
 process.env.TMDB_RETRIES = '2';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/AddMovies/add-movies-handler') as {
+const { handler } = require('../../../handlers/movies/add-movie-to-db') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 
@@ -92,7 +92,7 @@ function loadHandlerWithEnvironment(
     try {
         jest.resetModules();
         return (
-            require('../../../main/lambda/handlers/AddMovies/add-movies-handler') as {
+            require('../../../handlers/movies/add-movie-to-db') as {
                 handler: typeof handler;
             }
         ).handler;

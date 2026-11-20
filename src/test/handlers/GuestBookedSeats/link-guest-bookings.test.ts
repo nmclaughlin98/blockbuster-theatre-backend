@@ -3,8 +3,8 @@ import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 import type { OptionalJwtEvent } from '../../../main/lambda/handlers/utils/common';
-import { handler } from '../../../main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler';
-import { linkGuestBookings } from '../../../main/lambda/handlers/GuestBookedSeats/link-guest-bookings';
+import { handler } from '../../../handlers/bookings/list-booking-records';
+import { linkGuestBookings } from '../../../services/bookings/link-guest-bookings';
 
 const ddb = mockClient(DynamoDBDocumentClient);
 const ses = mockClient(SESv2Client);

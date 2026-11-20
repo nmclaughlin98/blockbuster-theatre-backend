@@ -19,17 +19,17 @@ process.env.TMDB_RETRIES = '2';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const { handler: refreshCollection } = require(
-    '../../../main/lambda/handlers/RefreshMovieCollection/refresh-movie-collection-handler'
+    '../../../handlers/collections/refresh-collection-records'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 const { handler: getCollection } = require(
-    '../../../main/lambda/handlers/GetMovieCollection/get-movie-collection-handler'
+    '../../../handlers/collections/get-collection-record'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 const { handler: listCollections } = require(
-    '../../../main/lambda/handlers/ListMovieCollections/list-movie-collections-handler'
+    '../../../handlers/collections/list-collection-records'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };

@@ -5,7 +5,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 const sesMock = mockClient(SESv2Client);
 const ssmMock = mockClient(SSMClient);
-const { handler } = require('../../../main/lambda/handlers/SendBookingConfirmation/send-booking-confirmation-handler') as {
+const { handler } = require('../../../handlers/bookings/send-booking-confirmation') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 

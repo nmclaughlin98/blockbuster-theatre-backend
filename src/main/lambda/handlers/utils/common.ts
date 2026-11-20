@@ -4,10 +4,56 @@ import type {
     APIGatewayProxyEventV2WithRequestContext,
     APIGatewayProxyResultV2,
 } from 'aws-lambda';
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
+import {
+    JwtInvalidClaimError, JwtInvalidSignatureAlgorithmError, JwtInvalidSignatureError,
+    JwtParseError, JwtWithoutValidKidError, KidNotFoundInJwksError, WaitPeriodNotYetEndedJwkError,
+} from 'aws-jwt-verify/error';
 
 export type OptionalJwtEvent = APIGatewayProxyEventV2WithRequestContext<
     APIGatewayEventRequestContextV2 & { authorizer?: APIGatewayEventRequestContextJWTAuthorizer }
 >;
+
+export class InvalidAuthorizationError extends Error {
+    constructor() {
+        super('Invalid authorization token.');
+    }
+}
+
+let verifier: ReturnType<typeof CognitoJwtVerifier.create> | undefined;
+
+export async function authenticateOptional(
+    headers: Record<string, string | undefined>
+): Promise<{ userId: string; verifiedEmail?: string } | undefined> {
+    const values = Object.entries(headers).filter(([name]) => name.toLowerCase() === 'authorization');
+    if (!values.length) return undefined;
+    if (values.length !== 1 || typeof values[0][1] !== 'string') throw new InvalidAuthorizationError();
+    const value = values[0][1].trim();
+    const token = /^Bearer\s+(\S+)$/i.exec(value)?.[1] ?? (/^[^\s]+$/.test(value) ? value : undefined);
+    if (!token) throw new InvalidAuthorizationError();
+    const userPoolId = process.env.USER_POOL_ID;
+    const clientIds = [process.env.USER_POOL_CLIENT_ID, process.env.POSTMAN_CLIENT_ID];
+    if (!userPoolId || clientIds.some((id) => !id)) throw new Error('Cognito verification is not configured.');
+    verifier ??= CognitoJwtVerifier.create({
+        userPoolId,
+        clientId: clientIds.filter((id): id is string => Boolean(id)),
+        tokenUse: null,
+    });
+    try {
+        const claims = await verifier.verify(token);
+        if (typeof claims.sub !== 'string' || !claims.sub.trim()) throw new InvalidAuthorizationError();
+        const verifiedEmail = claims.token_use === 'id' && claims.email_verified === true
+            && typeof claims.email === 'string' && claims.email.trim()
+            ? claims.email.trim().toLowerCase() : undefined;
+        return { userId: claims.sub, ...(verifiedEmail && { verifiedEmail }) };
+    } catch (error: unknown) {
+        if (error instanceof JwtInvalidClaimError || error instanceof JwtInvalidSignatureAlgorithmError
+            || error instanceof JwtInvalidSignatureError || error instanceof JwtParseError
+            || error instanceof JwtWithoutValidKidError || error instanceof KidNotFoundInJwksError
+            || error instanceof WaitPeriodNotYetEndedJwkError) throw new InvalidAuthorizationError();
+        throw error;
+    }
+}
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 

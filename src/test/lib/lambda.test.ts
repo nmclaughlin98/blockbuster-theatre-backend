@@ -159,6 +159,10 @@ describe('LambdaConstruct', () => {
                 Variables: {
                     BOOKINGS_TABLE_NAME: { Ref: table },
                     SHOWTIME_REGISTRY_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestShowtimeRegistryTable') },
+                    LEGACY_BOOKINGS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestLegacyBookingsTable') },
+                    BOOKING_REFERENCES_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestBookingReferencesTable') },
+                    GUEST_CONVERSION_TOKENS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestGuestConversionTokensTable') },
+                    TABLE_NAME: { Ref: Match.stringLikeRegexp('TestTable') },
                 },
             },
         });
@@ -176,6 +180,26 @@ describe('LambdaConstruct', () => {
                 })]),
             }),
         });
+        for (const [tableName, actions, hasIndexes] of [
+            ['TestLegacyBookingsTable', ['dynamodb:ConditionCheckItem'], true],
+            ['TestBookingReferencesTable', ['dynamodb:UpdateItem'], false],
+            ['TestGuestConversionTokensTable', ['dynamodb:GetItem', 'dynamodb:UpdateItem'], false],
+            ['TestTable', ['dynamodb:Query', 'dynamodb:ConditionCheckItem'], true],
+            ['TestShowtimeRegistryTable', ['dynamodb:ConditionCheckItem'], true],
+        ] as const) {
+            template.hasResourceProperties('AWS::IAM::Policy', {
+                Roles: [{ Ref: Match.stringLikeRegexp('RescheduleCustomerBookingHandlerServiceRole') }],
+                PolicyDocument: Match.objectLike({
+                    Statement: Match.arrayWith([Match.objectLike({
+                        Effect: 'Allow',
+                        Action: actions.length === 1 ? actions[0] : Match.arrayWith([...actions]),
+                        Resource: hasIndexes
+                            ? Match.arrayWith([{ 'Fn::GetAtt': [Match.stringLikeRegexp(tableName), 'Arn'] }])
+                            : { 'Fn::GetAtt': [Match.stringLikeRegexp(tableName), 'Arn'] },
+                    })]),
+                }),
+            });
+        }
     });
 
     it('should retain CloudWatch logs for one week for every Lambda function', () => {

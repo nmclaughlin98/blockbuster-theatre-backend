@@ -15,6 +15,7 @@ export class AuthenticationConstruct extends Construct {
     public readonly userPool: cognito.IUserPool;
     public readonly userPoolClient: cognito.IUserPoolClient;
     public readonly jwtAuthorizer: authorizers.HttpJwtAuthorizer;
+    public readonly postmanClientId: string;
     public readonly loginUrl?: string;
 
     constructor(scope: Construct, id: string, props: AuthenticationConstructProps = {}) {
@@ -41,6 +42,7 @@ export class AuthenticationConstruct extends Construct {
                 allowedPattern: '.*\\S.*',
                 description: 'Existing shared Cognito Postman client ID',
             }).valueAsString;
+        this.postmanClientId = postmanClientId;
 
         this.userPool = cognito.UserPool.fromUserPoolId(this, 'ImportedProdUserPool', userPoolId);
         this.userPoolClient = cognito.UserPoolClient.fromUserPoolClientId(

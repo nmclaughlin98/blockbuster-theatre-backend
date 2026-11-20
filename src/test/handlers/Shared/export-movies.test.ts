@@ -5,10 +5,10 @@ import { mockClient } from 'aws-sdk-client-mock';
 process.env.TABLE_NAME = 'test-movies-table';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler: exportMovies } = require('../../../main/lambda/handlers/ExportMovies/export-movies-handler') as {
+const { handler: exportMovies } = require('../../../services/movies/export-movies') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
-const { handler: listTmdbIds } = require('../../../main/lambda/handlers/ListTmdbIds/list-tmdb-ids-handler') as {
+const { handler: listTmdbIds } = require('../../../services/movies/list-tmdb-ids') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 

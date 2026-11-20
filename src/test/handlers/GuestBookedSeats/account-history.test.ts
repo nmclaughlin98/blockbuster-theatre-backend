@@ -1,23 +1,31 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
+jest.mock('../../../main/lambda/handlers/utils/common', () => ({
+    ...jest.requireActual('../../../main/lambda/handlers/utils/common'),
+    authenticateOptional: jest.fn(async (headers: Record<string, string | undefined>) => {
+        const userId = headers.authorization?.replace(/^Bearer /, '');
+        return userId ? { userId } : undefined;
+    }),
+}));
 
 process.env.BOOKINGS_TABLE_NAME = 'current-bookings';
 process.env.LEGACY_BOOKINGS_TABLE_NAME = 'legacy-bookings';
 
 const ddb = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler') as {
+const { handler } = require('../../../handlers/bookings/list-booking-records') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 
 function event(userId?: string): APIGatewayProxyEventV2 {
     return {
-        routeKey: 'GET /api/v1/bookings/account/history',
+        routeKey: 'GET /api/v1/bookings',
+        headers: userId ? { authorization: `Bearer ${userId}` } : {},
         requestContext: {
             requestId: 'test',
             ...(userId && { authorizer: { jwt: { claims: { sub: userId } } } }),
         },
-        queryStringParameters: { userId: 'another-user' },
+        queryStringParameters: { status: 'upcoming', userId: 'another-user' },
     } as unknown as APIGatewayProxyEventV2;
 }
 
@@ -58,27 +66,22 @@ test('requires a verified account', async () => {
     expect(ddb.commandCalls(QueryCommand)).toHaveLength(0);
 });
 
-test('queries both user indexes through all pages and returns only booking fields', async () => {
+test('queries the user index through all pages and returns only booking fields', async () => {
     ddb.on(QueryCommand, { TableName: 'current-bookings' })
         .resolvesOnce({
             Items: [{ ...booking, ...storedDetails, customerEmail: 'private@example.com', conversionTokenHash: 'secret' }],
             LastEvaluatedKey: { showtimeId: 'show1', seatId: 'BOOKING#1', userId: 'user-1', bookedAt: 'now' },
         })
         .resolvesOnce({ Items: [{ ...booking, ...storedDetails, bookingId: 'bk_2', totalAmount: 0 }] });
-    const { bookingRef: _bookingRef, movieId: _movieId, ...legacyBooking } = booking;
-    ddb.on(QueryCommand, { TableName: 'legacy-bookings' })
-        .resolves({ Items: [{ ...legacyBooking, bookingId: 'bk_legacy' }] });
-
     const result = await handler(event('user-1'));
     expect(typeof result === 'string' ? undefined : result.statusCode).toBe(200);
     expect(typeof result === 'string' ? undefined : result.headers?.['Cache-Control']).toBe('no-store');
     expect(body(result)).toEqual({ newlyLinkedBookings: [], bookings: [
         { ...booking, ...returnedDetails },
         { ...booking, ...returnedDetails, bookingId: 'bk_2', totalAmount: 0 },
-        { ...legacyBooking, bookingId: 'bk_legacy' },
     ] });
     const calls = ddb.commandCalls(QueryCommand);
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(2);
     for (const call of calls) {
         expect(call.args[0].input).toEqual(expect.objectContaining({
             IndexName: 'UserBookings',

@@ -5,7 +5,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 process.env.TABLE_NAME = 'test-movies-table';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/ListMovies/list-movies-handler') as {
+const { handler } = require('../../../handlers/movies/list-movie-records') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 

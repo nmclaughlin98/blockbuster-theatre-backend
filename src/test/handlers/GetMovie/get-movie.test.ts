@@ -14,7 +14,7 @@ process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const registry = new Map<string, Record<string, unknown>>();
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const { handler } = require('../../../main/lambda/handlers/GetMovie/get-movie-handler') as {
+const { handler } = require('../../../handlers/movies/get-movie-record') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 

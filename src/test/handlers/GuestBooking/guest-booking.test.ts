@@ -34,13 +34,13 @@ const cognitoMock = mockClient(CognitoIdentityProviderClient);
 const sesMock = mockClient(SESv2Client);
 type Handler = (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 const { handler: guestBookingHandler } = require(
-    '../../../main/lambda/handlers/GuestBooking/guest-booking-handler'
+    '../../../handlers/bookings/create-booking-record'
 ) as { handler: Handler };
 const { handler: bookedSeatsHandler } = require(
-    '../../../main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler'
+    '../../../handlers/bookings/list-booking-records'
 ) as { handler: Handler };
 const { handler: guestConversionHandler } = require(
-    '../../../main/lambda/handlers/GuestConversion/guest-conversion-handler'
+    '../../../handlers/auth/convert-guest-bookings-to-registered-account'
 ) as { handler: Handler };
 
 const time = '12:15';

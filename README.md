@@ -36,17 +36,14 @@ npm run synth
 
 The API supports:
 
-- `GET /movies` and `GET /movies/{id}` for the movie catalogue. The list endpoint returns visible movies and provides a continuation token when needed.
-- `GET /collections/{id}` for a TMDB list and its movies currently in the catalogue.
-- `GET /film-selections` for active movie and offer booking selections.
-- `GET /ticket-pricing` for pricing resolved by movie or offer, weekday, and showtime.
-- `POST /checkout/validate` to validate booking selections and calculate authoritative totals.
-- `GET /bookings` to list booked seats for a showing, and `POST /bookings` to book seats (stored with a user ID, randomly generated until login exists).
-- `GET /api/v1/bookings/guest` and `POST /api/v1/bookings/guest` for date-specific, unpaid guest bookings with backend-validated ticket totals, stable `showtimeId` values, and a separate `BBT-######` email/QR reference.
-- `GET /api/v1/bookings/account` for Cognito-protected seat availability with the signed-in user's own booked seats, and `POST /api/v1/bookings/account` to create account-linked bookings.
-- `POST /api/v1/auth/convert-guest` to convert a guest booking to a Cognito account using its one-time conversion token.
-- `POST /booking/confirmation` for the legacy demo confirmation email endpoint; guest reservations send their own booking-reference confirmation email.
-- `POST /collections/refresh` to refresh all pages for a batch of TMDB lists. Protected admin routes require the configured API Gateway JWT authorizer.
+- `GET /api/v1/movies` and `GET /api/v1/movies/{movieId}` for the catalogue.
+- `GET /api/v1/collections/{collectionId}`, `GET /api/v1/checkout/current-selections`, and `GET /api/v1/pricing` for booking selections.
+- `POST /api/v1/checkout/validate` validates selections and calculates totals.
+- `GET /api/v1/bookings` and `POST /api/v1/bookings` support guests and signed-in users; supplied tokens are verified.
+- `GET /api/v1/bookings/{bookingId}` and its `/ticket` and `/confirmation` routes require the owner or guest reference and email.
+- `PATCH /api/v1/bookings/{bookingId}/reschedule` permits any signed-in operator for now.
+- `POST /api/v1/auth/convert-guest-bookings` converts a guest booking using its one-time token.
+- Movie, collection, pricing, offer and showtime management routes require a Cognito JWT.
 
 See [API_GUIDE.md](./API_GUIDE.md) for booking data examples and local API instructions.
 
@@ -67,13 +64,16 @@ Both environments reference the existing shared Cognito pool, frontend client,
 Postman client, and SES identity. They do not create an API custom-domain mapping.
 The shared Cognito pre-token trigger remains owned by the existing stack.
 
-The table, Lambda and API changes and the GitHub Actions workflow are not yet
-complete. Do not deploy the synthesized stack until those changes are finished
-and physical names have been checked against deployed resources.
+The table, Lambda and API changes are not yet complete. The GitHub Actions
+deployment job is disabled during the refactor. Do not deploy the synthesized
+stack until the changes are finished and physical names have been checked against
+deployed resources. Once the guard is removed, each GitHub Environment must
+provide `PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`, and
+`PROD_POSTMAN_CLIENT_ID` as variables and `TMDB_API_KEY` as a secret.
 
 ## Project layout
 
 - `lib/stack/` — CDK app, Lambda functions, API Gateway routes, and DynamoDB tables
-- `src/main/lambda/handlers/` — Lambda request handlers and booking/pricing logic
+- `src/handlers/` and `src/services/` — request handlers and domain logic
 - `src/test/` — unit tests
 - `scripts/` — data seeding and local development utilities

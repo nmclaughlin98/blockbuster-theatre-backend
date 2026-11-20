@@ -14,7 +14,7 @@ import {
     listFilmSelections as resolveFilmSelections,
     resolvePricing,
     validateCheckout as validateCheckoutService,
-} from '../../../main/lambda/handlers/Shared/pricing-service';
+} from '../../../services/checkout/pricing-service';
 
 process.env.TABLE_NAME = 'test-movies-table';
 process.env.OFFERS_TABLE_NAME = 'test-offers-table';
@@ -23,13 +23,13 @@ process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const registry = new Map<string, Record<string, unknown>>();
-const { handler: listSelections } = require('../../../main/lambda/handlers/ListFilmSelections/list-film-selections-handler') as {
+const { handler: listSelections } = require('../../../handlers/checkout/list-checkout-selections') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
-const { handler: getTicketPricing } = require('../../../main/lambda/handlers/GetTicketPricing/get-ticket-pricing-handler') as {
+const { handler: getTicketPricing } = require('../../../handlers/pricing/get-ticket-pricing') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
-const { handler: validateCheckout } = require('../../../main/lambda/handlers/ValidateCheckout/validate-checkout-handler') as {
+const { handler: validateCheckout } = require('../../../handlers/checkout/validate-checkout') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 

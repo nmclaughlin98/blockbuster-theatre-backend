@@ -20,7 +20,7 @@ export async function removeLegacyMovieShowtimes(
     apply: boolean,
     reportSchedule: (record: MovieRecord, apply: boolean) => void = (record, willApply) => {
         console.log(
-            `${willApply ? 'Removing' : 'Would remove'} legacy schedule from ${record.title ?? record.tmdbId}:`,
+            `${willApply ? 'Removing' : 'Would remove'} legacy schedule from ${record.title ?? record.movieId}:`,
             JSON.stringify(record.showtimes)
         );
     }
@@ -33,10 +33,9 @@ export async function removeLegacyMovieShowtimes(
     do {
         const page = await client.send(new ScanCommand({
             TableName: tableName,
-            ProjectionExpression: '#tmdbId, #slug, #title, #showtimes',
+            ProjectionExpression: '#movieId, #title, #showtimes',
             ExpressionAttributeNames: {
-                '#tmdbId': 'tmdbId',
-                '#slug': 'slug',
+                '#movieId': 'movieId',
                 '#title': 'title',
                 '#showtimes': 'showtimes',
             },
@@ -47,8 +46,7 @@ export async function removeLegacyMovieShowtimes(
             const record = rawRecord as MovieRecord;
             recordsScanned += 1;
             if (
-                typeof record.tmdbId !== 'string' ||
-                typeof record.slug !== 'string'
+                typeof record.movieId !== 'string'
             ) {
                 throw new Error('The movie table contains a record without valid key attributes.');
             }
@@ -60,13 +58,12 @@ export async function removeLegacyMovieShowtimes(
 
             await client.send(new UpdateCommand({
                 TableName: tableName,
-                Key: { tmdbId: record.tmdbId, slug: record.slug },
+                Key: { movieId: record.movieId },
                 UpdateExpression: 'REMOVE #showtimes',
                 ConditionExpression:
-                    'attribute_exists(#tmdbId) AND attribute_exists(#slug) AND attribute_exists(#showtimes)',
+                    'attribute_exists(#movieId) AND attribute_exists(#showtimes)',
                 ExpressionAttributeNames: {
-                    '#tmdbId': 'tmdbId',
-                    '#slug': 'slug',
+                    '#movieId': 'movieId',
                     '#showtimes': 'showtimes',
                 },
             }));

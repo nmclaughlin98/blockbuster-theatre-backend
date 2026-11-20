@@ -14,7 +14,7 @@ process.env.BOOKINGS_TABLE_NAME = 'current-bookings';
 process.env.LEGACY_BOOKINGS_TABLE_NAME = 'legacy-bookings';
 
 const ddb = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/DownloadTicket/download-ticket-handler') as {
+const { handler } = require('../../../handlers/bookings/download-booking-ticket') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyStructuredResultV2>;
 };
 

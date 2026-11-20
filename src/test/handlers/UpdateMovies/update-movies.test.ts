@@ -15,7 +15,7 @@ process.env.MAX_BATCH = '25';
 process.env.UPDATE_CONCURRENCY = '2';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/UpdateMovies/update-movies-handler') as {
+const { handler } = require('../../../handlers/movies/update-movie-record') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 
