@@ -48,6 +48,32 @@ The API supports:
 
 See [API_GUIDE.md](./API_GUIDE.md) for booking data examples and local API instructions.
 
+## API reference
+
+After deployment, the reference is available at
+`https://api.blockbuster-theatre.nml-applications.com/api-docs`
+(dev: `https://api-dev.blockbuster-theatre.nml-applications.com/api-docs`).
+The page links to `/api-docs/openapi.json`, which is also directly downloadable.
+These public routes are served by a Lambda on the existing HTTP API; the frontend
+domain and its SPA routing are unchanged. Serving the reference incurs normal
+API Gateway and Lambda charges.
+
+The HTTP API uses Lambda proxy integrations, not API Gateway request/response
+models. The OpenAPI 3.0 contract in `scripts/api-spec.cjs` therefore describes
+the handler contracts explicitly. Update it whenever a route, authorization,
+request, or response changes. CI checks route keys and JWT protection against the
+synthesized CloudFormation template; it cannot detect schema drift, so review
+the handlers and examples in `API_GUIDE.md` when updating the contract.
+`npm run docs:build` generates `build/api-docs/{prod,dev}/openapi.json` and a
+Redocly single-file HTML reference with inline JavaScript for each environment.
+The stack selects its environment's generated files for the
+CDK Lambda asset, so deployments and rollbacks publish the corresponding docs
+with the stack. GitHub Actions builds them from the selected build's source.
+
+Run `npm run docs:build` before using `npx cdk synth` or `npx cdk deploy`
+directly. The `npm run synth`, `npm run deploy`, and `npm test` commands build
+the docs automatically.
+
 ## Local API testing
 
 The local API adapter invokes the Lambda handlers without deploying them. It offers two database modes:

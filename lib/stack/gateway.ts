@@ -8,6 +8,7 @@ import { Construct } from 'constructs';
 import { resourceName, type EnvironmentName } from './environment';
 
 interface ApiGatewayConstructProps {
+    apiDocsFunction: lambda.IFunction;
     addMoviesFunction: lambda.IFunction;
     updateMoviesFunction: lambda.IFunction;
     listMoviesFunction: lambda.IFunction;
@@ -213,6 +214,18 @@ export class ApiGatewayConstruct extends Construct {
             'DownloadTicketIntegration',
             props.downloadTicketFunction
         );
+        const apiDocsIntegration = new integrations.HttpLambdaIntegration(
+            'ApiDocsIntegration',
+            props.apiDocsFunction
+        );
+
+        for (const path of ['/api-docs', '/api-docs/openapi.json']) {
+            this.httpApi.addRoutes({
+                path,
+                methods: [apigw2.HttpMethod.GET],
+                integration: apiDocsIntegration,
+            });
+        }
 
         this.httpApi.addRoutes({
             path: '/film-selections',

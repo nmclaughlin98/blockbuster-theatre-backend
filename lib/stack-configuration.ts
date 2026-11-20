@@ -1,5 +1,8 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ses from 'aws-cdk-lib/aws-ses';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as path from 'path';
 import { Construct } from 'constructs';
 import {
     ApiGatewayConstruct,
@@ -7,7 +10,7 @@ import {
     DatabaseConstruct,
     LambdaConstruct,
 } from './stack';
-import { type EnvironmentName } from './stack/environment';
+import { resourceName, type EnvironmentName } from './stack/environment';
 
 interface BlockbusterTheatreBackendStackProps extends cdk.StackProps {
     envName?: EnvironmentName;
@@ -65,8 +68,17 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             envName,
         });
 
+        const apiDocsFunction = new lambda.Function(this, 'ApiDocsHandler', {
+            functionName: resourceName('blockbuster-theatre-api-docs-handler', envName),
+            runtime: lambda.Runtime.NODEJS_24_X,
+            handler: 'index.handler',
+            code: lambda.Code.fromAsset(path.join(__dirname, '../build/api-docs', envName)),
+            logRetention: logs.RetentionDays.ONE_WEEK,
+        });
+
         // 3. Instantiate API Gateway & pass Lambda handler
         const apiGateway = new ApiGatewayConstruct(this, 'ApiGateway', {
+            apiDocsFunction,
             addMoviesFunction: lambdaServices.addMoviesFunction,
             updateMoviesFunction: lambdaServices.updateMoviesFunction,
             listMoviesFunction: lambdaServices.listMoviesFunction,
@@ -99,6 +111,10 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         new cdk.CfnOutput(this, 'ApiEndpoint', {
             value: apiGateway.httpApi.url!,
             description: 'Base HTTP endpoint for WinForms, WinUI 3, SwiftUI, and Web SPA',
+        });
+        new cdk.CfnOutput(this, 'ApiDocumentationUrl', {
+            value: `https://api${envName === 'dev' ? '-dev' : ''}.blockbuster-theatre.nml-applications.com/api-docs`,
+            description: 'API reference and downloadable OpenAPI specification',
         });
         new cdk.CfnOutput(this, 'UserPoolId', {
             value: authentication.userPool.userPoolId,

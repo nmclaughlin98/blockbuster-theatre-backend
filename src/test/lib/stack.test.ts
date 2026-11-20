@@ -333,7 +333,7 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 30);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 32);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings',
         });
