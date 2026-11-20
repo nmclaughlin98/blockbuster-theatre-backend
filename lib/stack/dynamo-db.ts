@@ -19,7 +19,7 @@ export class DatabaseConstruct extends Construct {
             ? cdk.RemovalPolicy.DESTROY
             : cdk.RemovalPolicy.RETAIN;
 
-        this.movieCatalogueTable = new dynamodb.Table(this, 'BlockbusterTheatreMovies', {
+        this.movieCatalogueTable = new dynamodb.Table(this, 'MoviesTable', {
             tableName: tableName('blockbuster-theatre-movies-table'),
             partitionKey: { name: 'movieId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -27,14 +27,14 @@ export class DatabaseConstruct extends Construct {
             removalPolicy,
         });
 
-        this.pricingTable = new dynamodb.Table(this, 'BlockbusterTheatrePricing', {
+        this.pricingTable = new dynamodb.Table(this, 'PricingTable', {
             tableName: tableName('blockbuster-theatre-pricing-table'),
             partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy,
         });
 
-        this.offersTable = new dynamodb.Table(this, 'BlockbusterTheatreOffers', {
+        this.offersTable = new dynamodb.Table(this, 'OffersTable', {
             tableName: tableName('blockbuster-theatre-offers-table'),
             partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -55,14 +55,14 @@ export class DatabaseConstruct extends Construct {
             projectionType: dynamodb.ProjectionType.ALL,
         });
 
-        this.collectionsTable = new dynamodb.Table(this, 'BlockbusterTheatreMovieCollections', {
+        this.collectionsTable = new dynamodb.Table(this, 'CollectionsTable', {
             tableName: tableName('blockbuster-theatre-collections-table'),
             partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy,
         });
 
-        this.bookingsTable = new dynamodb.Table(this, 'BlockbusterTheatreBookings', {
+        this.bookingsTable = new dynamodb.Table(this, 'BookingsTable', {
             tableName: tableName('blockbuster-theatre-bookings-table'),
             partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
@@ -88,7 +88,7 @@ export class DatabaseConstruct extends Construct {
             projectionType: dynamodb.ProjectionType.ALL,
         });
 
-        this.showtimeRegistryTable = new dynamodb.Table(this, 'BlockbusterTheatreShowtimeRegistry', {
+        this.showtimeRegistryTable = new dynamodb.Table(this, 'ShowtimesTable', {
             tableName: tableName('blockbuster-theatre-showtimes-table'),
             partitionKey: { name: 'registryKey', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -103,7 +103,7 @@ export class DatabaseConstruct extends Construct {
 
         this.guestConversionTokensTable = new dynamodb.Table(
             this,
-            'BlockbusterTheatreGuestConversionTokens',
+            'GuestConversionTokensTable',
             {
                 tableName: tableName('blockbuster-theatre-guest-conversion-tokens-table'),
                 partitionKey: { name: 'tokenHash', type: dynamodb.AttributeType.STRING },

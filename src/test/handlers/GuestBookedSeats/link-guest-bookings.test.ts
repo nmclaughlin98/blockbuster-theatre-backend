@@ -3,24 +3,51 @@ import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 import type { OptionalJwtEvent } from '../../../main/lambda/handlers/utils/common';
-import { handler } from '../../../handlers/bookings/list-booking-records';
+import { handler as listBookings } from '../../../handlers/bookings/list-booking-records';
 import { linkGuestBookings } from '../../../services/bookings/link-guest-bookings';
+
+jest.mock('../../../main/lambda/handlers/utils/common', () => {
+    const actual = jest.requireActual('../../../main/lambda/handlers/utils/common');
+    return {
+        ...actual,
+        authenticateOptional: async (headers: Record<string, string | undefined>) => {
+            if (!headers.authorization) return undefined;
+            const claims = JSON.parse(headers.authorization);
+            return {
+                userId: claims.sub,
+                ...(claims.token_use === 'id' && claims.email_verified === true
+                    && typeof claims.email === 'string'
+                    ? { verifiedEmail: claims.email.trim().toLowerCase() } : {}),
+            };
+        },
+    };
+});
+
+function handler(event: OptionalJwtEvent) {
+    const claims = event.requestContext.authorizer?.jwt?.claims;
+    return listBookings({
+        ...event,
+        headers: claims ? { authorization: JSON.stringify(claims) } : {},
+        queryStringParameters: { status: 'upcoming' },
+    });
+}
 
 const ddb = mockClient(DynamoDBDocumentClient);
 const ses = mockClient(SESv2Client);
 const ssm = mockClient(SSMClient);
 const parameterName = '/test/ALLOW_LINK_BOOKINGS';
 const originalParameterName = process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
-const futureKey = 'customerEmail = :email AND #date > :cutoffDate';
-const todayKey = 'customerEmail = :email AND #date = :cutoffDate';
+const futureKey = 'customerEmail = :email AND screeningKey > :end';
+const todayKey = 'customerEmail = :email AND screeningKey BETWEEN :start AND :end';
 const guest = {
     showtimeId: 'show1',
-    seatId: 'BOOKING#bk_1',
+    PK: 'BOOKING#bk_1',
+    SK: 'METADATA',
     recordType: 'BOOKING',
     bookingId: 'bk_1',
     bookingRef: 'BBT-123456',
     customerEmail: 'customer@example.com',
-    movieId: 'movie-1',
+    movieId: '123',
     movieTitle: 'Example',
     date: '2030-01-01',
     time: '12:15',
@@ -48,21 +75,21 @@ afterAll(() => {
 });
 
 test('claims all pages once, returns current records, and sends one consolidated email', async () => {
-    const second = { ...guest, bookingId: 'bk_2', seatId: 'BOOKING#bk_2', bookingRef: 'BBT-234567' };
+    const second = { ...guest, bookingId: 'bk_2', PK: 'BOOKING#bk_2', bookingRef: 'BBT-234567' };
     const differentShowtime = {
         ...guest,
         showtimeId: 'show2',
         bookingId: 'bk_3',
-        seatId: 'BOOKING#bk_3',
+        PK: 'BOOKING#bk_3',
         bookingRef: 'BBT-345678',
-        movieId: 'movie-2',
+        movieId: '456',
         movieTitle: 'Other',
         date: '2030-01-02',
         time: '14:30',
         screen: '2',
     };
     ddb.on(QueryCommand, { TableName: 'current', KeyConditionExpression: futureKey })
-        .resolvesOnce({ Items: [guest], LastEvaluatedKey: { showtimeId: 'show1', seatId: guest.seatId } })
+        .resolvesOnce({ Items: [guest], LastEvaluatedKey: { PK: guest.PK, SK: guest.SK } })
         .resolvesOnce({ Items: [second, differentShowtime] });
     ddb.on(QueryCommand, { TableName: 'legacy', KeyConditionExpression: futureKey }).resolves({ Items: [] });
     ddb.on(UpdateCommand).resolvesOnce({ Attributes: { ...guest, userId: 'user-1' } })
@@ -79,8 +106,8 @@ test('claims all pages once, returns current records, and sends one consolidated
     expect(ddb.commandCalls(QueryCommand)[1].args[0].input.ExclusiveStartKey).toBeDefined();
     for (const call of ddb.commandCalls(QueryCommand)) {
         expect(call.args[0].input).toEqual(expect.objectContaining({
-            IndexName: 'CustomerEmailUpcomingBookings',
-            KeyConditionExpression: expect.stringMatching(/#date (?:>|=) :cutoffDate/),
+            IndexName: 'CustomerEmailBookings',
+            KeyConditionExpression: expect.stringMatching(/screeningKey (?:>|BETWEEN)/),
             ExpressionAttributeValues: expect.objectContaining({ ':email': 'customer@example.com' }),
         }));
         expect(call.args[0].input.FilterExpression).not.toContain('#date');
@@ -100,14 +127,14 @@ test('claims all pages once, returns current records, and sends one consolidated
         expect.arrayContaining([
             expect.objectContaining({
                 ':bookingId': 'bk_1',
-                ':movieId': 'movie-1',
+                ':movieId': '123',
                 ':date': '2030-01-01',
                 ':time': '12:15',
                 ':screen': '1',
             }),
             expect.objectContaining({
                 ':bookingId': 'bk_3',
-                ':movieId': 'movie-2',
+                ':movieId': '456',
                 ':date': '2030-01-02',
                 ':time': '14:30',
                 ':screen': '2',
@@ -130,14 +157,14 @@ test('does not claim past showtimes returned by a stale upcoming-bookings index'
     const pastDay = {
         ...guest,
         bookingId: 'bk_2',
-        seatId: 'BOOKING#bk_2',
+        PK: 'BOOKING#bk_2',
         bookingRef: 'PAST-DAY',
         date: '2029-12-31',
     };
     const upcoming = {
         ...guest,
         bookingId: 'bk_3',
-        seatId: 'BOOKING#bk_3',
+        PK: 'BOOKING#bk_3',
         bookingRef: 'FUTURE-REF',
         time: '12:16',
     };
@@ -159,7 +186,7 @@ test('does not claim past showtimes returned by a stale upcoming-bookings index'
             .toEqual(expect.objectContaining({
                 FilterExpression: expect.stringContaining('#time >= :cutoffTime'),
                 ExpressionAttributeValues: expect.objectContaining({
-                    ':cutoffDate': '2030-01-01',
+                    ':start': '2030-01-01T00',
                     ':cutoffTime': '12:16',
                 }),
             }));
@@ -170,11 +197,11 @@ test('does not claim past showtimes returned by a stale upcoming-bookings index'
 
 test('queries future and today separately and paginates each date range', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2030-01-01T12:15:30.000Z'));
-    const future = { ...guest, bookingId: 'future', seatId: 'BOOKING#future', bookingRef: 'FUTURE', date: '2030-01-02', time: '09:00' };
-    const today = { ...guest, bookingId: 'today', seatId: 'BOOKING#today', bookingRef: 'TODAY', time: '12:16' };
-    const laterToday = { ...guest, bookingId: 'later', seatId: 'BOOKING#later', bookingRef: 'LATER', time: '13:00' };
-    const futurePageKey = { showtimeId: 'show1', seatId: future.seatId, customerEmail: 'customer@example.com', date: future.date };
-    const todayPageKey = { showtimeId: 'show1', seatId: today.seatId, customerEmail: 'customer@example.com', date: today.date };
+    const future = { ...guest, bookingId: 'future', PK: 'BOOKING#future', bookingRef: 'FUTURE', date: '2030-01-02', time: '09:00' };
+    const today = { ...guest, bookingId: 'today', PK: 'BOOKING#today', bookingRef: 'TODAY', time: '12:16' };
+    const laterToday = { ...guest, bookingId: 'later', PK: 'BOOKING#later', bookingRef: 'LATER', time: '13:00' };
+    const futurePageKey = { PK: future.PK, SK: future.SK, customerEmail: 'customer@example.com', screeningKey: '2030-01-02T09:00' };
+    const todayPageKey = { PK: today.PK, SK: today.SK, customerEmail: 'customer@example.com', screeningKey: '2030-01-01T12:16' };
     ddb.on(QueryCommand, { TableName: 'current', KeyConditionExpression: futureKey })
         .resolvesOnce({ Items: [], LastEvaluatedKey: futurePageKey })
         .resolvesOnce({ Items: [future] });
@@ -210,19 +237,6 @@ test('a concurrent claim is skipped and does not send an email', async () => {
     ddb.on(UpdateCommand).rejects(Object.assign(new Error('race'), { name: 'ConditionalCheckFailedException' }));
     expect(await linkGuestBookings('user-1', 'customer@example.com')).toEqual({ bookings: [], notificationSent: true });
     expect(ses.commandCalls(SendEmailCommand)).toHaveLength(0);
-});
-
-test('also claims bookings from the legacy table', async () => {
-    const { showtimeId: _showtimeId, ...details } = guest;
-    const legacy = { ...details, showingId: 'legacy-showing' };
-    ddb.on(QueryCommand, { TableName: 'current', KeyConditionExpression: futureKey }).resolves({ Items: [] });
-    ddb.on(QueryCommand, { TableName: 'legacy', KeyConditionExpression: futureKey }).resolves({ Items: [legacy] });
-    ddb.on(UpdateCommand).resolves({ Attributes: { ...legacy, userId: 'user-1' } });
-    const result = await linkGuestBookings('user-1', 'customer@example.com');
-    expect(result.bookings.map((item) => item.bookingRef)).toEqual(['BBT-123456']);
-    expect(ddb.commandCalls(UpdateCommand)[0].args[0].input.Key).toEqual({
-        showingId: 'legacy-showing', seatId: 'BOOKING#bk_1',
-    });
 });
 
 test('a later sweep does not re-link an already claimed booking even with a stale email index', async () => {
@@ -264,8 +278,7 @@ test.each([
 
 test('history returns newly claimed records immediately even before the user index catches up', async () => {
     ssm.on(GetParameterCommand, { Name: parameterName }).resolves({ Parameter: { Value: 'true' } });
-    ddb.on(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings', TableName: 'current', KeyConditionExpression: futureKey }).resolves({ Items: [guest] });
-    ddb.on(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings', TableName: 'legacy', KeyConditionExpression: futureKey }).resolves({ Items: [] });
+    ddb.on(QueryCommand, { IndexName: 'CustomerEmailBookings', TableName: 'current', KeyConditionExpression: futureKey }).resolves({ Items: [guest] });
     ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
     ddb.on(UpdateCommand).resolves({ Attributes: { ...guest, userId: 'user-1' } });
     const result = await handler({
@@ -278,20 +291,19 @@ test('history returns newly claimed records immediately even before the user ind
     const body = JSON.parse(result.body ?? '{}');
     expect(body.newlyLinkedBookings).toEqual(['BBT-123456']);
     expect(body.bookings).toEqual([expect.objectContaining({ bookingId: 'bk_1', bookingRef: 'BBT-123456' })]);
-    expect(ddb.commandCalls(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings' })[0].args[0].input.ExpressionAttributeValues?.[':email']).toBe('customer@example.com');
+    expect(ddb.commandCalls(QueryCommand, { IndexName: 'CustomerEmailBookings' })[0].args[0].input.ExpressionAttributeValues?.[':email']).toBe('customer@example.com');
 });
 
 test('history reports an SES failure without losing the claimed booking', async () => {
     ssm.on(GetParameterCommand, { Name: parameterName }).resolves({ Parameter: { Value: 'true' } });
-    ddb.on(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings', TableName: 'current', KeyConditionExpression: futureKey }).resolves({ Items: [guest] });
-    ddb.on(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings', TableName: 'legacy', KeyConditionExpression: futureKey }).resolves({ Items: [] });
+    ddb.on(QueryCommand, { IndexName: 'CustomerEmailBookings', TableName: 'current', KeyConditionExpression: futureKey }).resolves({ Items: [guest] });
     ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
     ddb.on(UpdateCommand).resolves({ Attributes: { ...guest, userId: 'user-1' } });
     ses.on(SendEmailCommand).rejects(new Error('SES unavailable'));
     const result = await handler({
         routeKey: 'GET /api/v1/bookings/account/history',
         requestContext: { requestId: 'test', authorizer: { jwt: { claims: {
-            sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: 'true',
+            sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: true,
         } } } },
     } as OptionalJwtEvent);
     if (typeof result === 'string') throw new Error('Expected structured result.');
@@ -309,11 +321,7 @@ test.each(['false', 'missing', 'unconfigured'])(
         } else if (setting === 'unconfigured') {
             delete process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
         }
-        ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
-        ddb.on(QueryCommand, {
-            TableName: 'current',
-            FilterExpression: 'recordType = :booking',
-        }).resolves({ Items: [guest] });
+        ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [{ ...guest, userId: 'user-1' }] });
         const result = await handler({
             routeKey: 'GET /api/v1/bookings/account/history',
             requestContext: { requestId: 'test', authorizer: { jwt: { claims: {
@@ -327,7 +335,7 @@ test.each(['false', 'missing', 'unconfigured'])(
             newlyLinkedBookings: [],
             bookings: [expect.objectContaining({ bookingId: 'bk_1' })],
         });
-        expect(ddb.commandCalls(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings' })).toHaveLength(0);
+        expect(ddb.commandCalls(QueryCommand, { IndexName: 'CustomerEmailBookings' })).toHaveLength(0);
         expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
         expect(ses.commandCalls(SendEmailCommand)).toHaveLength(0);
         expect(ssm.calls()).toHaveLength(setting === 'unconfigured' ? 0 : 1);

@@ -2,7 +2,7 @@
 
 Backend API and AWS CDK infrastructure for the Blockbuster Theatre website. The API runs on AWS Lambda behind API Gateway and uses DynamoDB for movie catalogue, movie collections, ticket pricing, and booking offer data.
 
-> **Backend refactor in progress:** Do not deploy yet. The stack name is being updated, but resource names, handlers and the deployment workflow have not all been migrated. Existing production resources already use `-PROD` names, so names must be checked for collisions before deployment.
+> **Do not deploy yet:** The new stacks and API require validation and live resource-name collision checks. Existing production resources must remain untouched.
 
 ## Requirements
 
@@ -64,10 +64,9 @@ Both environments reference the existing shared Cognito pool, frontend client,
 Postman client, and SES identity. They do not create an API custom-domain mapping.
 The shared Cognito pre-token trigger remains owned by the existing stack.
 
-The table, Lambda and API changes are not yet complete. The GitHub Actions
-deployment job is disabled during the refactor. Do not deploy the synthesized
-stack until the changes are finished and physical names have been checked against
-deployed resources. Once the guard is removed, each GitHub Environment must
+The GitHub Actions deployment job remains disabled. Do not deploy the synthesized
+stack until validation is complete and physical names have been checked against
+deployed resources. Before any future approved deployment, each GitHub Environment must
 provide `PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`, and
 `PROD_POSTMAN_CLIENT_ID` as variables and `TMDB_API_KEY` as a secret.
 

@@ -354,7 +354,7 @@ export function formatBookingConfirmationEmailHtml(
           <tr>
           </tr>
           <tr>
-            <td class="ticket-muted">No payment was taken, no reservation was created, and no valid ticket was issued.
+            <td class="ticket-muted">Your seat reservation has been recorded, but payment has not been processed. This email is not an admission ticket.
             </td>
           </tr>
         </table>

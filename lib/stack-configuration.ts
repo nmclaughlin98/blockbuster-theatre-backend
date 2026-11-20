@@ -31,7 +31,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         cdk.Tags.of(this).add('Environment', envName);
 
         // 1. Instantiate DynamoDB
-        const database = new DatabaseConstruct(this, 'MoviesDatabase', envName);
+        const database = new DatabaseConstruct(this, 'Database', envName);
         const authentication = new AuthenticationConstruct(this, 'Authentication', {
             envName,
             prodUserPoolId,
@@ -45,7 +45,7 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         );
 
         // 2. Instantiate Lambda & pass DB table
-        const lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {
+        const lambdaServices = new LambdaConstruct(this, 'LambdaServices', {
             table: database.movieCatalogueTable,
             pricingTable: database.pricingTable,
             offersTable: database.offersTable,

@@ -1,6 +1,6 @@
 # Booking Data API
 
-> Phase 1 is in progress. Do not deploy or run migration scripts against existing production resources. The route and storage descriptions below are being updated.
+> Do not deploy or run migration scripts against existing production resources. The new stacks require validation and live collision checks.
 
 ## Movie catalogue
 
@@ -32,7 +32,7 @@ Both endpoints are public and accept `limit` (1–100, default 50) and `nextToke
 
 The maximum accepted ticket count is read during booking creation from the environment-specific Systems Manager Parameter Store `max-tickets-value` parameter. If it is not configured or does not exist, the existing service uses a limit of 10.
 
-Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
+Movie imports apply optional per-TMDB-ID metadata overrides from `src/main/lambda/handlers/utils/movie-metadata-overrides.ts`. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /api/v1/movies` to apply overrides.
 
 Movie records store TMDB `poster` and `still` URLs at original resolution. To backfill existing movie records, set `MOVIE_TABLE_NAME` and AWS credentials/region, then run `npm run migrate:movie-image-urls` to preview changes. The script scans every page and updates only those two URL attributes while preserving the rest of each record. Add `-- --apply` to write the changes after reviewing the dry-run output:
 
@@ -75,7 +75,7 @@ npm run migrate:showtime-registry -- --apply
 Legacy movie `showtimes` values are ignored by the new scheduler. Preview them before removal:
 
 ```powershell
-$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue-PROD"
+$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movies-table-DEV"
 $env:AWS_PROFILE = "your-aws-profile"
 $env:AWS_REGION = "eu-west-2"
 npm run migrate:movie-showtimes

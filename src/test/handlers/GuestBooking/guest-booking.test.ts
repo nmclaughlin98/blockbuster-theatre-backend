@@ -16,6 +16,18 @@ import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { createHash } from 'crypto';
 import { mockClient } from 'aws-sdk-client-mock';
 
+jest.mock('../../../main/lambda/handlers/utils/common', () => {
+    const actual = jest.requireActual('../../../main/lambda/handlers/utils/common');
+    return {
+        ...actual,
+        authenticateOptional: async (headers: Record<string, string | undefined>) => {
+            if (!headers.authorization) return undefined;
+            if (headers.authorization === 'Bearer invalid') throw new actual.InvalidAuthorizationError();
+            return { userId: headers.authorization.replace(/^Bearer /, '') };
+        },
+    };
+});
+
 process.env.TABLE_NAME = 'test-movies';
 process.env.PRICING_TABLE_NAME = 'test-pricing';
 process.env.OFFERS_TABLE_NAME = 'test-offers';
@@ -119,7 +131,8 @@ function event(body?: unknown, query?: Record<string, string>): APIGatewayProxyE
 function accountBookingEvent(body: unknown, userId?: string): APIGatewayProxyEventV2 {
     return {
         ...event(body),
-        routeKey: 'POST /api/v1/bookings/account',
+        routeKey: 'POST /api/v1/bookings',
+        headers: userId ? { authorization: `Bearer ${userId}` } : { authorization: 'Bearer invalid' },
         requestContext: {
             requestId: 'account-booking-test',
             ...(userId && { authorizer: { jwt: { claims: { sub: userId } } } }),
@@ -130,7 +143,8 @@ function accountBookingEvent(body: unknown, userId?: string): APIGatewayProxyEve
 function accountBookedSeatsEvent(query: Record<string, string>, userId?: string): APIGatewayProxyEventV2 {
     return {
         ...event(undefined, query),
-        routeKey: 'GET /api/v1/bookings/account',
+        routeKey: 'GET /api/v1/bookings',
+        headers: userId ? { authorization: `Bearer ${userId}` } : { authorization: 'Bearer invalid' },
         requestContext: {
             requestId: 'account-booked-seats-test',
             ...(userId && { authorizer: { jwt: { claims: { sub: userId } } } }),
@@ -144,7 +158,7 @@ function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> 
 }
 
 function mockPricing(): void {
-    ddbMock.on(QueryCommand, { TableName: 'test-movies' }).resolves({ Items: [movie] });
+    ddbMock.on(GetCommand, { TableName: 'test-movies' }).resolves({ Item: movie });
     ddbMock
         .on(QueryCommand, { TableName: 'test-showtime-registry', IndexName: 'ShowtimesByDate' })
         .resolves({ Items: [registryRecord] });
@@ -266,19 +280,19 @@ describe('unpaid guest bookings', () => {
         );
 
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
-        expect(transaction.TransactItems).toHaveLength(8);
+        expect(transaction.TransactItems).toHaveLength(6);
         const writes = transaction.TransactItems?.map((item) => item.Put?.Item).filter(Boolean);
         expect(writes).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     recordType: 'SEAT',
-                    showtimeId,
-                    seatId: 'F10',
+                    PK: `SHOWTIME#${showtimeId}`,
+                    SK: 'SEAT#F10',
                 }),
                 expect.objectContaining({
                     recordType: 'SEAT',
-                    showtimeId,
-                    seatId: 'F11',
+                    PK: `SHOWTIME#${showtimeId}`,
+                    SK: 'SEAT#F11',
                 }),
                 expect.objectContaining({
                     recordType: 'BOOKING',
@@ -293,7 +307,7 @@ describe('unpaid guest bookings', () => {
                         .update(response.conversionToken as string)
                         .digest('hex'),
                 }),
-                expect.objectContaining({ bookingRef: response.bookingRef }),
+                expect.objectContaining({ PK: `REFERENCE#${response.bookingRef}`, SK: 'METADATA' }),
             ])
         );
         expect(transaction.TransactItems?.[0].Put?.Item?.showingId).toBeUndefined();
@@ -362,14 +376,14 @@ describe('unpaid guest bookings', () => {
 
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
         const writes = transaction.TransactItems?.map((item) => item.Put?.Item).filter(Boolean);
-        expect(transaction.TransactItems).toHaveLength(7);
+        expect(transaction.TransactItems).toHaveLength(5);
         expect(writes).toContainEqual(
             expect.objectContaining({ recordType: 'BOOKING', userId: 'cognito-sub-123' })
         );
         expect(writes?.some((item) => item && 'tokenHash' in item)).toBe(false);
     });
 
-    it('rejects account bookings without an authenticated Cognito subject', async () => {
+    it('rejects bookings with an invalid supplied token', async () => {
         const result = await guestBookingHandler(accountBookingEvent(validGuestPayload()));
 
         expect(result).toMatchObject({ statusCode: 401 });
@@ -388,7 +402,10 @@ describe('unpaid guest bookings', () => {
 
     it('uses the same showtimeId and date for booked-seat lookup and reservation', async () => {
         ddbMock.on(QueryCommand, { TableName: 'test-bookings' }).resolves({
-            Items: [{ seatId: 'F10' }, { seatId: 'F11' }],
+            Items: [
+                { SK: 'SEAT#F10', bookingId: 'bk_1', recordType: 'SEAT' },
+                { SK: 'SEAT#F11', bookingId: 'bk_2', recordType: 'SEAT' },
+            ],
         });
         ddbMock.on(QueryCommand, { TableName: 'test-legacy-bookings' }).resolves({ Items: [] });
 
@@ -404,36 +421,24 @@ describe('unpaid guest bookings', () => {
         });
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-bookings',
-            KeyConditionExpression: 'showtimeId = :key',
-            ExpressionAttributeValues: { ':key': showtimeId },
-            FilterExpression: 'recordType = :seat',
-        });
-        expect(ddbMock.commandCalls(QueryCommand)[1].args[0].input).toMatchObject({
-            TableName: 'test-legacy-bookings',
-            KeyConditionExpression: 'showingId = :key',
-            ExpressionAttributeValues: { ':key': legacyShowingId },
+            KeyConditionExpression: 'PK = :showtime AND begins_with(SK, :seat)',
+            ExpressionAttributeValues: { ':showtime': `SHOWTIME#${showtimeId}`, ':seat': 'SEAT#' },
         });
     });
 
     it('returns all unavailable seats and only the authenticated user seats', async () => {
         ddbMock.on(QueryCommand, { TableName: 'test-bookings' }).resolves({
             Items: [
-                { seatId: 'F10', recordType: 'SEAT' },
-                { seatId: 'F11', recordType: 'SEAT' },
-                {
-                    seatId: 'BOOKING#account',
-                    recordType: 'BOOKING',
-                    userId: 'cognito-sub-123',
-                    seats: ['F10'],
-                },
-                {
-                    seatId: 'BOOKING#other-account',
-                    recordType: 'BOOKING',
-                    userId: 'another-sub',
-                    seats: ['F11'],
-                },
+                { SK: 'SEAT#F10', recordType: 'SEAT', bookingId: 'account' },
+                { SK: 'SEAT#F11', recordType: 'SEAT', bookingId: 'other-account' },
             ],
         });
+        ddbMock.on(GetCommand, { TableName: 'test-bookings' }).callsFake((input) => ({
+            Item: {
+                showtimeId,
+                userId: input.Key?.PK === 'BOOKING#account' ? 'cognito-sub-123' : 'another-sub',
+            },
+        }));
         ddbMock.on(QueryCommand, { TableName: 'test-legacy-bookings' }).resolves({ Items: [] });
 
         const result = await bookedSeatsHandler(
@@ -449,16 +454,12 @@ describe('unpaid guest bookings', () => {
         });
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-bookings',
-            KeyConditionExpression: 'showtimeId = :key',
-            ExpressionAttributeValues: { ':key': showtimeId },
-            ExpressionAttributeNames: {
-                '#userId': 'userId',
-                '#seats': 'seats',
-            },
+            KeyConditionExpression: 'PK = :showtime AND begins_with(SK, :seat)',
+            ExpressionAttributeValues: { ':showtime': `SHOWTIME#${showtimeId}`, ':seat': 'SEAT#' },
         });
     });
 
-    it('requires an authenticated Cognito subject for account seat details', async () => {
+    it('rejects an invalid token on seat lookup', async () => {
         const result = await bookedSeatsHandler(
             accountBookedSeatsEvent({ showtimeId, date })
         );
@@ -588,8 +589,8 @@ describe('guest account conversion', () => {
         expect(transaction.TransactItems?.[0].Update?.ConditionExpression)
             .toContain('attribute_not_exists(consumedAt)');
         expect(transaction.TransactItems?.[1].Update?.Key).toEqual({
-            showtimeId,
-            seatId: 'BOOKING#bk_123',
+            PK: 'BOOKING#bk_123',
+            SK: 'METADATA',
         });
         expect(transaction.TransactItems?.[1].Update?.ConditionExpression)
             .toContain('conversionTokenHash = :tokenHash AND (attribute_not_exists(userId) OR userId = :null)');
