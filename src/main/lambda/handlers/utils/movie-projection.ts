@@ -14,7 +14,7 @@ import {
     movieStartDate,
     todayInTheatre,
 } from './movie-lifecycle';
-import { getMovieShowtimes } from './movie-schedule-service';
+import { getMovieShowtimes } from '../../../../services/showtimes/movie-schedule-service';
 
 function slugify(text: string): string {
     return text

@@ -39,10 +39,9 @@ export async function migrateMovieImageUrls(
         const page = await client.send(
             new ScanCommand({
                 TableName: tableName,
-                ProjectionExpression: '#tmdbId, #slug, #poster, #still',
+                ProjectionExpression: '#movieId, #poster, #still',
                 ExpressionAttributeNames: {
-                    '#tmdbId': 'tmdbId',
-                    '#slug': 'slug',
+                    '#movieId': 'movieId',
                     '#poster': 'poster',
                     '#still': 'still',
                 },
@@ -52,7 +51,7 @@ export async function migrateMovieImageUrls(
 
         for (const item of page.Items ?? []) {
             recordsScanned++;
-            if (typeof item.tmdbId !== 'string' || typeof item.slug !== 'string') {
+            if (typeof item.movieId !== 'string') {
                 throw new Error('The movie table contains a record without valid key attributes.');
             }
 
@@ -71,7 +70,7 @@ export async function migrateMovieImageUrls(
             if (Object.keys(changes).length === 0) continue;
 
             recordsChanged++;
-            reportChange(item.tmdbId, changedFields);
+            reportChange(item.movieId, changedFields);
             if (!apply) {
                 continue;
             }
@@ -89,7 +88,7 @@ export async function migrateMovieImageUrls(
             await client.send(
                 new UpdateCommand({
                     TableName: tableName,
-                    Key: { tmdbId: item.tmdbId, slug: item.slug },
+                    Key: { movieId: item.movieId },
                     UpdateExpression: `SET ${assignments.join(', ')}`,
                     ExpressionAttributeNames: expressionAttributeNames,
                     ExpressionAttributeValues: expressionAttributeValues,

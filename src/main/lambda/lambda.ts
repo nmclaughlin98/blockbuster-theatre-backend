@@ -1,4 +1,5 @@
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -29,12 +30,11 @@ interface LambdaConstructProps {
     offersTable: dynamodb.Table;
     collectionsTable: dynamodb.Table;
     bookingsTable: dynamodb.Table;
-    legacyBookingsTable: dynamodb.Table;
     showtimeRegistryTable: dynamodb.Table;
-    bookingReferencesTable: dynamodb.Table;
     guestConversionTokensTable: dynamodb.Table;
     userPool: cognito.IUserPool;
     userPoolClient: cognito.IUserPoolClient;
+    postmanClientId: string;
     bookingEmailIdentity: ses.IEmailIdentity;
     lambdaConfig?: MovieImportLambdaConfig;
     envName?: EnvironmentName;
@@ -49,9 +49,15 @@ function createNodejsFunction(
         throw new Error(`Function ${id} must have a name to configure its log group.`);
     }
 
+    const logGroup = new logs.LogGroup(scope, `${id}LogGroup`, {
+        logGroupName: `/aws/lambda/${props.functionName}`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
     return new lambdaNodejs.NodejsFunction(scope, id, {
         ...props,
-        logRetention: logs.RetentionDays.ONE_WEEK,
+        architecture: props.architecture ?? lambda.Architecture.ARM_64,
+        logGroup,
     });
 }
 
@@ -59,10 +65,7 @@ export class LambdaConstruct extends Construct {
     public readonly addMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly updateMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly listMoviesFunction: lambdaNodejs.NodejsFunction;
-    public readonly listFeaturedMoviesFunction: lambdaNodejs.NodejsFunction;
     public readonly getMovieFunction: lambdaNodejs.NodejsFunction;
-    public readonly exportMoviesFunction: lambdaNodejs.NodejsFunction;
-    public readonly listTmdbIdsFunction: lambdaNodejs.NodejsFunction;
     public readonly listFilmSelectionsFunction: lambdaNodejs.NodejsFunction;
     public readonly getTicketPricingFunction: lambdaNodejs.NodejsFunction;
     public readonly validateCheckoutFunction: lambdaNodejs.NodejsFunction;
@@ -74,11 +77,12 @@ export class LambdaConstruct extends Construct {
     public readonly refreshMovieCollectionFunction: lambdaNodejs.NodejsFunction;
     public readonly listBookingsFunction: lambdaNodejs.NodejsFunction;
     public readonly createBookingFunction: lambdaNodejs.NodejsFunction;
+    public readonly getBookingFunction: lambdaNodejs.NodejsFunction;
     public readonly rescheduleBookingFunction: lambdaNodejs.NodejsFunction;
-    public readonly manageShowtimesFunction: lambdaNodejs.NodejsFunction;
+    public readonly createShowtimeFunction: lambdaNodejs.NodejsFunction;
+    public readonly updateShowtimeFunction: lambdaNodejs.NodejsFunction;
+    public readonly cancelShowtimeFunction: lambdaNodejs.NodejsFunction;
     public readonly maintainScheduleFunction: lambdaNodejs.NodejsFunction;
-    public readonly guestBookedSeatsFunction: lambdaNodejs.NodejsFunction;
-    public readonly guestBookingFunction: lambdaNodejs.NodejsFunction;
     public readonly guestConversionFunction: lambdaNodejs.NodejsFunction;
     public readonly downloadTicketFunction: lambdaNodejs.NodejsFunction;
 
@@ -102,6 +106,11 @@ export class LambdaConstruct extends Construct {
             description: 'TMDB API read access token',
         }).valueAsString;
         const formatLambdaFunctionName = (name: string): string => resourceName(name, envName);
+        const cognitoEnvironment = {
+            USER_POOL_ID: props.userPool.userPoolId,
+            USER_POOL_CLIENT_ID: props.userPoolClient.userPoolClientId,
+            POSTMAN_CLIENT_ID: props.postmanClientId,
+        };
         const scopedMaxTicketsParameterName = maxTicketsParameterForEnvironment(
             maxTicketsParameterName,
             envName
@@ -122,10 +131,10 @@ export class LambdaConstruct extends Construct {
             allowLinkBookingsParameterName
         );
 
-        this.addMoviesFunction = createNodejsFunction(this, 'AddMoviesHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-add-movies-handler'),
+        this.addMoviesFunction = createNodejsFunction(this, 'AddMovieToDbFunction', {
+            functionName: formatLambdaFunctionName('blockbuster-theatre-add-movie-to-db'),
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/AddMovies/add-movies-handler.ts'),
+            entry: path.join(__dirname, '../../handlers/movies/add-movie-to-db.ts'),
             handler: 'handler',
             memorySize: lambdaConfig.memorySize,
             timeout: cdk.Duration.seconds(lambdaConfig.timeoutSeconds),
@@ -144,10 +153,10 @@ export class LambdaConstruct extends Construct {
 
         props.table.grantReadWriteData(this.addMoviesFunction);
 
-        this.updateMoviesFunction = createNodejsFunction(this, 'UpdateMoviesHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-update-movies-handler'),
+        this.updateMoviesFunction = createNodejsFunction(this, 'UpdateMovieRecordFunction', {
+            functionName: formatLambdaFunctionName('blockbuster-theatre-update-movie-record'),
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/UpdateMovies/update-movies-handler.ts'),
+            entry: path.join(__dirname, '../../handlers/movies/update-movie-record.ts'),
             handler: 'handler',
             memorySize: lambdaSettings.batchProcessing.memorySize,
             timeout: cdk.Duration.seconds(lambdaSettings.batchProcessing.timeoutSeconds),
@@ -160,46 +169,27 @@ export class LambdaConstruct extends Construct {
 
         props.table.grantReadWriteData(this.updateMoviesFunction);
 
-        this.listMoviesFunction = createNodejsFunction(this, 'ListMoviesHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-list-movies-handler'),
+        this.listMoviesFunction = createNodejsFunction(this, 'ListMovieRecordsFunction', {
+            functionName: formatLambdaFunctionName('blockbuster-theatre-list-movie-records'),
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/ListMovies/list-movies-handler.ts'),
+            entry: path.join(__dirname, '../../handlers/movies/list-movie-records.ts'),
             handler: 'handler',
             memorySize: lambdaSettings.default.memorySize,
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
+                ...cognitoEnvironment,
             },
         });
 
         props.table.grantReadData(this.listMoviesFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.listMoviesFunction);
 
-        this.listFeaturedMoviesFunction = createNodejsFunction(
-            this,
-            'ListFeaturedMoviesHandler',
-            {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-list-featured-movies-handler'),
-                runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/ListFeaturedMovies/list-featured-movies-handler.ts'),
-                handler: 'handler',
-                memorySize: lambdaSettings.default.memorySize,
-                timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
-                environment: {
-                    TABLE_NAME: props.table.tableName,
-                    SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
-                },
-            }
-        );
-
-        props.table.grantReadData(this.listFeaturedMoviesFunction);
-        props.showtimeRegistryTable.grantReadWriteData(this.listFeaturedMoviesFunction);
-
-        this.getMovieFunction = createNodejsFunction(this, 'GetMovieHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-get-movie-lambda'),
+        this.getMovieFunction = createNodejsFunction(this, 'GetMovieRecordFunction', {
+            functionName: formatLambdaFunctionName('blockbuster-theatre-get-movie-record'),
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/GetMovie/get-movie-handler.ts'),
+            entry: path.join(__dirname, '../../handlers/movies/get-movie-record.ts'),
             handler: 'handler',
             memorySize: lambdaSettings.default.memorySize,
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
@@ -214,11 +204,11 @@ export class LambdaConstruct extends Construct {
 
         this.listMovieCollectionsFunction = createNodejsFunction(
             this,
-            'ListMovieCollectionsHandler',
+            'ListCollectionRecordsFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-list-movie-collections-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-list-collection-records'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/ListMovieCollections/list-movie-collections-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/collections/list-collection-records.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
@@ -232,11 +222,11 @@ export class LambdaConstruct extends Construct {
 
         this.getMovieCollectionFunction = createNodejsFunction(
             this,
-            'GetMovieCollectionHandler',
+            'GetCollectionRecordFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-get-movie-collection-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-get-collection-record'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/GetMovieCollection/get-movie-collection-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/collections/get-collection-record.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.collectionTreeRead.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.collectionTreeRead.timeoutSeconds),
@@ -252,41 +242,13 @@ export class LambdaConstruct extends Construct {
         props.collectionsTable.grantReadData(this.getMovieCollectionFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.getMovieCollectionFunction);
 
-        this.exportMoviesFunction = createNodejsFunction(this, 'ExportMoviesHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-export-movies-handler'),
-            runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/ExportMovies/export-movies-handler.ts'),
-            handler: 'handler',
-            memorySize: lambdaSettings.fullTableExport.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.fullTableExport.timeoutSeconds),
-            environment: {
-                TABLE_NAME: props.table.tableName,
-            },
-        });
-
-        props.table.grantReadData(this.exportMoviesFunction);
-
-        this.listTmdbIdsFunction = createNodejsFunction(this, 'ListTmdbIdsHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-list-tmdb-ids-lambda'),
-            runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/ListTmdbIds/list-tmdb-ids-handler.ts'),
-            handler: 'handler',
-            memorySize: lambdaSettings.fullTableRead.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.fullTableRead.timeoutSeconds),
-            environment: {
-                TABLE_NAME: props.table.tableName,
-            },
-        });
-
-        props.table.grantReadData(this.listTmdbIdsFunction);
-
         this.listFilmSelectionsFunction = createNodejsFunction(
             this,
-            'ListFilmSelectionsHandler',
+            'ListCheckoutSelectionsFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-film-selections-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-list-checkout-selections'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/ListFilmSelections/list-film-selections-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/checkout/list-checkout-selections.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.paginatedSelectionRead.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.paginatedSelectionRead.timeoutSeconds),
@@ -304,11 +266,11 @@ export class LambdaConstruct extends Construct {
 
         this.getTicketPricingFunction = createNodejsFunction(
             this,
-            'GetTicketPricingHandler',
+            'GetTicketPricingFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-ticket-pricing-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-get-ticket-pricing'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/GetTicketPricing/get-ticket-pricing-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/pricing/get-ticket-pricing.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
@@ -328,11 +290,11 @@ export class LambdaConstruct extends Construct {
 
         this.validateCheckoutFunction = createNodejsFunction(
             this,
-            'ValidateCheckoutHandler',
+            'ValidateCheckoutFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-checkout-validation-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-validate-checkout'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/ValidateCheckout/validate-checkout-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/checkout/validate-checkout.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
@@ -352,32 +314,33 @@ export class LambdaConstruct extends Construct {
 
         this.sendBookingConfirmationFunction = createNodejsFunction(
             this,
-            'SendBookingConfirmationHandler',
+            'SendBookingConfirmationFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-booking-confirmation-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-send-booking-confirmation'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/SendBookingConfirmation/send-booking-confirmation-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/bookings/send-booking-confirmation.ts'),
                 handler: 'handler',
                 bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
-                    MAX_TICKETS_PARAMETER_NAME: scopedMaxTicketsParameterName,
+                    BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
+                    ...cognitoEnvironment,
                 },
             }
         );
 
         props.bookingEmailIdentity.grantSendEmail(this.sendBookingConfirmationFunction);
-        maxTicketsParameter.grantRead(this.sendBookingConfirmationFunction);
+        props.bookingsTable.grantReadData(this.sendBookingConfirmationFunction);
 
         this.upsertBookingOffersFunction = createNodejsFunction(
             this,
-            'UpsertBookingOffersHandler',
+            'UpsertBookingOffersFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-booking-offers-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-booking-offers'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/UpsertBookingOffers/upsert-booking-offers-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/offers/upsert-booking-offers.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
@@ -391,11 +354,11 @@ export class LambdaConstruct extends Construct {
 
         this.upsertTicketPricingFunction = createNodejsFunction(
             this,
-            'UpsertTicketPricingHandler',
+            'UpsertTicketPricingFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-ticket-pricing-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-ticket-pricing'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/UpsertTicketPricing/upsert-ticket-pricing-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/pricing/upsert-ticket-pricing.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
@@ -409,11 +372,11 @@ export class LambdaConstruct extends Construct {
 
         this.refreshMovieCollectionFunction = createNodejsFunction(
             this,
-            'RefreshMovieCollectionHandler',
+            'RefreshCollectionRecordsFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-refresh-movie-collection-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-refresh-collection-records'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/RefreshMovieCollection/refresh-movie-collection-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/collections/refresh-collection-records.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.collectionRefresh.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.collectionRefresh.timeoutSeconds),
@@ -428,70 +391,22 @@ export class LambdaConstruct extends Construct {
 
         props.collectionsTable.grantReadWriteData(this.refreshMovieCollectionFunction);
 
-        this.listBookingsFunction = createNodejsFunction(this, 'ListBookingsHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-list-bookings-handler'),
+        this.rescheduleBookingFunction = createNodejsFunction(this, 'RescheduleBookingRecordFunction', {
+            functionName: formatLambdaFunctionName('blockbuster-theatre-reschedule-booking-record'),
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/ListBookings/list-bookings-handler.ts'),
+            entry: path.join(__dirname, '../../handlers/bookings/reschedule-booking-record.ts'),
             handler: 'handler',
             memorySize: lambdaSettings.default.memorySize,
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 TABLE_NAME: props.table.tableName,
-                PRICING_TABLE_NAME: props.pricingTable.tableName,
-                OFFERS_TABLE_NAME: props.offersTable.tableName,
-            },
-        });
-
-        props.bookingsTable.grantReadData(this.listBookingsFunction);
-        props.legacyBookingsTable.grantReadData(this.listBookingsFunction);
-        props.showtimeRegistryTable.grantReadData(this.listBookingsFunction);
-        props.table.grantReadData(this.listBookingsFunction);
-        props.pricingTable.grantReadData(this.listBookingsFunction);
-        props.offersTable.grantReadData(this.listBookingsFunction);
-
-        // Booking creation validates the movie and showtime, which needs the pricing lookups.
-        this.createBookingFunction = createNodejsFunction(this, 'CreateBookingHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-create-booking-handler'),
-            runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/CreateBooking/create-booking-handler.ts'),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
-            environment: {
-                TABLE_NAME: props.table.tableName,
-                PRICING_TABLE_NAME: props.pricingTable.tableName,
-                OFFERS_TABLE_NAME: props.offersTable.tableName,
-                BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
-                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
-            },
-        });
-
-        props.table.grantReadData(this.createBookingFunction);
-        props.pricingTable.grantReadData(this.createBookingFunction);
-        props.offersTable.grantReadData(this.createBookingFunction);
-        props.bookingsTable.grantWriteData(this.createBookingFunction);
-        props.legacyBookingsTable.grantReadData(this.createBookingFunction);
-        props.showtimeRegistryTable.grantReadWriteData(this.createBookingFunction);
-
-        this.rescheduleBookingFunction = createNodejsFunction(this, 'RescheduleCustomerBookingHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-reschedule-customer-booking-handler'),
-            runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/RescheduleCustomerBooking/reschedule-customer-booking-handler.ts'),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
-            environment: {
-                BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
             },
         });
         props.bookingsTable.grant(
             this.rescheduleBookingFunction,
-            'dynamodb:Query',
+            'dynamodb:GetItem',
             'dynamodb:DeleteItem',
             'dynamodb:PutItem'
         );
@@ -500,11 +415,13 @@ export class LambdaConstruct extends Construct {
             this.rescheduleBookingFunction,
             'dynamodb:ConditionCheckItem'
         );
+        props.table.grant(this.rescheduleBookingFunction, 'dynamodb:GetItem', 'dynamodb:ConditionCheckItem');
 
-        this.manageShowtimesFunction = createNodejsFunction(this, 'ManageShowtimesHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-manage-showtimes-handler'),
+        const showtimeFunction = (id: string, operation: string): lambdaNodejs.NodejsFunction => {
+            const fn = createNodejsFunction(this, id, {
+            functionName: formatLambdaFunctionName(`blockbuster-theatre-${operation}`),
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/ManageShowtimes/manage-showtimes-handler.ts'),
+            entry: path.join(__dirname, `../../handlers/showtimes/${operation}.ts`),
             handler: 'handler',
             memorySize: lambdaSettings.default.memorySize,
             timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
@@ -512,18 +429,21 @@ export class LambdaConstruct extends Construct {
                 TABLE_NAME: props.table.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
             },
         });
-        props.table.grantReadData(this.manageShowtimesFunction);
-        props.showtimeRegistryTable.grantReadWriteData(this.manageShowtimesFunction);
-        props.bookingsTable.grantReadData(this.manageShowtimesFunction);
-        props.legacyBookingsTable.grantReadData(this.manageShowtimesFunction);
+            props.table.grantReadData(fn);
+            props.showtimeRegistryTable.grantReadWriteData(fn);
+            props.bookingsTable.grantReadData(fn);
+            return fn;
+        };
+        this.createShowtimeFunction = showtimeFunction('CreateShowtimeRecordFunction', 'create-showtime-record');
+        this.updateShowtimeFunction = showtimeFunction('UpdateShowtimeRecordFunction', 'update-showtime-record');
+        this.cancelShowtimeFunction = showtimeFunction('CancelShowtimeRecordFunction', 'cancel-showtime-record');
 
-        this.maintainScheduleFunction = createNodejsFunction(this, 'MaintainScheduleHandler', {
-            functionName: formatLambdaFunctionName('blockbuster-theatre-maintain-rolling-schedule-handler'),
+        this.maintainScheduleFunction = createNodejsFunction(this, 'MaintainRollingScheduleFunction', {
+            functionName: formatLambdaFunctionName('blockbuster-theatre-maintain-rolling-schedule'),
             runtime: lambdaSettings.runtime,
-            entry: path.join(__dirname, './handlers/MaintainSchedule/maintain-schedule-handler.ts'),
+            entry: path.join(__dirname, '../../handlers/showtimes/maintain-rolling-schedule.ts'),
             handler: 'handler',
             memorySize: 512,
             timeout: cdk.Duration.minutes(15),
@@ -531,55 +451,52 @@ export class LambdaConstruct extends Construct {
                 TABLE_NAME: props.table.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
             },
         });
         props.table.grantReadData(this.maintainScheduleFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.maintainScheduleFunction);
         props.bookingsTable.grantReadData(this.maintainScheduleFunction);
-        props.legacyBookingsTable.grantReadData(this.maintainScheduleFunction);
 
         new events.Rule(this, 'MaintainRollingScheduleRule', {
             schedule: events.Schedule.rate(cdk.Duration.hours(6)),
             targets: [new targets.LambdaFunction(this.maintainScheduleFunction)],
         });
 
-        this.guestBookedSeatsFunction = createNodejsFunction(
+        this.listBookingsFunction = createNodejsFunction(
             this,
-            'GuestBookedSeatsHandler',
+            'ListBookingRecordsFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-guest-booked-seats-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-list-booking-records'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/GuestBookedSeats/guest-booked-seats-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/bookings/list-booking-records.ts'),
                 handler: 'handler',
                 bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(25),
                 environment: {
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                    LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                     SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                     BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
                     ALLOW_LINK_BOOKINGS_PARAMETER_NAME: allowLinkBookingsParameterName,
+                    ...cognitoEnvironment,
                 },
             }
         );
-        props.bookingsTable.grantReadWriteData(this.guestBookedSeatsFunction);
-        props.legacyBookingsTable.grantReadWriteData(this.guestBookedSeatsFunction);
-        props.showtimeRegistryTable.grantReadData(this.guestBookedSeatsFunction);
-        props.bookingEmailIdentity.grantSendEmail(this.guestBookedSeatsFunction);
-        this.guestBookedSeatsFunction.addToRolePolicy(new iam.PolicyStatement({
+        props.bookingsTable.grantReadWriteData(this.listBookingsFunction);
+        props.showtimeRegistryTable.grantReadData(this.listBookingsFunction);
+        props.bookingEmailIdentity.grantSendEmail(this.listBookingsFunction);
+        this.listBookingsFunction.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ssm:GetParameter'],
             resources: [allowLinkBookingsParameter.parameterArn],
         }));
 
-        this.guestBookingFunction = createNodejsFunction(
+        this.createBookingFunction = createNodejsFunction(
             this,
-            'GuestBookingHandler',
+            'CreateBookingRecordFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-guest-booking-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-create-booking-record'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/GuestBooking/guest-booking-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/bookings/create-booking-record.ts'),
                 handler: 'handler',
                 bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
@@ -589,40 +506,53 @@ export class LambdaConstruct extends Construct {
                     PRICING_TABLE_NAME: props.pricingTable.tableName,
                     OFFERS_TABLE_NAME: props.offersTable.tableName,
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                    LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                     SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
-                    BOOKING_REFERENCES_TABLE_NAME: props.bookingReferencesTable.tableName,
                     GUEST_CONVERSION_TOKENS_TABLE_NAME:
                         props.guestConversionTokensTable.tableName,
                     BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
                     MAX_TICKETS_PARAMETER_NAME: scopedMaxTicketsParameterName,
+                    ...cognitoEnvironment,
                 },
             }
         );
-        props.table.grantReadData(this.guestBookingFunction);
-        props.pricingTable.grantReadData(this.guestBookingFunction);
-        props.offersTable.grantReadData(this.guestBookingFunction);
-        props.bookingsTable.grantWriteData(this.guestBookingFunction);
-        props.legacyBookingsTable.grantReadData(this.guestBookingFunction);
-        props.showtimeRegistryTable.grantReadData(this.guestBookingFunction);
-        props.bookingReferencesTable.grantWriteData(this.guestBookingFunction);
-        props.guestConversionTokensTable.grantWriteData(this.guestBookingFunction);
-        props.bookingEmailIdentity.grantSendEmail(this.guestBookingFunction);
-        maxTicketsParameter.grantRead(this.guestBookingFunction);
+        props.table.grantReadData(this.createBookingFunction);
+        props.pricingTable.grantReadData(this.createBookingFunction);
+        props.offersTable.grantReadData(this.createBookingFunction);
+        props.bookingsTable.grantWriteData(this.createBookingFunction);
+        props.showtimeRegistryTable.grantReadData(this.createBookingFunction);
+        props.showtimeRegistryTable.grant(
+            this.createBookingFunction,
+            'dynamodb:ConditionCheckItem',
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem'
+        );
+        props.guestConversionTokensTable.grantWriteData(this.createBookingFunction);
+        props.bookingEmailIdentity.grantSendEmail(this.createBookingFunction);
+        maxTicketsParameter.grantRead(this.createBookingFunction);
+
+        this.getBookingFunction = createNodejsFunction(this, 'GetBookingRecordFunction', {
+            functionName: formatLambdaFunctionName('blockbuster-theatre-get-booking-record'),
+            runtime: lambdaSettings.runtime,
+            entry: path.join(__dirname, '../../handlers/bookings/get-booking-record.ts'),
+            handler: 'handler',
+            memorySize: lambdaSettings.default.memorySize,
+            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
+            environment: { BOOKINGS_TABLE_NAME: props.bookingsTable.tableName, ...cognitoEnvironment },
+        });
+        props.bookingsTable.grantReadData(this.getBookingFunction);
 
         this.guestConversionFunction = createNodejsFunction(
             this,
-            'GuestConversionHandler',
+            'ConvertGuestBookingsToRegisteredAccountFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-guest-conversion-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-convert-guest-bookings-to-account'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/GuestConversion/guest-conversion-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/auth/convert-guest-bookings-to-registered-account.ts'),
                 handler: 'handler',
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                    LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                     SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                     GUEST_CONVERSION_TOKENS_TABLE_NAME:
                         props.guestConversionTokensTable.tableName,
@@ -632,7 +562,6 @@ export class LambdaConstruct extends Construct {
             }
         );
         props.bookingsTable.grantReadWriteData(this.guestConversionFunction);
-        props.legacyBookingsTable.grantReadWriteData(this.guestConversionFunction);
         props.showtimeRegistryTable.grantReadData(this.guestConversionFunction);
         props.guestConversionTokensTable.grantReadWriteData(this.guestConversionFunction);
         this.guestConversionFunction.addToRolePolicy(
@@ -649,22 +578,21 @@ export class LambdaConstruct extends Construct {
 
         this.downloadTicketFunction = createNodejsFunction(
             this,
-            'DownloadTicketHandler',
+            'DownloadBookingTicketFunction',
             {
-                functionName: formatLambdaFunctionName('blockbuster-theatre-download-ticket-handler'),
+                functionName: formatLambdaFunctionName('blockbuster-theatre-download-booking-ticket'),
                 runtime: lambdaSettings.runtime,
-                entry: path.join(__dirname, './handlers/DownloadTicket/download-ticket-handler.ts'),
+                entry: path.join(__dirname, '../../handlers/bookings/download-booking-ticket.ts'),
                 handler: 'handler',
                 bundling: pdfKitBundling,
                 memorySize: lambdaSettings.default.memorySize,
                 timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
                 environment: {
                     BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
-                    LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
+                    ...cognitoEnvironment,
                 },
             }
         );
         props.bookingsTable.grantReadData(this.downloadTicketFunction);
-        props.legacyBookingsTable.grantReadData(this.downloadTicketFunction);
     }
 }

@@ -2,6 +2,8 @@
 
 Backend API and AWS CDK infrastructure for the Blockbuster Theatre website. The API runs on AWS Lambda behind API Gateway and uses DynamoDB for movie catalogue, movie collections, ticket pricing, and booking offer data.
 
+> **Do not deploy yet:** The new stacks and API require validation and live resource-name collision checks. Existing production resources must remain untouched.
+
 ## Requirements
 
 - Node.js 24 or newer
@@ -24,27 +26,27 @@ Run the test suite:
 npm test
 ```
 
-Synthesize the CDK stack without deploying it:
+Synthesize each CDK stack without deploying it, using a non-secret placeholder
+and an output directory outside the checkout:
 
-```bash
-npm run synth
+```powershell
+$env:TMDB_API_KEY = 'synth-placeholder'
+npx cdk synth BlockbusterTheatreBackendStack-DEV -c env=dev --output "$env:TEMP\blockbuster-synth-dev" --quiet
+npx cdk synth BlockbusterTheatreBackendStack-PROD -c env=prod --output "$env:TEMP\blockbuster-synth-prod" --quiet
 ```
 
 ## API overview
 
 The API supports:
 
-- `GET /movies` and `GET /movies/{id}` for the movie catalogue. The list endpoint returns visible movies and provides a continuation token when needed.
-- `GET /collections/{id}` for a TMDB list and its movies currently in the catalogue.
-- `GET /film-selections` for active movie and offer booking selections.
-- `GET /ticket-pricing` for pricing resolved by movie or offer, weekday, and showtime.
-- `POST /checkout/validate` to validate booking selections and calculate authoritative totals.
-- `GET /bookings` to list booked seats for a showing, and `POST /bookings` to book seats (stored with a user ID, randomly generated until login exists).
-- `GET /api/v1/bookings/guest` and `POST /api/v1/bookings/guest` for date-specific, unpaid guest bookings with backend-validated ticket totals, stable `showtimeId` values, and a separate `BBT-######` email/QR reference.
-- `GET /api/v1/bookings/account` for Cognito-protected seat availability with the signed-in user's own booked seats, and `POST /api/v1/bookings/account` to create account-linked bookings.
-- `POST /api/v1/auth/convert-guest` to convert a guest booking to a Cognito account using its one-time conversion token.
-- `POST /booking/confirmation` for the legacy demo confirmation email endpoint; guest reservations send their own booking-reference confirmation email.
-- `POST /collections/refresh` to refresh all pages for a batch of TMDB lists. Protected admin routes require the configured API Gateway JWT authorizer.
+- `GET /api/v1/movies` and `GET /api/v1/movies/{movieId}` for the catalogue.
+- `GET /api/v1/collections/{collectionId}`, `GET /api/v1/checkout/current-selections`, and `GET /api/v1/pricing` for booking selections.
+- `POST /api/v1/checkout/validate` validates selections and calculates totals.
+- `GET /api/v1/bookings` and `POST /api/v1/bookings` support guests and signed-in users; supplied tokens are verified.
+- `GET /api/v1/bookings/{bookingId}` and its `/ticket` and `/confirmation` routes require the owner or guest reference and email.
+- `PATCH /api/v1/bookings/{bookingId}/reschedule` permits any signed-in operator for now.
+- `POST /api/v1/auth/convert-guest-bookings` converts a guest booking using its one-time token.
+- Movie, collection, pricing, offer and showtime management routes require a Cognito JWT.
 
 See [API_GUIDE.md](./API_GUIDE.md) for booking data examples and local API instructions.
 
@@ -59,23 +61,29 @@ Cloud mode requires existing dev/test tables and AWS credentials. The local adap
 
 ## AWS infrastructure
 
-The AWS CDK app is defined in `lib/stack/`. Set `TMDB_API_KEY` to a non-empty TMDB read access token before synthesis. A direct deployment must also provide it as the masked CloudFormation parameter `TmdbApiKey`:
+The existing CDK app is being refactored in place. It now synthesizes
+`BlockbusterTheatreBackendStack-PROD` or `BlockbusterTheatreBackendStack-DEV`.
+Both environments reference the existing shared Cognito pool, frontend client,
+Postman client, and SES identity. They do not create an API custom-domain mapping.
+The shared Cognito pre-token trigger remains owned by the existing stack.
 
-```bash
-npm run deploy -- --parameters "TmdbApiKey=$TMDB_API_KEY"
-```
+The GitHub Actions deployment job remains disabled. Do not deploy the synthesized
+stack until validation is complete and physical names have been checked against
+deployed resources. Before any future approved deployment, each GitHub Environment must
+provide `PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`, and
+`PROD_POSTMAN_CLIENT_ID` as variables and `TMDB_API_KEY` as a secret.
 
-Command-line arguments can be visible to local processes. Deployment requires AWS credentials and targets the account and region configured for CDK. Review the synthesized template with `npm run synth` before deploying. The first deployment after this change requires the parameter.
-
-The dev stack has its own API Gateway, application Lambdas and DynamoDB tables, but shares the production Cognito pool and client and the SES email identity. Cognito users and changes to those users are therefore shared; the Cognito pre-token Lambda belongs to the shared pool. Named production resources use `-PROD`; dev resources use `-DEV`. Dev tables are deleted with the dev stack; production tables are retained. The new production tables are empty until data is copied from the retained unsuffixed tables.
-
-GitHub Actions assumes the CDK bootstrap deployment role to read the `UserPoolId` and `UserPoolClientId` outputs from the deployed `BlockbusterTheatreBackendStack`, then passes them as dev CloudFormation parameters. The production stack and outputs must already exist, and the GitHub Actions role must be allowed to assume the bootstrap deployment role. Set the dev GitHub Environment variable `PROD_POSTMAN_CLIENT_ID` to the shared Cognito `postman-test-client-PROD` ID so the dev authorizer accepts Postman tokens. Recreating Cognito requires new frontend and Postman IDs and a dev redeployment. For a local dev deployment, supply `--parameters ProdUserPoolId=<pool-id> --parameters ProdUserPoolClientId=<client-id> --parameters ProdPostmanClientId=<postman-client-id>` to `cdk deploy -c env=dev`, or synthesize with the corresponding `prodUserPoolId`, `prodUserPoolClientId`, and `prodPostmanClientId` CDK context values.
-
-For a manual GitHub Actions deployment, select `target_env` and optionally a build number. The job binds to the matching GitHub Environment and requires its `TMDB_API_KEY` secret. By default prod requires a successful `main` push build; dev can select builds across branches. The `allow_non_main_prod` override deliberately weakens the production restriction. Check the build and its source before deploying, especially to production. The workflow synthesizes the selected source and rejects older builds that do not support the masked TMDB parameter. The deployment assembly supports file assets, not Docker or executable assets. Automatic deployments remain limited to successful push builds on `dev` and `main`. See [API_GUIDE.md](./API_GUIDE.md) for environment and OIDC setup.
+The new tables start empty: catalogue, pricing, offers, and showtimes must be
+populated in the new environment before those flows can serve customers. No
+production data copy or seeding is authorized by this document. The optional
+linking and ticket-limit Parameter Store settings and their defaults are
+described in [API_GUIDE.md](./API_GUIDE.md). The schedule maintenance rule runs
+every six hours, so imported movies will not necessarily have screenings
+immediately.
 
 ## Project layout
 
 - `lib/stack/` — CDK app, Lambda functions, API Gateway routes, and DynamoDB tables
-- `src/main/lambda/handlers/` — Lambda request handlers and booking/pricing logic
+- `src/handlers/` and `src/services/` — request handlers and domain logic
 - `src/test/` — unit tests
 - `scripts/` — data seeding and local development utilities

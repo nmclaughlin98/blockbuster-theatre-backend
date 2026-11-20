@@ -19,17 +19,17 @@ process.env.TMDB_RETRIES = '2';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const { handler: refreshCollection } = require(
-    '../../../main/lambda/handlers/RefreshMovieCollection/refresh-movie-collection-handler'
+    '../../../handlers/collections/refresh-collection-records'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 const { handler: getCollection } = require(
-    '../../../main/lambda/handlers/GetMovieCollection/get-movie-collection-handler'
+    '../../../handlers/collections/get-collection-record'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 const { handler: listCollections } = require(
-    '../../../main/lambda/handlers/ListMovieCollections/list-movie-collections-handler'
+    '../../../handlers/collections/list-collection-records'
 ) as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
@@ -39,7 +39,7 @@ global.fetch = fetchMock;
 
 function createEvent(id?: string, body?: unknown): APIGatewayProxyEventV2 {
     return {
-        pathParameters: id ? { id } : undefined,
+        pathParameters: id ? { collectionId: id } : undefined,
         body: body === undefined
             ? undefined
             : typeof body === 'string'
@@ -297,10 +297,10 @@ describe('TMDB list-backed movie collections', () => {
                 isActive: false,
             },
         });
-        ddbMock.on(QueryCommand).callsFake((input) => (
-            input.ExpressionAttributeValues?.[':tmdbId'] === '1726'
-                ? { Items: [movie('1726')] }
-                : { Items: [] }
+        ddbMock.on(GetCommand, { TableName: 'test-movies' }).callsFake((input) => (
+            input.Key?.movieId === '1726'
+                ? { Item: movie('1726') }
+                : {}
         ));
 
         const result = await getCollection(createEvent('8706524'));
@@ -530,7 +530,7 @@ describe('TMDB list-backed movie collections', () => {
                 movieIds: ['999'],
             },
         });
-        ddbMock.on(QueryCommand).resolves({ Items: [] });
+        ddbMock.on(GetCommand, { TableName: 'test-movies' }).resolves({});
 
         const result = await getCollection(createEvent('8706524'));
 
@@ -549,7 +549,7 @@ describe('TMDB list-backed movie collections', () => {
         });
     });
 
-    it('handles a catalogue query without an Items property', async () => {
+    it('handles a catalogue read without an Item property', async () => {
         ddbMock.on(GetCommand).resolves({
             Item: {
                 collectionId: '8706524',
@@ -560,7 +560,7 @@ describe('TMDB list-backed movie collections', () => {
                 movieIds: ['999'],
             },
         });
-        ddbMock.on(QueryCommand).resolves({});
+        ddbMock.on(GetCommand, { TableName: 'test-movies' }).resolves({});
 
         const result = await getCollection(createEvent('8706524'));
 
@@ -588,31 +588,27 @@ describe('TMDB list-backed movie collections', () => {
         });
     });
 
-    it('returns an error for duplicate or invalid catalogue movie records', async () => {
-        for (const items of [
-            [movie('1726'), movie('1726')],
-            [{ ...movie('1726'), title: 42 }],
-        ]) {
-            ddbMock.reset();
-            ddbMock.on(GetCommand).resolves({
-                Item: {
-                    collectionId: '8706524',
-                    name: 'Collection',
-                    description: '',
-                    posterUrl: '',
-                    backdropUrl: '',
-                    movieIds: ['1726'],
-                },
-            });
-            ddbMock.on(QueryCommand).resolves({ Items: items });
+    it('returns an error for an invalid catalogue movie record', async () => {
+        ddbMock.on(GetCommand, { TableName: 'test-collections' }).resolves({
+            Item: {
+                collectionId: '8706524',
+                name: 'Collection',
+                description: '',
+                posterUrl: '',
+                backdropUrl: '',
+                movieIds: ['1726'],
+            },
+        });
+        ddbMock.on(GetCommand, { TableName: 'test-movies' }).resolves({
+            Item: { ...movie('1726'), title: 42 },
+        });
 
-            const result = await getCollection(createEvent('8706524'));
+        const result = await getCollection(createEvent('8706524'));
 
-            expect(result).toMatchObject({ statusCode: 500 });
-            expect(responseBody(result)).toEqual({
-                message: 'Unable to retrieve movie collection.',
-            });
-        }
+        expect(result).toMatchObject({ statusCode: 500 });
+        expect(responseBody(result)).toEqual({
+            message: 'Unable to retrieve movie collection.',
+        });
     });
 
     it('handles a non-Error collection database failure', async () => {

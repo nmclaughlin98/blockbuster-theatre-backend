@@ -15,10 +15,7 @@ describe('ApiGatewayConstruct', () => {
             addMoviesFunction: mockFunction,
             updateMoviesFunction: mockFunction,
             listMoviesFunction: mockFunction,
-            listFeaturedMoviesFunction: mockFunction,
             getMovieFunction: mockFunction,
-            exportMoviesFunction: mockFunction,
-            listTmdbIdsFunction: mockFunction,
             listFilmSelectionsFunction: mockFunction,
             getTicketPricingFunction: mockFunction,
             validateCheckoutFunction: mockFunction,
@@ -30,10 +27,11 @@ describe('ApiGatewayConstruct', () => {
             refreshMovieCollectionFunction: mockFunction,
             listBookingsFunction: mockFunction,
             createBookingFunction: mockFunction,
+            getBookingFunction: mockFunction,
             rescheduleBookingFunction: mockFunction,
-            manageShowtimesFunction: mockFunction,
-            guestBookedSeatsFunction: mockFunction,
-            guestBookingFunction: mockFunction,
+            createShowtimeFunction: mockFunction,
+            updateShowtimeFunction: mockFunction,
+            cancelShowtimeFunction: mockFunction,
             guestConversionFunction: mockFunction,
             downloadTicketFunction: mockFunction,
             jwtAuthorizer,
@@ -59,161 +57,46 @@ describe('ApiGatewayConstruct', () => {
     it('should create an HTTP API', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'blockbuster-theatre-api-gateway-PROD',
+            Name: 'blockbuster-theatre-api-PROD',
             ProtocolType: 'HTTP',
         });
     });
 
-    it('should map the default stage to the custom domain', () => {
+    it('does not claim the existing custom-domain mapping', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 1);
-        template.hasResourceProperties('AWS::ApiGatewayV2::ApiMapping', {
-            ApiId: Match.anyValue(),
-            DomainName: 'api.blockbuster-theatre.nml-applications.com',
-            Stage: '$default',
-        });
+        template.resourceCountIs('AWS::ApiGatewayV2::ApiMapping', 0);
+        template.resourceCountIs('AWS::ApiGatewayV2::DomainName', 0);
     });
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 30);
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /api/v1/bookings/guest',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /api/v1/bookings/guest',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /api/v1/bookings/account',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /api/v1/bookings/account/history',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /bookings/{bookingId}/ticket',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /api/v1/auth/convert-guest',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /bookings',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /bookings',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'PATCH /bookings/reschedule-booking',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /showtimes',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'PATCH /showtimes/{showtimeId}',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'DELETE /showtimes/{showtimeId}',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /movies/newest',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /movies/top-picks',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /movies/export',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /movies/tmdb-ids',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /movies/{id}',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /movies',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /movies',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'PATCH /movies',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /movies',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /movies/{id}',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /film-selections',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /ticket-pricing',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /ticket-pricing',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /booking-offers',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /collections',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'GET /collections/{id}',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /collections/refresh',
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-            AuthorizationType: 'JWT',
-            AuthorizerId: Match.anyValue(),
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /checkout/validate',
-            AuthorizationType: 'NONE',
-        });
-        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
-            RouteKey: 'POST /booking/confirmation',
-            AuthorizationType: 'NONE',
-        });
+        const publicRoutes = [
+            'GET /movies', 'GET /movies/{movieId}',
+            'GET /checkout/current-selections', 'POST /checkout/validate',
+            'GET /collections', 'GET /collections/{collectionId}', 'GET /pricing',
+            'GET /bookings', 'POST /bookings', 'GET /bookings/{bookingId}',
+            'POST /bookings/{bookingId}/confirmation', 'GET /bookings/{bookingId}/ticket',
+            'POST /auth/convert-guest-bookings',
+        ];
+        const jwtRoutes = [
+            'POST /movies', 'PATCH /movies', 'POST /collections/refresh',
+            'POST /pricing', 'POST /offers', 'PATCH /bookings/{bookingId}/reschedule',
+            'POST /showtimes', 'PATCH /showtimes/{showtimeId}', 'DELETE /showtimes/{showtimeId}',
+        ];
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', publicRoutes.length + jwtRoutes.length);
+        for (const route of publicRoutes) {
+            const [method, path] = route.split(' ');
+            template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+                RouteKey: `${method} /api/v1${path}`, AuthorizationType: 'NONE',
+            });
+        }
+        for (const route of jwtRoutes) {
+            const [method, path] = route.split(' ');
+            template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+                RouteKey: `${method} /api/v1${path}`, AuthorizationType: 'JWT',
+                AuthorizerId: Match.anyValue(),
+            });
+        }
     });
 
     it('should integrate Lambda function with routes', () => {
@@ -245,7 +128,7 @@ describe('ApiGatewayConstruct', () => {
     it.each(['prod', 'dev'] as const)('logs %s API access through the existing default stage', (envName) => {
         if (envName === 'dev') createGateway('dev');
         const template = Template.fromStack(stack);
-        const logName = `/aws/vendedlogs/blockbuster-theatre-api-access-${envName.toUpperCase()}`;
+        const logName = `/aws/vendedlogs/blockbuster-theatre-api-v1-access-${envName.toUpperCase()}`;
         const groups = template.findResources('AWS::Logs::LogGroup', {
             Properties: { LogGroupName: logName },
         });

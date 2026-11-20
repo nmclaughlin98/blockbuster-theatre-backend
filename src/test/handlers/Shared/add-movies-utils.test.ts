@@ -12,7 +12,7 @@ import {
 } from '../../../main/lambda/handlers/utils/movie-projection';
 import { generateShowtimes } from '../../../main/lambda/handlers/utils/showtime-schedule';
 
-jest.mock('../../../main/lambda/handlers/utils/movie-schedule-service', () => ({
+jest.mock('../../../services/showtimes/movie-schedule-service', () => ({
     getMovieShowtimes: jest.fn().mockResolvedValue({}),
 }));
 
