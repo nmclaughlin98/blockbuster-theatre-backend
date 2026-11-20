@@ -49,7 +49,15 @@ jobs:
             CDK_ENV=prod
           fi
           echo "Synthesizing the ${CDK_ENV} environment."
+          export DOCS_ENV="$CDK_ENV"
+          npm run docs:build
           npx cdk synth -c env="$CDK_ENV" --output cdk-out
+          if [ "$CDK_ENV" = "dev" ]; then
+            STACK=BlockbusterTheatreBackendStack-dev
+          else
+            STACK=BlockbusterTheatreBackendStack
+          fi
+          npm run docs:check -- "cdk-out/${STACK}.template.json"
 
       - name: Upload Build Artifact
         id: upload_artifact

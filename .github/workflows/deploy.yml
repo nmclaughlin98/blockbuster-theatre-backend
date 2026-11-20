@@ -214,7 +214,15 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ steps.select_build.outputs.deploy_environment }}
           TMDB_API_KEY: 'ci-synth-placeholder'
         run: |
+          export DOCS_ENV="$DEPLOY_ENVIRONMENT"
+          npm run docs:build
           npx cdk synth -c env="$DEPLOY_ENVIRONMENT" --output cdk-out
+          if [ "$DEPLOY_ENVIRONMENT" = "dev" ]; then
+            STACK=BlockbusterTheatreBackendStack-dev
+          else
+            STACK=BlockbusterTheatreBackendStack
+          fi
+          npm run docs:check -- "cdk-out/${STACK}.template.json"
           node -e '
             const manifest = require("./cdk-out/manifest.json");
             const stacks = Object.entries(manifest.artifacts)

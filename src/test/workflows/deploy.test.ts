@@ -353,6 +353,7 @@ describe('deploy build selection', () => {
             }));
             return spawnSync('bash', ['-e', '-c', `
                 npx() { mkdir -p cdk-out; cp manifest.json cdk-out/manifest.json; }
+                npm() { [ "$DOCS_ENV" = "$DEPLOY_ENVIRONMENT" ]; }
                 ${synth}
             `], { cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: environment } });
         };
