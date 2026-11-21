@@ -1,4 +1,5 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
+import { AdminGetUserCommand, CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { GuestBookingError, listGuestBookedSeats } from '../GuestBooking/guest-booking-service';
 import { json, log, type OptionalJwtEvent } from '../utils/common';
@@ -9,6 +10,23 @@ import { linkGuestBookings } from './link-guest-bookings';
 const ACCOUNT_BOOKED_SEATS_ROUTE_KEY = 'GET /api/v1/bookings/account';
 const ACCOUNT_HISTORY_ROUTE_KEY = 'GET /api/v1/bookings/account/history';
 const ssmClient = new SSMClient({ region: process.env.AWS_REGION ?? 'eu-west-2' });
+const cognitoClient = new CognitoIdentityProviderClient({});
+
+async function getVerifiedEmail(userId: string): Promise<string | undefined> {
+    const userPoolId = process.env.USER_POOL_ID;
+    if (!userPoolId) throw new Error('USER_POOL_ID is not configured.');
+    const user = await cognitoClient.send(new AdminGetUserCommand({
+        UserPoolId: userPoolId,
+        Username: userId,
+    }));
+    const email = user.UserAttributes?.find((attribute) => attribute.Name === 'email')?.Value;
+    const verified = user.UserAttributes?.find((attribute) => attribute.Name === 'email_verified')?.Value;
+    if (!email?.trim()) {
+        log('WARN', 'Cognito user has no email; guest booking linking is skipped.');
+        return undefined;
+    }
+    return verified === 'true' ? email.trim().toLowerCase() : undefined;
+}
 
 async function isGuestLinkingAllowed(): Promise<boolean> {
     const parameterName = process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
@@ -54,14 +72,20 @@ export const handler = async (
     try {
         if (event.routeKey === ACCOUNT_HISTORY_ROUTE_KEY && typeof userId === 'string') {
             const claims = event.requestContext.authorizer?.jwt?.claims;
-            const email = claims?.email;
+            let email = claims?.email;
             const verified = claims?.email_verified;
-            const linked = claims?.token_use === 'id'
-                && typeof email === 'string' && email.trim()
-                && (verified === true || verified === 'true')
-                && await isGuestLinkingAllowed()
-                ? await linkGuestBookings(userId, email.trim().toLowerCase())
-                : { bookings: [], notificationSent: true };
+            const needsLookup = claims?.token_use === 'access'
+                || (claims?.token_use === 'id' && email === undefined);
+            const verifiedIdEmail = claims?.token_use === 'id'
+                && typeof email === 'string' && !!email.trim()
+                && (verified === true || verified === 'true');
+            let linked = { bookings: [] as Awaited<ReturnType<typeof linkGuestBookings>>['bookings'], notificationSent: true };
+            if ((needsLookup || verifiedIdEmail) && await isGuestLinkingAllowed()) {
+                if (needsLookup) email = await getVerifiedEmail(userId);
+                if (typeof email === 'string' && email.trim()) {
+                    linked = await linkGuestBookings(userId, email.trim().toLowerCase());
+                }
+            }
             const body: AccountBookingHistoryResponse = {
                 bookings: await listAccountBookings(userId, linked.bookings),
                 newlyLinkedBookings: linked.bookings.map((booking) => booking.bookingRef),

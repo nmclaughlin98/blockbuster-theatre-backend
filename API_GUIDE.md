@@ -428,7 +428,7 @@ The endpoint returns the same booking details as the guest endpoint, except for 
 
 ### List account bookings
 
-`GET /api/v1/bookings/account/history` accepts a Cognito token in the `Authorization: Bearer <token>` header. Send an ID token to enable automatic guest-booking linking: only an ID token with `email_verified: true` and an email can initiate the sweep. Access tokens and unverified emails still return account history but do not initiate linking. Guest checkout does not check whether an account exists.
+`GET /api/v1/bookings/account/history` accepts a Cognito token in the `Authorization: Bearer <token>` header. For access tokens, or ID tokens without an email claim, the handler looks up the account's email and verification status in Cognito when linking is enabled. An ID token with an email must have `email_verified: true`. Unverified emails do not initiate linking. A Cognito lookup failure fails the history request. Guest checkout does not check whether an account exists.
 
 Automatic linking is disabled by default. It runs only when the environment's SSM String parameter is `true`: `/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS` in production or `/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS` in development. A missing parameter also disables linking. Values must be `true` or `false` (case-insensitive); invalid values or other SSM errors fail the history request. The parameter is read on each eligible history request and is not created by this stack.
 

@@ -1,4 +1,5 @@
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { AdminGetUserCommand, CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
@@ -9,8 +10,10 @@ import { linkGuestBookings } from '../../../main/lambda/handlers/GuestBookedSeat
 const ddb = mockClient(DynamoDBDocumentClient);
 const ses = mockClient(SESv2Client);
 const ssm = mockClient(SSMClient);
+const cognito = mockClient(CognitoIdentityProviderClient);
 const parameterName = '/test/ALLOW_LINK_BOOKINGS';
 const originalParameterName = process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
+const originalUserPoolId = process.env.USER_POOL_ID;
 const futureKey = 'customerEmail = :email AND #date > :cutoffDate';
 const todayKey = 'customerEmail = :email AND #date = :cutoffDate';
 const guest = {
@@ -34,9 +37,11 @@ beforeEach(() => {
     process.env.LEGACY_BOOKINGS_TABLE_NAME = 'legacy';
     process.env.BOOKING_EMAIL_FROM = 'tickets@example.com';
     process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME = parameterName;
+    process.env.USER_POOL_ID = 'test-pool';
     ddb.reset();
     ses.reset();
     ssm.reset();
+    cognito.reset();
     ssm.on(GetParameterCommand, { Name: parameterName }).resolves({ Parameter: { Value: 'false' } });
     ddb.on(QueryCommand, { KeyConditionExpression: todayKey }).resolves({ Items: [] });
     ses.on(SendEmailCommand).resolves({});
@@ -45,6 +50,8 @@ beforeEach(() => {
 afterAll(() => {
     if (originalParameterName === undefined) delete process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
     else process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME = originalParameterName;
+    if (originalUserPoolId === undefined) delete process.env.USER_POOL_ID;
+    else process.env.USER_POOL_ID = originalUserPoolId;
 });
 
 test('claims all pages once, returns current records, and sends one consolidated email', async () => {
@@ -249,7 +256,6 @@ test('email failure is reported after successful claims', async () => {
 test.each([
     { token_use: 'id', email: 'customer@example.com', email_verified: 'false' },
     { token_use: 'id', email: 'customer@example.com' },
-    { token_use: 'access', email: 'customer@example.com', email_verified: 'true' },
 ])('does not link without a verified ID-token email: %p', async (claims) => {
     ddb.on(QueryCommand).resolves({ Items: [] });
     const result = await handler({
@@ -260,6 +266,67 @@ test.each([
     expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
     expect(ddb.commandCalls(QueryCommand).every((call) => call.args[0].input.IndexName === 'UserBookings')).toBe(true);
     expect(ssm.calls()).toHaveLength(0);
+});
+
+test.each([
+    { token_use: 'access', username: 'login-name' },
+    { token_use: 'id' },
+])('uses a verified Cognito email when token claims lack one: %p', async (claims) => {
+    ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
+    cognito.on(AdminGetUserCommand).resolves({ UserAttributes: [
+        { Name: 'email', Value: ' Customer@Example.com ' },
+        { Name: 'email_verified', Value: 'true' },
+    ] });
+    ddb.on(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings', TableName: 'current', KeyConditionExpression: futureKey }).resolves({ Items: [guest] });
+    ddb.on(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings', TableName: 'legacy', KeyConditionExpression: futureKey }).resolves({ Items: [] });
+    ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
+    ddb.on(UpdateCommand).resolves({ Attributes: { ...guest, userId: 'user-1' } });
+    const result = await handler({
+        routeKey: 'GET /api/v1/bookings/account/history',
+        requestContext: { requestId: 'test', authorizer: { jwt: { claims: { sub: 'user-1', ...claims } } } },
+    } as OptionalJwtEvent);
+    if (typeof result === 'string') throw new Error('Expected structured result.');
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body ?? '{}').newlyLinkedBookings).toEqual(['BBT-123456']);
+    expect(cognito.commandCalls(AdminGetUserCommand)[0].args[0].input).toEqual({
+        UserPoolId: 'test-pool', Username: 'user-1',
+    });
+    expect(ddb.commandCalls(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings' })[0].args[0].input.ExpressionAttributeValues?.[':email']).toBe('customer@example.com');
+});
+
+test.each(['false', undefined])('does not link a Cognito email with verification %p', async (verified) => {
+    ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
+    cognito.on(AdminGetUserCommand).resolves({ UserAttributes: [
+        { Name: 'email', Value: 'customer@example.com' },
+        ...(verified ? [{ Name: 'email_verified', Value: verified }] : []),
+    ] });
+    ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
+    const result = await handler({
+        routeKey: 'GET /api/v1/bookings/account/history',
+        requestContext: { requestId: 'test', authorizer: { jwt: { claims: { sub: 'user-1', token_use: 'access' } } } },
+    } as OptionalJwtEvent);
+    if (typeof result === 'string') throw new Error('Expected structured result.');
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body ?? '{}').newlyLinkedBookings).toEqual([]);
+    expect(ddb.commandCalls(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings' })).toHaveLength(0);
+});
+
+test('does not call Cognito when linking is disabled, and reports lookup errors when enabled', async () => {
+    const event = {
+        routeKey: 'GET /api/v1/bookings/account/history',
+        requestContext: { requestId: 'test', authorizer: { jwt: { claims: { sub: 'user-1', token_use: 'access' } } } },
+    } as OptionalJwtEvent;
+    ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
+    const disabled = await handler(event);
+    if (typeof disabled === 'string') throw new Error('Expected structured result.');
+    expect(disabled.statusCode).toBe(200);
+    expect(cognito.calls()).toHaveLength(0);
+    ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
+    cognito.on(AdminGetUserCommand).rejects(new Error('Cognito unavailable'));
+    const failed = await handler(event);
+    if (typeof failed === 'string') throw new Error('Expected structured result.');
+    expect(failed.statusCode).toBe(500);
+    expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
 });
 
 test('history returns newly claimed records immediately even before the user index catches up', async () => {

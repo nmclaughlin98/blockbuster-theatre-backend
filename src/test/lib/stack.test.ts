@@ -20,6 +20,15 @@ describe('BackendStack', () => {
         const ssmStatement = statements.find((statement) => statement.Action === 'ssm:GetParameter');
         expect(ssmStatement).toBeDefined();
         expect(JSON.stringify(ssmStatement.Resource)).toContain(`parameter${parameterName}`);
+        const cognitoStatement = statements.find((statement) => statement.Action === 'cognito-idp:AdminGetUser');
+        expect(cognitoStatement).toBeDefined();
+        expect(cognitoStatement.Effect).toBe('Allow');
+        const poolId = fn.Properties.Environment.Variables.USER_POOL_ID;
+        if (typeof poolId === 'string') {
+            expect(JSON.stringify(cognitoStatement.Resource)).toContain(`userpool/${poolId}`);
+        } else {
+            expect(cognitoStatement.Resource).toEqual({ 'Fn::GetAtt': [poolId.Ref, 'Arn'] });
+        }
     }
 
     beforeEach(() => {

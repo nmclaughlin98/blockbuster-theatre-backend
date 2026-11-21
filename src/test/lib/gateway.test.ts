@@ -221,6 +221,20 @@ describe('ApiGatewayConstruct', () => {
         // Lambda integration is implicitly tested by the successful API creation
     });
 
+    it('does not require scopes on JWT routes so SRP access tokens are accepted', () => {
+        const routes = Object.values(Template.fromStack(stack).findResources('AWS::ApiGatewayV2::Route'))
+            .filter((route) => route.Properties.AuthorizationType === 'JWT');
+        expect(routes.length).toBeGreaterThan(0);
+        for (const route of routes) {
+            expect(route.Properties.AuthorizationScopes).toBeUndefined();
+        }
+        expect(routes.map((route) => route.Properties.RouteKey)).toEqual(expect.arrayContaining([
+            'GET /api/v1/bookings/account',
+            'GET /api/v1/bookings/account/history',
+            'POST /api/v1/bookings/account',
+        ]));
+    });
+
     it('should export httpApi property', () => {
         expect(construct.httpApi).toBeDefined();
         expect(construct.httpApi.apiId).toBeDefined();

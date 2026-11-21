@@ -561,6 +561,7 @@ export class LambdaConstruct extends Construct {
                     SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                     BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
                     ALLOW_LINK_BOOKINGS_PARAMETER_NAME: allowLinkBookingsParameterName,
+                    USER_POOL_ID: props.userPool.userPoolId,
                 },
             }
         );
@@ -571,6 +572,10 @@ export class LambdaConstruct extends Construct {
         this.guestBookedSeatsFunction.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ssm:GetParameter'],
             resources: [allowLinkBookingsParameter.parameterArn],
+        }));
+        this.guestBookedSeatsFunction.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['cognito-idp:AdminGetUser'],
+            resources: [props.userPool.userPoolArn],
         }));
 
         this.guestBookingFunction = createNodejsFunction(
