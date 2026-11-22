@@ -18,7 +18,7 @@ if (deployStack === 'auth') {
     }
 
     const targetStack =
-        deployEnv === 'dev' ? 'BlockbusterTheatreCoreStack-dev' : 'BlockbusterTheatreCoreStack';
+        deployEnv === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
     console.log(`Deploying Backend Stack: ${targetStack}`);
 
     execFileSync(

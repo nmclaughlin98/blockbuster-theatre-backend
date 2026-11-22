@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import * as cdk from 'aws-cdk-lib';
 import { AuthStack } from '../lib/auth';
-import { CoreStack } from '../lib/backend';
+import { BackendStack } from '../lib/backend';
 
 const app = new cdk.App();
 
@@ -29,7 +29,7 @@ if (shouldInstantiateAuth && (!envContext || envContext === 'prod' || stackConte
 // 2. Environment-specific BackendStack instances (prod and dev) consuming SSM parameters
 if (shouldInstantiateBackend) {
     if (!envContext || envContext === 'prod') {
-        new CoreStack(app, 'BlockbusterTheatreBackendStack', {
+        new BackendStack(app, 'BlockbusterTheatreBackendStack', {
             description: 'BlockbusterTheatre Backend Infrastructure (Prod)',
             envName: 'prod',
             env: defaultEnv,
@@ -37,7 +37,7 @@ if (shouldInstantiateBackend) {
     }
 
     if (!envContext || envContext === 'dev') {
-        new CoreStack(app, 'BlockbusterTheatreBackendStack-dev', {
+        new BackendStack(app, 'BlockbusterTheatreBackendStack-dev', {
             description: 'BlockbusterTheatre Backend Infrastructure (Dev)',
             envName: 'dev',
             env: defaultEnv,

@@ -40,7 +40,7 @@ This project includes unit tests covering Lambda handlers and AWS CDK constructs
 Tests use the `@main/` path alias for clean imports:
 
 ```typescript
-import { CoreStack } from '@main/stack';
+import { BackendStack } from '@main/stack';
 import { LambdaConstruct } from '@main/lambda';
 import { DatabaseConstruct } from '@main/dynamo-db';
 import { ApiGatewayConstruct } from '@main/gateway';

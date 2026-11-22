@@ -29,7 +29,7 @@ describe('deploy Cognito parameters', () => {
         tmdbApiKey = 'test-deploy-key',
         postmanClientId = 'postmanclientid'
     ) {
-        writeFileSync(join(directory, 'cdk-out/BlockbusterTheatreCoreStack-dev.template.json'),
+        writeFileSync(join(directory, 'cdk-out/BlockbusterTheatreBackendStack-dev.template.json'),
             JSON.stringify({ Parameters: parameters }));
         return spawnSync('bash', ['-e', '-c', `
             aws() {
@@ -81,7 +81,7 @@ describe('deploy Cognito parameters', () => {
         });
         expect(result.status).toBe(0);
         expect(readFileSync(join(directory, 'calls'), 'utf8'))
-            .toContain('describe-stacks --stack-name BlockbusterTheatreCoreStack');
+            .toContain('describe-stacks --stack-name BlockbusterTheatreBackendStack');
         expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
             'sts assume-role --role-arn arn:aws:iam::334624057595:role/cdk-hnb659fds-deploy-role-334624057595-eu-west-2'
         );
@@ -358,9 +358,9 @@ describe('deploy build selection', () => {
                 ${synth}
             `], { cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: environment } });
         };
-        expect(runSynth('dev', 'BlockbusterTheatreCoreStack-dev').status).toBe(0);
-        expect(runSynth('prod', 'BlockbusterTheatreCoreStack').status).toBe(0);
-        expect(runSynth('dev', 'BlockbusterTheatreCoreStack').status).toBe(1);
+        expect(runSynth('dev', 'BlockbusterTheatreBackendStack-dev').status).toBe(0);
+        expect(runSynth('prod', 'BlockbusterTheatreBackendStack').status).toBe(0);
+        expect(runSynth('dev', 'BlockbusterTheatreBackendStack').status).toBe(1);
     });
 
     it.each(['dev', 'prod'])('validates %s deployment assets before assuming AWS credentials', (environment) => {
@@ -369,7 +369,7 @@ describe('deploy build selection', () => {
             .split('        run: |\n')[1].replace(/^          /gm, '');
         const root = join(directory, 'cdk-out');
         mkdirSync(root);
-        const stack = environment === 'dev' ? 'BlockbusterTheatreCoreStack-dev' : 'BlockbusterTheatreCoreStack';
+        const stack = environment === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
         const suffix = environment === 'dev' ? '-DEV' : '-PROD';
         const assetName = `asset.${'b'.repeat(64)}`;
         mkdirSync(join(root, assetName));

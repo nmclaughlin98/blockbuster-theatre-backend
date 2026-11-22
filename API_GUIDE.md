@@ -616,7 +616,7 @@ npx cdk synth -c env=prod
 npx cdk synth -c env=dev
 ```
 
-Prod keeps the existing stack ID and uses `-PROD`-suffixed DynamoDB tables, Lambda/API names, and Cognito pool/client names. Dev uses a `BlockbusterTheatreCoreStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. External API and Cognito domains and the SES email identity remain unchanged. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming prod tables creates new, empty tables; retained old tables are not copied automatically. Copy and verify any needed data before purging the old tables. No S3 buckets are defined by this stack.
+Prod keeps the existing stack ID and uses `-PROD`-suffixed DynamoDB tables, Lambda/API names, and Cognito pool/client names. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. External API and Cognito domains and the SES email identity remain unchanged. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming prod tables creates new, empty tables; retained old tables are not copied automatically. Copy and verify any needed data before purging the old tables. No S3 buckets are defined by this stack.
 
 The Cognito user pool is also retained on stack deletion. When recreating the stack, the unchanged Cognito domain and API mapping must be released by the old stack before the replacement can claim them. A retained pool and retained log group may still exist after deletion; inspect them before any cleanup.
 

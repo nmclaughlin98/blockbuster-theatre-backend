@@ -1,10 +1,10 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { CoreStack as BlockbusterTheatreCoreStack } from '../../../lib/backend';
+import { BackendStack as BlockbusterTheatreBackendStack } from '../../../lib/backend';
 import { PROD_TO_DEV_TABLES } from '../../../scripts/sync-prod-to-dev';
 
-describe('CoreStack', () => {
-    let stack: BlockbusterTheatreCoreStack;
+describe('BackendStack', () => {
+    let stack: BlockbusterTheatreBackendStack;
 
     function expectLinkingParameter(template: Template, functionName: string, parameterName: string): void {
         const functions = template.findResources('AWS::Lambda::Function', {
@@ -33,7 +33,7 @@ describe('CoreStack', () => {
 
     beforeEach(() => {
         const app = new cdk.App();
-        stack = new BlockbusterTheatreCoreStack(app, 'TestCoreStack', {
+        stack = new BlockbusterTheatreBackendStack(app, 'TestBackendStack', {
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedbackendclientid',
             prodPostmanClientId: 'postmanclientid',
@@ -74,7 +74,7 @@ describe('CoreStack', () => {
         ['dev', 'blockbuster-theatre-guest-booked-seats-handler-DEV', '/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS'],
     ] as const)('configures guest booking linking for %s', (envName, functionName, parameterName) => {
         const app = new cdk.App();
-        const configuredStack = new BlockbusterTheatreCoreStack(app, 'FlagStack', {
+        const configuredStack = new BlockbusterTheatreBackendStack(app, 'FlagStack', {
             envName,
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedclientid',
@@ -87,9 +87,9 @@ describe('CoreStack', () => {
 
     it('synthesizes an isolated dev stack without creating prod Cognito or SES resources', () => {
         const app = new cdk.App();
-        const devStack = new BlockbusterTheatreCoreStack(
+        const devStack = new BlockbusterTheatreBackendStack(
             app,
-            'BlockbusterTheatreCoreStack-dev',
+            'BlockbusterTheatreBackendStack-dev',
             {
                 envName: 'dev',
                 prodUserPoolId: 'eu-west-2_sharedpool',
@@ -160,7 +160,7 @@ describe('CoreStack', () => {
 
     it('resolves Cognito audience from SSM parameters when not explicitly configured', () => {
         const app = new cdk.App();
-        const stackWithSsm = new BlockbusterTheatreCoreStack(app, 'SsmCoreStack', {
+        const stackWithSsm = new BlockbusterTheatreBackendStack(app, 'SsmBackendStack', {
             envName: 'dev',
             env: { account: '334624057595', region: 'eu-west-2' },
         });
@@ -180,7 +180,7 @@ describe('CoreStack', () => {
 
     it.each(['prod', 'dev'] as const)('tags managed resources for %s', (envName) => {
         const app = new cdk.App();
-        const taggedStack = new BlockbusterTheatreCoreStack(app, 'TaggedStack', {
+        const taggedStack = new BlockbusterTheatreBackendStack(app, 'TaggedStack', {
             envName,
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedclientid',

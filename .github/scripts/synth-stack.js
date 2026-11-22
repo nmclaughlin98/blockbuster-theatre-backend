@@ -8,8 +8,8 @@ const expectedStack =
     deployStack === 'auth'
         ? 'BlockbusterTheatreAuthStack'
         : deployEnv === 'dev'
-            ? 'BlockbusterTheatreCoreStack-dev'
-            : 'BlockbusterTheatreCoreStack';
+            ? 'BlockbusterTheatreBackendStack-dev'
+            : 'BlockbusterTheatreBackendStack';
 
 const cdkArgs =
     deployStack === 'auth'

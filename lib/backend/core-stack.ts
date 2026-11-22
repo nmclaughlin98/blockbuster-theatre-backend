@@ -13,7 +13,7 @@ import {
     type EnvironmentName,
 } from '../shared';
 
-export interface CoreStackProps extends cdk.StackProps {
+export interface BackendStackProps extends cdk.StackProps {
     readonly envName?: EnvironmentName;
     readonly authParameters?: Partial<AuthParameters>;
     readonly prodUserPoolId?: string;
@@ -22,7 +22,7 @@ export interface CoreStackProps extends cdk.StackProps {
     readonly prodAlexaClientId?: string;
 }
 
-export class CoreStack extends cdk.Stack {
+export class BackendStack extends cdk.Stack {
     public readonly database: DatabaseConstruct;
     public readonly lambdaServices: LambdaConstruct;
     public readonly apiGateway: ApiGatewayConstruct;
@@ -31,7 +31,7 @@ export class CoreStack extends cdk.Stack {
     public readonly userPoolClient: cognito.IUserPoolClient;
     public readonly authParameters: AuthParameters;
 
-    constructor(scope: Construct, id: string, props: CoreStackProps = {}) {
+    constructor(scope: Construct, id: string, props: BackendStackProps = {}) {
         const {
             envName = 'prod',
             authParameters: explicitAuthParams,
