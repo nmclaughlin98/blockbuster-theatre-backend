@@ -1,7 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
-import { resourceName, type EnvironmentName } from './environment';
+import { resourceName, type EnvironmentName } from '../shared';
 
 export class DatabaseConstruct extends Construct {
     public readonly movieCatalogueTable: dynamodb.Table;

@@ -273,10 +273,12 @@ test.each([
     { token_use: 'id' },
 ])('uses a verified Cognito email when token claims lack one: %p', async (claims) => {
     ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
-    cognito.on(AdminGetUserCommand).resolves({ UserAttributes: [
-        { Name: 'email', Value: ' Customer@Example.com ' },
-        { Name: 'email_verified', Value: 'true' },
-    ] });
+    cognito.on(AdminGetUserCommand).resolves({
+        UserAttributes: [
+            { Name: 'email', Value: ' Customer@Example.com ' },
+            { Name: 'email_verified', Value: 'true' },
+        ]
+    });
     ddb.on(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings', TableName: 'current', KeyConditionExpression: futureKey }).resolves({ Items: [guest] });
     ddb.on(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings', TableName: 'legacy', KeyConditionExpression: futureKey }).resolves({ Items: [] });
     ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
@@ -296,10 +298,12 @@ test.each([
 
 test.each(['false', undefined])('does not link a Cognito email with verification %p', async (verified) => {
     ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
-    cognito.on(AdminGetUserCommand).resolves({ UserAttributes: [
-        { Name: 'email', Value: 'customer@example.com' },
-        ...(verified ? [{ Name: 'email_verified', Value: verified }] : []),
-    ] });
+    cognito.on(AdminGetUserCommand).resolves({
+        UserAttributes: [
+            { Name: 'email', Value: 'customer@example.com' },
+            ...(verified ? [{ Name: 'email_verified', Value: verified }] : []),
+        ]
+    });
     ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
     const result = await handler({
         routeKey: 'GET /api/v1/bookings/account/history',
@@ -337,9 +341,15 @@ test('history returns newly claimed records immediately even before the user ind
     ddb.on(UpdateCommand).resolves({ Attributes: { ...guest, userId: 'user-1' } });
     const result = await handler({
         routeKey: 'GET /api/v1/bookings/account/history',
-        requestContext: { requestId: 'test', authorizer: { jwt: { claims: {
-            sub: 'user-1', token_use: 'id', email: ' Customer@Example.com ', email_verified: true,
-        } } } },
+        requestContext: {
+            requestId: 'test', authorizer: {
+                jwt: {
+                    claims: {
+                        sub: 'user-1', token_use: 'id', email: ' Customer@Example.com ', email_verified: true,
+                    }
+                }
+            }
+        },
     } as OptionalJwtEvent);
     if (typeof result === 'string') throw new Error('Expected structured result.');
     const body = JSON.parse(result.body ?? '{}');
@@ -357,9 +367,15 @@ test('history reports an SES failure without losing the claimed booking', async 
     ses.on(SendEmailCommand).rejects(new Error('SES unavailable'));
     const result = await handler({
         routeKey: 'GET /api/v1/bookings/account/history',
-        requestContext: { requestId: 'test', authorizer: { jwt: { claims: {
-            sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: 'true',
-        } } } },
+        requestContext: {
+            requestId: 'test', authorizer: {
+                jwt: {
+                    claims: {
+                        sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: 'true',
+                    }
+                }
+            }
+        },
     } as OptionalJwtEvent);
     if (typeof result === 'string') throw new Error('Expected structured result.');
     expect(JSON.parse(result.body ?? '{}')).toMatchObject({
@@ -383,9 +399,15 @@ test.each(['false', 'missing', 'unconfigured'])(
         }).resolves({ Items: [guest] });
         const result = await handler({
             routeKey: 'GET /api/v1/bookings/account/history',
-            requestContext: { requestId: 'test', authorizer: { jwt: { claims: {
-                sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: true,
-            } } } },
+            requestContext: {
+                requestId: 'test', authorizer: {
+                    jwt: {
+                        claims: {
+                            sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: true,
+                        }
+                    }
+                }
+            },
         } as OptionalJwtEvent);
 
         if (typeof result === 'string') throw new Error('Expected structured result.');
@@ -411,9 +433,15 @@ test('reads the flag again on the next eligible history request', async () => {
     ddb.on(UpdateCommand).resolves({ Attributes: { ...guest, userId: 'user-1' } });
     const event = {
         routeKey: 'GET /api/v1/bookings/account/history',
-        requestContext: { requestId: 'test', authorizer: { jwt: { claims: {
-            sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: true,
-        } } } },
+        requestContext: {
+            requestId: 'test', authorizer: {
+                jwt: {
+                    claims: {
+                        sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: true,
+                    }
+                }
+            }
+        },
     } as OptionalJwtEvent;
 
     const disabled = await handler(event);
@@ -435,9 +463,15 @@ test.each(['invalid', 'unavailable'])(
         }
         const result = await handler({
             routeKey: 'GET /api/v1/bookings/account/history',
-            requestContext: { requestId: 'test', authorizer: { jwt: { claims: {
-                sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: true,
-            } } } },
+            requestContext: {
+                requestId: 'test', authorizer: {
+                    jwt: {
+                        claims: {
+                            sub: 'user-1', token_use: 'id', email: 'customer@example.com', email_verified: true,
+                        }
+                    }
+                }
+            },
         } as OptionalJwtEvent);
 
         if (typeof result === 'string') throw new Error('Expected structured result.');

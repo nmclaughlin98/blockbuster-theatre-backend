@@ -21,6 +21,14 @@ on:
           - auto
           - dev
           - prod
+      target_stack:
+        description: 'Stack to deploy (backend or auth)'
+        required: false
+        type: choice
+        default: backend
+        options:
+          - backend
+          - auth
       environment:
         description: 'Legacy environment input (leave empty when using target_env)'
         required: false
@@ -51,6 +59,7 @@ jobs:
       build_run_id: ${{ steps.select_build.outputs.build_run_id }}
       deploy_branch: ${{ steps.select_build.outputs.deploy_branch }}
       deploy_environment: ${{ steps.select_build.outputs.deploy_environment }}
+      deploy_stack: ${{ steps.select_build.outputs.deploy_stack }}
 
     steps:
       - name: Checkout Repository
@@ -66,6 +75,7 @@ jobs:
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
           INPUT_ENVIRONMENT: ${{ inputs.environment }}
           INPUT_TARGET_ENV: ${{ inputs.target_env }}
+          INPUT_TARGET_STACK: ${{ inputs.target_stack }}
           INPUT_ALLOW_NON_MAIN_PROD: ${{ inputs.allow_non_main_prod }}
           TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
@@ -176,15 +186,27 @@ jobs:
             fi
           fi
 
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            TARGET_STACK=backend
+          else
+            TARGET_STACK="${INPUT_TARGET_STACK:-backend}"
+            if [ "$TARGET_STACK" != "backend" ] && [ "$TARGET_STACK" != "auth" ]; then
+              echo "Error: target_stack must be 'backend' or 'auth'."
+              exit 1
+            fi
+          fi
+
           echo "build_number=${TARGET_BUILD}" >> "$GITHUB_OUTPUT"
           echo "build_run_id=${BUILD_RUN_ID}" >> "$GITHUB_OUTPUT"
           echo "deploy_environment=${TARGET_ENVIRONMENT}" >> "$GITHUB_OUTPUT"
+          echo "deploy_stack=${TARGET_STACK}" >> "$GITHUB_OUTPUT"
           echo "deploy_branch=${TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
           echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
 
           echo "## 🚀 Deploying Build #${TARGET_BUILD}" >> "$GITHUB_STEP_SUMMARY"
           echo "**Build Number:** \`${TARGET_BUILD}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Deployment Environment:** \`${TARGET_ENVIRONMENT}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Deployment Stack:** \`${TARGET_STACK}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Build Branch:** \`${TARGET_BRANCH}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Build Run ID:** \`${BUILD_RUN_ID}\`" >> "$GITHUB_STEP_SUMMARY"
 
@@ -212,16 +234,22 @@ jobs:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
           DEPLOY_ENVIRONMENT: ${{ steps.select_build.outputs.deploy_environment }}
+          DEPLOY_STACK: ${{ steps.select_build.outputs.deploy_stack }}
           TMDB_API_KEY: 'ci-synth-placeholder'
         run: |
-          npx cdk synth -c env="$DEPLOY_ENVIRONMENT" --output cdk-out
+          if [ "$DEPLOY_STACK" = "auth" ]; then
+            EXPECTED_STACK="BlockbusterTheatreBlockbusterTheatreAuthStack"
+            npx cdk synth -c stack=auth --output cdk-out
+          else
+            EXPECTED_STACK="$([ "$DEPLOY_ENVIRONMENT" = "dev" ] && echo "BlockbusterTheatreCoreStack-dev" || echo "BlockbusterTheatreCoreStack")"
+            npx cdk synth -c env="$DEPLOY_ENVIRONMENT" -c stack=backend --output cdk-out
+          fi
           node -e '
             const manifest = require("./cdk-out/manifest.json");
             const stacks = Object.entries(manifest.artifacts)
               .filter(([, artifact]) => artifact.type === "aws:cloudformation:stack")
               .map(([name]) => name);
-            const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
-              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
+            const expected = process.env.EXPECTED_STACK;
             if (stacks.length !== 1 || stacks[0] !== expected) {
               console.error(`Expected only ${expected}; synthesized: ${stacks.join(", ") || "no stacks"}`);
               process.exit(1);
@@ -275,13 +303,16 @@ jobs:
         id: validate_assembly
         env:
           DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
+          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
         run: |
           node -e '
             const fs = require("fs");
             const path = require("path");
             const root = path.resolve("cdk-out");
-            const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
-              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
+            const isAuth = process.env.DEPLOY_STACK === "auth";
+            const expected = isAuth
+              ? "BlockbusterTheatreBlockbusterTheatreAuthStack"
+              : (process.env.DEPLOY_ENVIRONMENT === "dev" ? "BlockbusterTheatreCoreStack-dev" : "BlockbusterTheatreCoreStack");
             const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json")));
             const artifacts = manifest.artifacts;
             const allowed = new Set(["aws:cloudformation:stack", "cdk:asset-manifest", "cdk:tree", "cdk:feature-flag-report"]);
@@ -290,13 +321,20 @@ jobs:
                 stacks[0][1].properties.templateFile !== `${expected}.template.json` ||
                 Object.values(artifacts).some(a => !allowed.has(a.type))) throw new Error("Unexpected assembly artifacts");
             const template = JSON.parse(fs.readFileSync(path.join(root, `${expected}.template.json`)));
-            if (template.Parameters?.TmdbApiKey?.NoEcho !== true) throw new Error("Missing masked TMDB key parameter");
-            const suffix = process.env.DEPLOY_ENVIRONMENT === "dev" ? "-DEV" : "-PROD";
-            for (const name of ["blockbuster-theatre-add-movies-handler", "blockbuster-theatre-refresh-movie-collection-handler"]) {
-              const matches = Object.values(template.Resources || {}).filter(r =>
-                r.Type === "AWS::Lambda::Function" && r.Properties?.FunctionName === `${name}${suffix}`);
-              if (matches.length !== 1 || matches[0].Properties.Environment?.Variables?.TMDB_API_KEY?.Ref !== "TmdbApiKey") {
-                throw new Error(`Unexpected TMDB key configuration for ${name}${suffix}`);
+            if (!isAuth) {
+              if (template.Parameters?.TmdbApiKey?.NoEcho !== true) throw new Error("Missing masked TMDB key parameter");
+              const suffix = process.env.DEPLOY_ENVIRONMENT === "dev" ? "-DEV" : "-PROD";
+              for (const name of ["blockbuster-theatre-add-movies-handler", "blockbuster-theatre-refresh-movie-collection-handler"]) {
+                const matches = Object.values(template.Resources || {}).filter(r =>
+                  r.Type === "AWS::Lambda::Function" && r.Properties?.FunctionName === `${name}${suffix}`);
+                if (matches.length !== 1 || matches[0].Properties.Environment?.Variables?.TMDB_API_KEY?.Ref !== "TmdbApiKey") {
+                  throw new Error(`Unexpected TMDB key configuration for ${name}${suffix}`);
+                }
+              }
+            } else {
+              const pools = Object.values(template.Resources || {}).filter(r => r.Type === "AWS::Cognito::UserPool");
+              if (pools.length !== 1 || pools[0].Properties?.UserPoolName !== "blockbuster-theatre-users-PROD") {
+                throw new Error("Missing or invalid Cognito UserPool in BlockbusterTheatreAuthStack");
               }
             }
             for (const artifact of Object.values(artifacts).filter(a => a.type === "cdk:asset-manifest")) {
@@ -331,58 +369,65 @@ jobs:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
           DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
+          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           PROD_POSTMAN_CLIENT_ID: ${{ vars.PROD_POSTMAN_CLIENT_ID }}
         run: |
-          if [[ ! "$TMDB_API_KEY" =~ [^[:space:]] ]]; then
-            echo "Error: TMDB_API_KEY must be configured as a non-empty GitHub Environment secret."
-            exit 1
-          fi
-          PARAMETERS=(--parameters "TmdbApiKey=${TMDB_API_KEY}")
-          if [ "$DEPLOY_ENVIRONMENT" = "dev" ]; then
-            POSTMAN_PARAMETER_REQUIRED=$(node -e '
-              const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
-              if (template.Parameters?.ProdPostmanClientId) console.log("true");
-            ')
-            if [ "$POSTMAN_PARAMETER_REQUIRED" = "true" ]; then
-              if [[ ! "$PROD_POSTMAN_CLIENT_ID" =~ [^[:space:]] ]]; then
-                echo "Error: PROD_POSTMAN_CLIENT_ID must be configured as a non-empty dev GitHub Environment variable."
-                exit 1
-              fi
-              PARAMETERS+=(--parameters "ProdPostmanClientId=${PROD_POSTMAN_CLIENT_ID}")
+          if [ "$DEPLOY_STACK" = "auth" ]; then
+            echo "Deploying BlockbusterTheatreAuthStack: BlockbusterTheatreBlockbusterTheatreAuthStack"
+            npx cdk deploy BlockbusterTheatreBlockbusterTheatreAuthStack --app cdk-out --require-approval never
+          else
+            if [[ ! "$TMDB_API_KEY" =~ [^[:space:]] ]]; then
+              echo "Error: TMDB_API_KEY must be configured as a non-empty GitHub Environment secret."
+              exit 1
             fi
-            REQUIRED_PARAMETERS=$(node -e '
-              const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
-              for (const name of ["ProdUserPoolId", "ProdUserPoolClientId"]) {
-                if (template.Parameters?.[name]) console.log(name);
-              }
-            ')
-            if [ -n "$REQUIRED_PARAMETERS" ]; then
-              OUTPUTS=$(
-                CREDENTIALS=$(aws sts assume-role \
-                  --role-arn "arn:aws:iam::${CDK_DEFAULT_ACCOUNT}:role/cdk-hnb659fds-deploy-role-${CDK_DEFAULT_ACCOUNT}-${CDK_DEFAULT_REGION}" \
-                  --role-session-name github-actions-cognito-lookup --output json) || exit 1
-                AWS_ACCESS_KEY_ID=$(jq -er '.Credentials.AccessKeyId | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
-                AWS_SECRET_ACCESS_KEY=$(jq -er '.Credentials.SecretAccessKey | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
-                AWS_SESSION_TOKEN=$(jq -er '.Credentials.SessionToken | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
-                export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-                aws cloudformation describe-stacks --stack-name BlockbusterTheatreBackendStack --output json
-              )
-              while IFS= read -r PARAMETER; do
-                case "$PARAMETER" in
-                  ProdUserPoolId) OUTPUT_KEY=UserPoolId ;;
-                  ProdUserPoolClientId) OUTPUT_KEY=UserPoolClientId ;;
-                esac
-                VALUE=$(jq -er --arg key "$OUTPUT_KEY" \
-                  '.Stacks[0].Outputs[] | select(.OutputKey == $key) | .OutputValue | strings | select(length > 0)' <<< "$OUTPUTS") || {
-                  echo "Error: Production stack output $OUTPUT_KEY is missing."
+            PARAMETERS=(--parameters "TmdbApiKey=${TMDB_API_KEY}")
+            if [ "$DEPLOY_ENVIRONMENT" = "dev" ]; then
+              POSTMAN_PARAMETER_REQUIRED=$(node -e '
+                const template = require("./cdk-out/BlockbusterTheatreCoreStack-dev.template.json");
+                if (template.Parameters?.ProdPostmanClientId) console.log("true");
+              ')
+              if [ "$POSTMAN_PARAMETER_REQUIRED" = "true" ]; then
+                if [[ ! "$PROD_POSTMAN_CLIENT_ID" =~ [^[:space:]] ]]; then
+                  echo "Error: PROD_POSTMAN_CLIENT_ID must be configured as a non-empty dev GitHub Environment variable."
                   exit 1
+                fi
+                PARAMETERS+=(--parameters "ProdPostmanClientId=${PROD_POSTMAN_CLIENT_ID}")
+              fi
+              REQUIRED_PARAMETERS=$(node -e '
+                const template = require("./cdk-out/BlockbusterTheatreCoreStack-dev.template.json");
+                for (const name of ["ProdUserPoolId", "ProdUserPoolClientId"]) {
+                  if (template.Parameters?.[name]) console.log(name);
                 }
-                PARAMETERS+=(--parameters "${PARAMETER}=${VALUE}")
-              done <<< "$REQUIRED_PARAMETERS"
+              ')
+              if [ -n "$REQUIRED_PARAMETERS" ]; then
+                OUTPUTS=$(
+                  CREDENTIALS=$(aws sts assume-role \
+                    --role-arn "arn:aws:iam::${CDK_DEFAULT_ACCOUNT}:role/cdk-hnb659fds-deploy-role-${CDK_DEFAULT_ACCOUNT}-${CDK_DEFAULT_REGION}" \
+                    --role-session-name github-actions-cognito-lookup --output json) || exit 1
+                  AWS_ACCESS_KEY_ID=$(jq -er '.Credentials.AccessKeyId | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
+                  AWS_SECRET_ACCESS_KEY=$(jq -er '.Credentials.SecretAccessKey | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
+                  AWS_SESSION_TOKEN=$(jq -er '.Credentials.SessionToken | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
+                  export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+                  aws cloudformation describe-stacks --stack-name BlockbusterTheatreCoreStack --output json
+                )
+                while IFS= read -r PARAMETER; do
+                  case "$PARAMETER" in
+                    ProdUserPoolId) OUTPUT_KEY=UserPoolId ;;
+                    ProdUserPoolClientId) OUTPUT_KEY=UserPoolClientId ;;
+                  esac
+                  VALUE=$(jq -er --arg key "$OUTPUT_KEY" \
+                    '.Stacks[0].Outputs[] | select(.OutputKey == $key) | .OutputValue | strings | select(length > 0)' <<< "$OUTPUTS") || {
+                    echo "Error: Production stack output $OUTPUT_KEY is missing."
+                    exit 1
+                  }
+                  PARAMETERS+=(--parameters "${PARAMETER}=${VALUE}")
+                done <<< "$REQUIRED_PARAMETERS"
+              fi
             fi
+            TARGET_CDK_STACK="$([ "$DEPLOY_ENVIRONMENT" = "dev" ] && echo "BlockbusterTheatreCoreStack-dev" || echo "BlockbusterTheatreCoreStack")"
+            npx cdk deploy "$TARGET_CDK_STACK" --app cdk-out --require-approval never "${PARAMETERS[@]}"
           fi
-          npx cdk deploy --app cdk-out --require-approval never "${PARAMETERS[@]}"
 
       - name: Write Deploy Summary
         if: always()

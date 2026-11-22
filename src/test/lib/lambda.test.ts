@@ -5,12 +5,14 @@ import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { execFileSync } from 'child_process';
 import * as path from 'path';
-import { LambdaConstruct } from '../../../lib/stack';
 import {
+    LambdaConstruct,
     maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
-} from '../../../lib/stack/lambda';
+} from '../../../lib/backend';
+
+process.env.TMDB_API_KEY = 'test-token';
 
 describe('LambdaConstruct', () => {
     let stack: cdk.Stack;
@@ -29,6 +31,7 @@ describe('LambdaConstruct', () => {
     let construct: LambdaConstruct;
 
     beforeEach(() => {
+        process.env.TMDB_API_KEY = 'test-token';
         stack = new cdk.Stack();
         table = new dynamodb.Table(stack, 'TestTable', {
             partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
@@ -145,7 +148,6 @@ describe('LambdaConstruct', () => {
                 })).toThrow('TMDB_API_KEY must be set and non-empty');
             }
         } finally {
-            reschedule - customer - booking - handler
             if (original === undefined) delete process.env.TMDB_API_KEY;
             else process.env.TMDB_API_KEY = original;
         }
@@ -155,7 +157,7 @@ describe('LambdaConstruct', () => {
         const template = Template.fromStack(stack);
         const table = Match.stringLikeRegexp('TestBookingsTable');
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-reschedule-booking-handler-PROD',
+            FunctionName: 'blockbuster-theatre-reschedule-customer-booking-handler-PROD',
             Environment: {
                 Variables: {
                     BOOKINGS_TABLE_NAME: { Ref: table },

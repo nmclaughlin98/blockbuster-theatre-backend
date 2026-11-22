@@ -1,7 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { Match } from 'aws-cdk-lib/assertions';
-import { DatabaseConstruct } from '../../../lib/stack';
+import { DatabaseConstruct } from '../../../lib/backend';
 
 describe('DatabaseConstruct', () => {
     let stack: cdk.Stack;

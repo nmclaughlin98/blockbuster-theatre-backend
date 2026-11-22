@@ -1,4 +1,4 @@
-import { parseEnvironmentName, resourceName } from '../../../lib/stack/environment';
+import { parseEnvironmentName, resourceName } from '../../../lib/shared';
 
 describe('CDK environment helpers', () => {
     it('defaults to prod and adds the production suffix', () => {

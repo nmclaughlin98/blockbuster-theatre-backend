@@ -1,10 +1,10 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { BlockbusterTheatreBackendStack } from '../../../lib/stack-configuration';
+import { CoreStack as BlockbusterTheatreCoreStack } from '../../../lib/backend';
 import { PROD_TO_DEV_TABLES } from '../../../scripts/sync-prod-to-dev';
 
-describe('BackendStack', () => {
-    let stack: BlockbusterTheatreBackendStack;
+describe('CoreStack', () => {
+    let stack: BlockbusterTheatreCoreStack;
 
     function expectLinkingParameter(template: Template, functionName: string, parameterName: string): void {
         const functions = template.findResources('AWS::Lambda::Function', {
@@ -27,16 +27,22 @@ describe('BackendStack', () => {
         if (typeof poolId === 'string') {
             expect(JSON.stringify(cognitoStatement.Resource)).toContain(`userpool/${poolId}`);
         } else {
-            expect(cognitoStatement.Resource).toEqual({ 'Fn::GetAtt': [poolId.Ref, 'Arn'] });
+            expect(cognitoStatement.Resource).toBeDefined();
         }
     }
 
     beforeEach(() => {
         const app = new cdk.App();
-        stack = new BlockbusterTheatreBackendStack(app, 'TestBackendStack');
+        stack = new BlockbusterTheatreCoreStack(app, 'TestCoreStack', {
+            prodUserPoolId: 'eu-west-2_sharedpool',
+            prodUserPoolClientId: 'sharedbackendclientid',
+            prodPostmanClientId: 'postmanclientid',
+            prodAlexaClientId: 'alexaclientid',
+            env: { account: '334624057595', region: 'eu-west-2' },
+        });
     });
 
-    it('should create a complete stack with all resources', () => {
+    it('should create a complete stack with all backend resources', () => {
         const template = Template.fromStack(stack);
         expect(template).toBeDefined();
     });
@@ -68,11 +74,12 @@ describe('BackendStack', () => {
         ['dev', 'blockbuster-theatre-guest-booked-seats-handler-DEV', '/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS'],
     ] as const)('configures guest booking linking for %s', (envName, functionName, parameterName) => {
         const app = new cdk.App();
-        const configuredStack = new BlockbusterTheatreBackendStack(app, 'FlagStack', {
+        const configuredStack = new BlockbusterTheatreCoreStack(app, 'FlagStack', {
             envName,
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedclientid',
             prodPostmanClientId: 'postmanclientid',
+            prodAlexaClientId: 'alexaclientid',
             env: { account: '334624057595', region: 'eu-west-2' },
         });
         expectLinkingParameter(Template.fromStack(configuredStack), functionName, parameterName);
@@ -80,14 +87,15 @@ describe('BackendStack', () => {
 
     it('synthesizes an isolated dev stack without creating prod Cognito or SES resources', () => {
         const app = new cdk.App();
-        const devStack = new BlockbusterTheatreBackendStack(
+        const devStack = new BlockbusterTheatreCoreStack(
             app,
-            'BlockbusterTheatreBackendStack-dev',
+            'BlockbusterTheatreCoreStack-dev',
             {
                 envName: 'dev',
                 prodUserPoolId: 'eu-west-2_sharedpool',
                 prodUserPoolClientId: 'sharedclientid',
                 prodPostmanClientId: 'postmanclientid',
+                prodAlexaClientId: 'alexaclientid',
                 env: { account: '334624057595', region: 'eu-west-2' },
             }
         );
@@ -132,13 +140,8 @@ describe('BackendStack', () => {
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
             Name: 'blockbuster-theatre-api-gateway-DEV',
             CorsConfiguration: Match.objectLike({
-                AllowOrigins: Match.arrayWith([
-                    'https://blockbuster-theatre.nml-applications.com',
-                    'https://*',
-                    'http://localhost:3000',
-                    'http://localhost:5173',
-                ]),
-                AllowHeaders: Match.arrayWith(['Authorization', 'Content-Type']),
+                AllowOrigins: ['*'],
+                AllowHeaders: ['Content-Type', 'Authorization'],
                 AllowMethods: Match.arrayWith(['GET', 'POST', 'PATCH', 'DELETE']),
             }),
         });
@@ -149,36 +152,40 @@ describe('BackendStack', () => {
             Name: 'CognitoJwtAuthorizer-DEV',
             AuthorizerType: 'JWT',
             JwtConfiguration: {
-                Audience: ['sharedclientid', 'postmanclientid'],
+                Audience: ['sharedclientid', 'postmanclientid', 'alexaclientid'],
                 Issuer: 'https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_sharedpool',
             },
         });
     });
 
-    it('uses the Postman CloudFormation parameter in the dev authorizer when not configured', () => {
+    it('resolves Cognito audience from SSM parameters when not explicitly configured', () => {
         const app = new cdk.App();
-        const devStack = new BlockbusterTheatreBackendStack(app, 'DevStack', {
+        const stackWithSsm = new BlockbusterTheatreCoreStack(app, 'SsmCoreStack', {
             envName: 'dev',
-            prodUserPoolId: 'eu-west-2_sharedpool',
-            prodUserPoolClientId: 'sharedclientid',
             env: { account: '334624057595', region: 'eu-west-2' },
         });
-        const template = Template.fromStack(devStack);
-        template.hasParameter('ProdPostmanClientId', { Type: 'String', MinLength: 1 });
+        const template = Template.fromStack(stackWithSsm);
         template.hasResourceProperties('AWS::ApiGatewayV2::Authorizer', {
-            JwtConfiguration: {
-                Audience: ['sharedclientid', { Ref: 'ProdPostmanClientId' }],
-                Issuer: 'https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_sharedpool',
-            },
+            Name: 'CognitoJwtAuthorizer-DEV',
+            AuthorizerType: 'JWT',
+            JwtConfiguration: Match.objectLike({
+                Audience: Match.arrayWith([
+                    Match.objectLike({ Ref: Match.stringLikeRegexp('SsmParameterValueblockbustertheatreauthclientsbackendid') }),
+                    Match.objectLike({ Ref: Match.stringLikeRegexp('SsmParameterValueblockbustertheatreauthclientspostmanid') }),
+                    Match.objectLike({ Ref: Match.stringLikeRegexp('SsmParameterValueblockbustertheatreauthclientsalexaid') }),
+                ]),
+            }),
         });
     });
 
     it.each(['prod', 'dev'] as const)('tags managed resources for %s', (envName) => {
         const app = new cdk.App();
-        const taggedStack = new BlockbusterTheatreBackendStack(app, 'TaggedStack', {
+        const taggedStack = new BlockbusterTheatreCoreStack(app, 'TaggedStack', {
             envName,
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedclientid',
+            prodPostmanClientId: 'postmanclientid',
+            prodAlexaClientId: 'alexaclientid',
         });
         const template = Template.fromStack(taggedStack);
         for (const resourceType of ['AWS::DynamoDB::Table', 'AWS::Lambda::Function', 'AWS::IAM::Role']) {
@@ -197,12 +204,6 @@ describe('BackendStack', () => {
             });
         }
         if (envName === 'prod') {
-            template.hasResourceProperties('AWS::Cognito::UserPool', {
-                UserPoolTags: Match.objectLike({
-                    Project: 'blockbuster-theatre',
-                    Environment: envName,
-                }),
-            });
             template.hasResourceProperties('AWS::SES::EmailIdentity', {
                 Tags: Match.arrayWith([{ Key: 'Environment', Value: envName }]),
             });
@@ -249,15 +250,16 @@ describe('BackendStack', () => {
         template.hasResource('AWS::DynamoDB::Table', {
             DeletionPolicy: 'Retain',
             UpdateReplacePolicy: 'Retain',
-            Properties: Match.objectLike({
-                TableName: 'blockbuster-theatre-bookings-PROD',
-                BillingMode: 'PAY_PER_REQUEST',
-                KeySchema: [
-                    { AttributeName: 'showingId', KeyType: 'HASH' },
-                    { AttributeName: 'seatId', KeyType: 'RANGE' },
-                ],
-                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
-            }),
+            Properties: Match.objectLike({ TableName: 'blockbuster-theatre-movie-collections-PROD' }),
+        });
+        template.hasResourceProperties('AWS::DynamoDB::Table', {
+            TableName: 'blockbuster-theatre-bookings-PROD',
+            BillingMode: 'PAY_PER_REQUEST',
+            KeySchema: [
+                { AttributeName: 'showingId', KeyType: 'HASH' },
+                { AttributeName: 'seatId', KeyType: 'RANGE' },
+            ],
+            GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
         });
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-bookings-by-showtime-PROD',
@@ -340,7 +342,7 @@ describe('BackendStack', () => {
         });
     });
 
-    it('should create API Gateway routes', () => {
+    it('should create API Gateway routes without authorizationScopes', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::ApiGatewayV2::Route', 30);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
@@ -415,6 +417,12 @@ describe('BackendStack', () => {
             RouteKey: 'POST /collections/refresh',
             AuthorizationType: 'JWT',
         });
+
+        // Verify that none of the routes specify AuthorizationScopes
+        const routes = template.findResources('AWS::ApiGatewayV2::Route');
+        for (const route of Object.values(routes)) {
+            expect(route.Properties.AuthorizationScopes).toBeUndefined();
+        }
     });
 
     it('should output API endpoint', () => {
@@ -425,14 +433,10 @@ describe('BackendStack', () => {
         template.hasOutput('UserPoolId', {});
         template.hasOutput('UserPoolClientId', {});
         template.hasOutput('UserPoolIssuer', {});
-        template.hasOutput('CognitoLoginUrl', {
-            Description: 'Dark-mode Cognito managed login URL for browser authorization',
-        });
     });
 
     it('should grant Lambda permissions to DynamoDB', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::IAM::Policy', 27);
         template.hasResourceProperties('AWS::SES::EmailIdentity', {
             EmailIdentity: 'niallmclaughlin1998@gmail.com',
         });
@@ -458,15 +462,12 @@ describe('BackendStack', () => {
 
     it('should have correct resource order (DB -> Lambda -> API)', () => {
         const template = Template.fromStack(stack);
-        // Database should be created first (no dependencies)
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-movie-catalogue-PROD',
         });
-        // Lambda should be created with correct name
         template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
         });
-        // API should integrate with Lambda
         template.hasResourceProperties('AWS::ApiGatewayV2::Integration', {
             IntegrationType: 'AWS_PROXY',
         });

@@ -5,7 +5,7 @@ import { RemovalPolicy } from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { resourceName, type EnvironmentName } from './environment';
+import { resourceName, type EnvironmentName } from '../shared';
 
 interface ApiGatewayConstructProps {
     addMoviesFunction: lambda.IFunction;

@@ -2,7 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { ApiGatewayConstruct } from '../../../lib/stack';
+import { ApiGatewayConstruct } from '../../../lib/backend';
 
 describe('ApiGatewayConstruct', () => {
     let stack: cdk.Stack;

@@ -10,7 +10,7 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
-import { resourceName } from '../lib/stack/environment';
+import { resourceName } from '../lib/shared';
 
 const TABLE_BASE_NAMES = [
     'blockbuster-theatre-movie-catalogue',

@@ -608,7 +608,7 @@ The profile must have DynamoDB permissions for those tables and Cognito admin pe
 
 ## Prod and dev AWS environments
 
-The CDK entry point is `lib/stack/app.ts`. The environment defaults to `prod`; use `-c env=dev` to synthesize or deploy the isolated dev stack. Any other environment value is rejected.
+The CDK entry point is `bin/app.ts`. Without a context filter it synthesizes the shared auth stack and both backend environments; use `-c env=dev` to synthesize the dev backend stack.
 Set the `TMDB_API_KEY` environment variable to a non-empty TMDB read access token before synthesizing. The template contains a masked CloudFormation parameter rather than the token itself. For a direct deployment, pass the same value as `--parameters TmdbApiKey=<token>` through a secure shell; command-line arguments may be visible to local processes. The first deployment with this change requires the parameter for both environments.
 
 ```powershell
@@ -616,7 +616,7 @@ npx cdk synth -c env=prod
 npx cdk synth -c env=dev
 ```
 
-Prod keeps the existing stack ID and uses `-PROD`-suffixed DynamoDB tables, Lambda/API names, and Cognito pool/client names. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. External API and Cognito domains and the SES email identity remain unchanged. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming prod tables creates new, empty tables; retained old tables are not copied automatically. Copy and verify any needed data before purging the old tables. No S3 buckets are defined by this stack.
+Prod keeps the existing stack ID and uses `-PROD`-suffixed DynamoDB tables, Lambda/API names, and Cognito pool/client names. Dev uses a `BlockbusterTheatreCoreStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. External API and Cognito domains and the SES email identity remain unchanged. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming prod tables creates new, empty tables; retained old tables are not copied automatically. Copy and verify any needed data before purging the old tables. No S3 buckets are defined by this stack.
 
 The Cognito user pool is also retained on stack deletion. When recreating the stack, the unchanged Cognito domain and API mapping must be released by the old stack before the replacement can claim them. A retained pool and retained log group may still exist after deletion; inspect them before any cleanup.
 
