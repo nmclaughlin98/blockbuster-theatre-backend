@@ -4,17 +4,22 @@ const fs = require('node:fs');
 const deployStack = process.env.DEPLOY_STACK;
 const deployEnv = process.env.DEPLOY_ENVIRONMENT;
 
-const expectedStack =
-    deployStack === 'auth'
-        ? 'BlockbusterTheatreAuthStack'
-        : deployEnv === 'dev'
-            ? 'BlockbusterTheatreBackendStack-dev'
-            : 'BlockbusterTheatreBackendStack';
+const backendStack =
+    deployEnv === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
 
-const cdkArgs =
-    deployStack === 'auth'
-        ? ['cdk', 'synth', expectedStack, '-c', 'stack=auth', '--output', 'cdk-out']
-        : ['cdk', 'synth', expectedStack, '-c', `env=${deployEnv}`, '-c', 'stack=backend', '--output', 'cdk-out'];
+let expectedStacks;
+let cdkArgs;
+
+if (deployStack === 'auth') {
+    expectedStacks = ['BlockbusterTheatreAuthStack'];
+    cdkArgs = ['cdk', 'synth', ...expectedStacks, '-c', 'stack=auth', '--output', 'cdk-out'];
+} else if (deployStack === 'both') {
+    expectedStacks = ['BlockbusterTheatreAuthStack', backendStack];
+    cdkArgs = ['cdk', 'synth', ...expectedStacks, '-c', `env=${deployEnv}`, '-c', 'stack=all', '--output', 'cdk-out'];
+} else {
+    expectedStacks = [backendStack];
+    cdkArgs = ['cdk', 'synth', ...expectedStacks, '-c', `env=${deployEnv}`, '-c', 'stack=backend', '--output', 'cdk-out'];
+}
 
 execFileSync('npx', cdkArgs, { stdio: 'inherit' });
 
@@ -23,7 +28,12 @@ const stacks = Object.entries(manifest.artifacts)
     .filter(([, artifact]) => artifact.type === 'aws:cloudformation:stack')
     .map(([name]) => name);
 
-if (stacks.length !== 1 || stacks[0] !== expectedStack) {
-    console.error(`Expected only ${expectedStack}; synthesized: ${stacks.join(', ') || 'no stacks'}`);
+const missingStacks = expectedStacks.filter((name) => !stacks.includes(name));
+const unexpectedStacks = stacks.filter((name) => !expectedStacks.includes(name));
+
+if (missingStacks.length > 0 || unexpectedStacks.length > 0) {
+    console.error(
+        `Expected stacks [${expectedStacks.join(', ')}]; synthesized: [${stacks.join(', ') || 'no stacks'}]`
+    );
     process.exit(1);
 }
