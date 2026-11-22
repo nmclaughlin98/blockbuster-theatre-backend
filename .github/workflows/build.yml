@@ -3,9 +3,6 @@ run-name: '🔨 Build and Package (${{ github.head_ref || github.ref_name }} #${
 
 on:
   push:
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
