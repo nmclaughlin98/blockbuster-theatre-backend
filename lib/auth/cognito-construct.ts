@@ -6,7 +6,6 @@ import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import { lambdaSettings } from '../backend/lambdas-construct';
-import { resourceName } from '../shared';
 
 export function createCognitoResources(
     scope: Construct,
@@ -14,7 +13,7 @@ export function createCognitoResources(
     domainPrefix: string
 ): { userPool: cognito.UserPool; userPoolDomain: cognito.UserPoolDomain } {
     const userPool = new cognito.UserPool(scope, 'BlockbusterTheatreCognitoUsers', {
-        userPoolName: resourceName('blockbuster-theatre-users', 'prod'),
+        userPoolName: 'blockbuster-theatre-users',
         selfSignUpEnabled: true,
         signInAliases: { email: true },
         autoVerify: { email: true },
@@ -30,7 +29,7 @@ export function createCognitoResources(
     });
 
     const preTokenFunction = new lambdaNodejs.NodejsFunction(scope, 'PreTokenGenerationHandler', {
-        functionName: resourceName('blockbuster-theatre-pre-token-generation-handler', 'prod'),
+        functionName: 'blockbuster-theatre-pre-token-generation-handler',
         runtime: lambdaSettings.runtime,
         entry: path.join(__dirname, '../../src/main/lambda/handlers/PreTokenGeneration/pre-token-generation-handler.ts'),
         handler: 'handler',

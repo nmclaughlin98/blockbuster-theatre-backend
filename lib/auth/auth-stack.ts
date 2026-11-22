@@ -1,7 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
-import { resourceName, AuthSsmHelper } from '../shared';
+import { AuthSsmHelper } from '../shared';
 import { createCognitoResources } from './cognito-construct';
 import { createBookingsResourceServer } from './resource-servers-construct';
 
@@ -54,7 +54,7 @@ export class AuthStack extends cdk.Stack {
 
         // 5. Postman App Client (OAuth Authorization Code Grant)
         this.postmanClient = this.userPool.addClient('PostmanAppClient', {
-            userPoolClientName: resourceName('postman-test-client', envName),
+            userPoolClientName: 'postman-test-client',
             generateSecret: false,
             oAuth: {
                 flows: {
@@ -91,7 +91,7 @@ export class AuthStack extends cdk.Stack {
 
         // 6. Backend App Client (SRP Auth Flow)
         this.backendClient = this.userPool.addClient('BackendClient', {
-            userPoolClientName: resourceName('blockbuster-theatre-backend', envName),
+            userPoolClientName: 'blockbuster-theatre-backend',
             generateSecret: false,
             authFlows: { userSrp: true, adminUserPassword: true },
             disableOAuth: true,
@@ -105,7 +105,7 @@ export class AuthStack extends cdk.Stack {
 
         // 7. Alexa App Client (OAuth Authorization Code Grant with custom 'bookings.read' scope)
         this.alexaClient = this.userPool.addClient('AlexaAppClient', {
-            userPoolClientName: resourceName('alexa-skill-client', envName),
+            userPoolClientName: 'alexa-skill-client',
             generateSecret: false,
             oAuth: {
                 flows: {

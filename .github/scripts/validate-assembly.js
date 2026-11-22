@@ -60,7 +60,7 @@ if (!isAuth) {
         (r) => r.Type === 'AWS::Cognito::UserPool'
     );
 
-    if (pools.length !== 1 || pools[0].Properties?.UserPoolName !== 'blockbuster-theatre-users-PROD') {
+    if (pools.length !== 1 || pools[0].Properties?.UserPoolName !== blockbuster - theatre - users) {
         throw new Error('Missing or invalid Cognito UserPool in BlockbusterTheatreAuthStack');
     }
 }

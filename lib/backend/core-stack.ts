@@ -7,7 +7,6 @@ import { DatabaseConstruct } from './database-construct';
 import { ApiGatewayConstruct } from './api-gateway-construct';
 import { LambdaConstruct } from './lambdas-construct';
 import {
-    resourceName,
     AuthSsmHelper,
     type AuthParameters,
     type EnvironmentName,
@@ -69,7 +68,7 @@ export class BackendStack extends cdk.Stack {
 
         // 2. HTTP JWT Authorizer accepting SRP backend client and OAuth clients (Postman, Alexa)
         this.jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
-            resourceName('CognitoJwtAuthorizer', envName),
+            'CognitoJwtAuthorizer',
             `https://cognito-idp.${this.region}.amazonaws.com/${this.authParameters.userPoolId}`,
             {
                 jwtAudience: [

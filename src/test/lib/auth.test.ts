@@ -30,7 +30,7 @@ describe('BlockbusterTheatreAuthStack', () => {
     it('creates the shared Cognito User Pool with self-signup and password policy', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Cognito::UserPool', {
-            UserPoolName: 'blockbuster-theatre-users-PROD',
+            UserPoolName: blockbuster - theatre - users,
             UsernameAttributes: ['email'],
             AutoVerifiedAttributes: ['email'],
             Policies: {
