@@ -15,10 +15,14 @@ function ghApi(args) {
         encoding: 'utf8',
         maxBuffer: 20 * 1024 * 1024,
     });
-    return JSON.parse(output);
+    return output
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
 }
 
-const RUN_SUMMARY_JQ = `[.workflow_runs[] | {
+const RUN_SUMMARY_JQ = `.workflow_runs[] | {
   id,
   run_number,
   head_sha,
@@ -26,7 +30,7 @@ const RUN_SUMMARY_JQ = `[.workflow_runs[] | {
   event,
   conclusion,
   repo_full_name: .head_repository.full_name
-}]`;
+}`;
 
 const env = process.env;
 const eventName = env.GITHUB_EVENT_NAME;
@@ -111,8 +115,8 @@ if (eventName === 'workflow_run') {
             const runs = ghApi(['-X', 'GET', ...query, '--jq', RUN_SUMMARY_JQ]);
             selectedRun = runs[0];
         } else {
-            const pages = ghApi(['-X', 'GET', '--paginate', '--slurp', ...query, '--jq', RUN_SUMMARY_JQ]);
-            selectedRun = pages.flat().find((r) => String(r.run_number) === requestedBuild);
+            const runs = ghApi(['-X', 'GET', '--paginate', ...query, '--jq', RUN_SUMMARY_JQ]);
+            selectedRun = runs.find((r) => String(r.run_number) === requestedBuild);
         }
 
         if (
@@ -145,8 +149,8 @@ if (eventName === 'workflow_run') {
         const runs = ghApi([endpoint, '--jq', RUN_SUMMARY_JQ]);
         selectedRun = runs[0];
     } else {
-        const pages = ghApi(['--paginate', '--slurp', endpoint, '--jq', RUN_SUMMARY_JQ]);
-        selectedRun = pages.flat().find((r) => String(r.run_number) === requestedBuild);
+        const runs = ghApi(['--paginate', endpoint, '--jq', RUN_SUMMARY_JQ]);
+        selectedRun = runs.find((r) => String(r.run_number) === requestedBuild);
     }
 
     if (!selectedRun) {
