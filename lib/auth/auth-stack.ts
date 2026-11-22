@@ -11,7 +11,7 @@ export interface BlockbusterTheatreAuthStackProps extends cdk.StackProps {
     readonly removalPolicy?: cdk.RemovalPolicy;
 }
 
-export class CognitoStack extends cdk.Stack {
+export class AuthStack extends cdk.Stack {
     public readonly userPool: cognito.UserPool;
     public readonly userPoolDomain: cognito.UserPoolDomain;
     public readonly backendClient: cognito.UserPoolClient;

@@ -48,8 +48,8 @@ jobs:
           else
             CDK_ENV=prod
           fi
-          echo "Synthesizing the ${CDK_ENV} environment."
-          npx cdk synth -c env="$CDK_ENV" --output cdk-out
+          echo "Synthesizing AuthStack and CoreStack (${CDK_ENV})..."
+          npx cdk synth --all -c env="$CDK_ENV" --output cdk-out
 
       - name: Upload Build Artifact
         id: upload_artifact
