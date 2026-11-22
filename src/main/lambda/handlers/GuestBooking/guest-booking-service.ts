@@ -207,6 +207,7 @@ export async function createGuestBooking(
             ...(request.offerId
                 ? { offerId: request.offerId }
                 : { movieId: screening.movieId }),
+            date: request.date,
             showtime: {
                 day: screening.day,
                 screen: screening.screen,
@@ -242,6 +243,9 @@ export async function createGuestBooking(
     const legacyBookingsTableName = requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME');
     const bookingReferencesTableName = requiredEnvironmentVariable(
         'BOOKING_REFERENCES_TABLE_NAME'
+    );
+    const showtimeRegistryTableName = requiredEnvironmentVariable(
+        'SHOWTIME_REGISTRY_TABLE_NAME'
     );
     const bookingKey = { showtimeId: request.showtimeId, seatId: `BOOKING#${bookingId}` };
     const storedTickets = checkout.tickets.map((ticket) => ({
@@ -336,6 +340,16 @@ export async function createGuestBooking(
                     ConditionExpression: 'attribute_not_exists(seatId)',
                 },
             })),
+            {
+                ConditionCheck: {
+                    TableName: showtimeRegistryTableName,
+                    Key: { registryKey: `SHOWTIME#${request.showtimeId}` },
+                    ConditionExpression:
+                        'attribute_exists(registryKey) AND (attribute_not_exists(#status) OR #status = :active)',
+                    ExpressionAttributeNames: { '#status': 'status' },
+                    ExpressionAttributeValues: { ':active': 'ACTIVE' },
+                },
+            },
         ];
         try {
             await docClient.send(

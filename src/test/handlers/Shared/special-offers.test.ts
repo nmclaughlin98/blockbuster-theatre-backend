@@ -52,13 +52,6 @@ const movie = {
     synopsis: 'A short description.',
     tagline: 'A tagline.',
     trailer: 'https://example.com/trailer',
-    showtimes: {
-        Monday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Tuesday: [{ screen: '1', time: '11:00' }],
-    },
     GSI1PK: 'MOVIE',
     GSI1SK: '2026-09-25#456',
 };
@@ -68,6 +61,7 @@ const comingSoonMovie = {
     slug: 'coming-soon',
     title: 'Coming Soon',
     isComingSoon: true,
+    releaseDate: '2027-01-01T00:00:00.000Z',
 };
 
 const kidsClubOffer = {
@@ -178,7 +172,7 @@ describe('Special offers and pricing handlers', () => {
         jest.restoreAllMocks();
     });
 
-    it('combines visible, non-coming-soon movies and active offers for film selection', async () => {
+    it('combines visible, currently bookable movies and active offers for film selection', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [movie, comingSoonMovie] });
         ddbMock.on(ScanCommand).resolves({
             Items: [kidsClubOffer, secondOfferForSameMovie, { ...kidsClubOffer, isActive: false }],
@@ -254,7 +248,7 @@ describe('Special offers and pricing handlers', () => {
                 queryStringParameters: {
                     movieId: '456',
                     day: 'Monday',
-                    time: '11:00',
+                    time: '13:00',
                 },
             })
         );
@@ -272,7 +266,7 @@ describe('Special offers and pricing handlers', () => {
 
         const result = await resolvePricing({
             movieId: 456,
-            showtime: { day: 'Monday', time: '11:00' },
+            showtime: { day: 'Monday', time: '13:00' },
         });
 
         expect(result.movieId).toBe('456');
@@ -286,9 +280,6 @@ describe('Special offers and pricing handlers', () => {
         ddbMock.on(QueryCommand).resolves({
             Items: [{
                 ...movie,
-                showtimes: {
-                    Monday: [{ screen: '3', time: '13:00' }],
-                },
             }],
         });
         ddbMock.on(GetCommand).resolves({ Item: offPeakPricing });
@@ -313,18 +304,11 @@ describe('Special offers and pricing handlers', () => {
         ddbMock.on(QueryCommand).resolves({
             Items: [{
                 ...movie,
-                showtimes: {
-                    Monday: [{ screen: '1', time: '11:00' }],
-                    Tuesday: [
-                        { screen: '1', time: '11:00' },
-                        { screen: '3', time: '19:00' },
-                    ],
-                },
             }],
         });
         ddbMock.on(GetCommand).resolves({ Item: crazyTuesdayPricing });
 
-        for (const time of ['11:00', '19:00']) {
+        for (const time of ['12:15', '21:00']) {
             const result = await getTicketPricing(
                 createEvent({
                     queryStringParameters: {
@@ -443,7 +427,7 @@ describe('Special offers and pricing handlers', () => {
                 queryStringParameters: {
                     movieId: '456',
                     day: 'Monday',
-                    time: '13:00',
+                    time: '11:00',
                 },
             })
         );
@@ -459,14 +443,14 @@ describe('Special offers and pricing handlers', () => {
         ['non-object request', null],
         ['unexpected request property', {
             movieId: '456',
-            showtime: { day: 'Monday', time: '11:00' },
+            showtime: { day: 'Monday', time: '13:00' },
             price: 1,
         }],
         ['missing movie or offer', { showtime: { day: 'Monday', time: '11:00' } }],
         ['both movie and offer', {
             movieId: '456',
             offerId: 'kids-club',
-            showtime: { day: 'Monday', time: '11:00' },
+            showtime: { day: 'Monday', time: '13:00' },
         }],
         ['non-numeric movie ID', {
             movieId: 'a-movie',
@@ -620,7 +604,7 @@ describe('Special offers and pricing handlers', () => {
         ddbMock.on(GetCommand).resolves({ Item: { ...offPeakPricing, currency: 'USD' } });
         await expect(resolvePricing({
             movieId: '456',
-            showtime: { day: 'Monday', time: '11:00' },
+            showtime: { day: 'Monday', time: '13:00' },
         })).rejects.toThrow('missing or invalid');
 
         ddbMock.reset();
@@ -628,7 +612,7 @@ describe('Special offers and pricing handlers', () => {
         ddbMock.on(GetCommand).resolves({ Item: offPeakPricing });
         await expect(validateCheckoutService({
             movieId: '456',
-            showtime: { day: 'Monday', time: '11:00' },
+            showtime: { day: 'Monday', time: '13:00' },
             tickets: [{ tierId: 'unknown', quantity: 1 }],
         })).rejects.toMatchObject({ statusCode: 400 });
     });

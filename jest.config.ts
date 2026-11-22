@@ -16,7 +16,8 @@ const config: Config = {
 
   collectCoverageFrom: [
     'src/main/**/*.ts',
-    'lib/stack/gateway.ts',
+    'lib/backend/api-gateway-construct.ts',
+    'lib/backend/lambdas-construct.ts',
     '!**/*.d.ts',
     '!**/node_modules/**',
   ],

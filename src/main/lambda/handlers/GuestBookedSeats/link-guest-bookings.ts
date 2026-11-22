@@ -85,32 +85,37 @@ export async function linkGuestBookings(userId: string, email: string): Promise<
     const cutoff = getShowtimeCutoff(new Date());
     const candidates: Array<{ table: typeof tables[number]; item: LinkedBooking }> = [];
     for (const table of tables) {
-        let exclusiveStartKey: Record<string, unknown> | undefined;
-        do {
-            const page: QueryCommandOutput = await docClient.send(new QueryCommand({
-                TableName: table.name,
-                IndexName: 'CustomerEmailUpcomingBookings',
-                KeyConditionExpression: 'customerEmail = :email AND #date >= :cutoffDate',
-                FilterExpression: 'recordType = :booking AND (#date > :cutoffDate OR (#date = :cutoffDate AND #time >= :cutoffTime)) AND (attribute_not_exists(userId) OR userId = :null)',
-                ExpressionAttributeNames: { '#date': 'date', '#time': 'time' },
-                ExpressionAttributeValues: {
-                    ':email': email,
-                    ':booking': 'BOOKING',
-                    ':null': null,
-                    ':cutoffDate': cutoff.date,
-                    ':cutoffTime': cutoff.time,
-                },
-                ExclusiveStartKey: exclusiveStartKey,
-            }));
-            for (const item of page.Items ?? []) {
-                if (!isLinkedBooking(item, table.key)) {
-                    throw new Error('Guest booking contains invalid linking details.');
+        for (const today of [false, true]) {
+            let exclusiveStartKey: Record<string, unknown> | undefined;
+            do {
+                const page: QueryCommandOutput = await docClient.send(new QueryCommand({
+                    TableName: table.name,
+                    IndexName: 'CustomerEmailUpcomingBookings',
+                    KeyConditionExpression: `customerEmail = :email AND #date ${today ? '=' : '>'} :cutoffDate`,
+                    FilterExpression: `recordType = :booking AND (attribute_not_exists(userId) OR userId = :null)${today ? ' AND #time >= :cutoffTime' : ''}`,
+                    ExpressionAttributeNames: {
+                        '#date': 'date',
+                        ...(today && { '#time': 'time' }),
+                    },
+                    ExpressionAttributeValues: {
+                        ':email': email,
+                        ':booking': 'BOOKING',
+                        ':null': null,
+                        ':cutoffDate': cutoff.date,
+                        ...(today && { ':cutoffTime': cutoff.time }),
+                    },
+                    ExclusiveStartKey: exclusiveStartKey,
+                }));
+                for (const item of page.Items ?? []) {
+                    if (!isLinkedBooking(item, table.key)) {
+                        throw new Error('Guest booking contains invalid linking details.');
+                    }
+                    if (!isUpcomingBooking(item, cutoff)) continue;
+                    candidates.push({ table, item });
                 }
-                if (!isUpcomingBooking(item, cutoff)) continue;
-                candidates.push({ table, item });
-            }
-            exclusiveStartKey = page.LastEvaluatedKey;
-        } while (exclusiveStartKey);
+                exclusiveStartKey = page.LastEvaluatedKey;
+            } while (exclusiveStartKey);
+        }
     }
 
     const linked: LinkedBooking[] = [];

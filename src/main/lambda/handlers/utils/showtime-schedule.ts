@@ -29,6 +29,9 @@ const POSSIBLE_TIMES = [
 ] as const;
 
 const SCREENS = ['1', '2', '3', '4', '5'] as const;
+export const MAX_SCREENINGS_PER_MOVIE_PER_DAY = 4;
+export const TURNAROUND_BUFFER_MINUTES = 45;
+export const SCHEDULE_EXTENSION_DAYS = 5;
 
 export function randomScreenForShowtime(
     seed: string
@@ -99,7 +102,7 @@ export function generateShowtimes(
 
         const numberOfShowings = lowerPriority
             ? Math.floor(random() * 2) + 1
-            : Math.floor(random() * 3) + 2;
+            : Math.min(MAX_SCREENINGS_PER_MOVIE_PER_DAY, Math.floor(random() * 3) + 2);
         schedule[day] = shuffledTimes
             .slice(0, numberOfShowings)
             .sort((first, second) => first.localeCompare(second))

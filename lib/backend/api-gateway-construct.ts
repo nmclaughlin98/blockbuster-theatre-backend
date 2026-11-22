@@ -5,7 +5,7 @@ import { RemovalPolicy } from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { resourceName, type EnvironmentName } from './environment';
+import { resourceName, type EnvironmentName } from '../shared';
 
 interface ApiGatewayConstructProps {
     addMoviesFunction: lambda.IFunction;
@@ -27,6 +27,7 @@ interface ApiGatewayConstructProps {
     listBookingsFunction: lambda.IFunction;
     createBookingFunction: lambda.IFunction;
     rescheduleBookingFunction: lambda.IFunction;
+    manageShowtimesFunction: lambda.IFunction;
     guestBookedSeatsFunction: lambda.IFunction;
     guestBookingFunction: lambda.IFunction;
     guestConversionFunction: lambda.IFunction;
@@ -189,8 +190,12 @@ export class ApiGatewayConstruct extends Construct {
             props.createBookingFunction
         );
         const rescheduleBookingIntegration = new integrations.HttpLambdaIntegration(
-            'RescheduleBookingIntegration',
+            'RescheduleCustomerBookingIntegration',
             props.rescheduleBookingFunction
+        );
+        const manageShowtimesIntegration = new integrations.HttpLambdaIntegration(
+            'ManageShowtimesIntegration',
+            props.manageShowtimesFunction
         );
         const guestBookedSeatsIntegration = new integrations.HttpLambdaIntegration(
             'GuestBookedSeatsIntegration',
@@ -335,6 +340,20 @@ export class ApiGatewayConstruct extends Construct {
             path: '/bookings/reschedule-booking',
             methods: [apigw2.HttpMethod.PATCH],
             integration: rescheduleBookingIntegration,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/showtimes',
+            methods: [apigw2.HttpMethod.POST],
+            integration: manageShowtimesIntegration,
+            authorizer: props.jwtAuthorizer,
+        });
+
+        this.httpApi.addRoutes({
+            path: '/showtimes/{showtimeId}',
+            methods: [apigw2.HttpMethod.PATCH, apigw2.HttpMethod.DELETE],
+            integration: manageShowtimesIntegration,
+            authorizer: props.jwtAuthorizer,
         });
 
         this.httpApi.addRoutes({

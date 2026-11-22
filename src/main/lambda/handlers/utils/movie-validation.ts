@@ -168,12 +168,16 @@ export function isMovieRecord(value: unknown): value is MovieRecord {
         typeof value.score === 'number' &&
         typeof value.runtime === 'number' &&
         typeof value.releaseDate === 'string' &&
+        (value.startDate === undefined ||
+            (typeof value.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.startDate))) &&
+        (value.runEndDate === undefined ||
+            (typeof value.runEndDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.runEndDate))) &&
+        (value.preSalesEligible === undefined || typeof value.preSalesEligible === 'boolean') &&
         typeof value.poster === 'string' &&
         typeof value.still === 'string' &&
         isStringArray(value.starring) &&
         typeof value.director === 'string' &&
         typeof value.synopsis === 'string' &&
-        typeof value.trailer === 'string' &&
-        isMovieShowtimes(value.showtimes)
+        typeof value.trailer === 'string'
     );
 }

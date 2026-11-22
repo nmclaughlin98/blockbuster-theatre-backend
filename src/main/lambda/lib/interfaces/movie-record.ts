@@ -1,5 +1,3 @@
-import type { MovieShowtimes } from './showtime';
-
 export interface MovieRecord {
     tmdbId: string;
     slug: string;
@@ -17,6 +15,9 @@ export interface MovieRecord {
     score: number;
     runtime: number;
     releaseDate: string;
+    startDate?: string;
+    runEndDate?: string;
+    preSalesEligible?: boolean;
     poster: string;
     still: string;
     starring: string[];
@@ -24,5 +25,4 @@ export interface MovieRecord {
     synopsis: string;
     tagline: string;
     trailer: string;
-    showtimes: MovieShowtimes;
 }

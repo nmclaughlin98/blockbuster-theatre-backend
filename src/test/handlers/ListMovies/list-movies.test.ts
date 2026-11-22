@@ -14,24 +14,18 @@ const movieRecord = {
     slug: 'a-movie',
     title: 'A Movie',
     visible: true,
-    isComingSoon: true,
     genres: ['Adventure', 'Drama'],
     rating: 'PG',
     score: 7.4,
     runtime: 110,
-    releaseDate: '2026-09-25T00:00:00.000Z',
+    releaseDate: '2030-09-25T00:00:00.000Z',
+    startDate: '2030-09-25',
     poster: 'https://example.com/poster.jpg',
     still: 'https://example.com/still.jpg',
     starring: ['Actor One'],
     director: 'Director Name',
     synopsis: 'A short description.',
     trailer: 'https://www.youtube-nocookie.com/embed/example',
-    showtimes: {
-        Monday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-    },
 };
 
 function createEvent(
@@ -87,11 +81,14 @@ describe('List movies Lambda handler', () => {
                 title: 'A Movie',
                 visible: true,
                 isComingSoon: true,
+                lifecycleStatus: 'Coming Soon (No Showtimes Yet)',
                 poster: 'https://example.com/poster.jpg',
                 rating: 'PG',
                 runtime: 110,
                 genres: ['Adventure', 'Drama'],
-                releaseDate: '2026-09-25',
+                releaseDate: '2030-09-25',
+                startDate: '2030-09-25',
+                preSalesEligible: false,
                 score: 7.4,
             },
         ]);
@@ -173,13 +170,14 @@ describe('List movies Lambda handler', () => {
         );
         expect(new Set(movies.map((movie) => movie.movieId)).size).toBe(35);
         expect(movies[11]).toMatchObject({ movieId: 1012, visible: true });
-        expect(movies[0]).toEqual({
+        expect(movies[0]).toMatchObject({
             slug: 'movie-0',
             sortTitle: 'Movie 0',
             movieId: 1000,
             title: 'Movie 0',
             visible: true,
             isComingSoon: true,
+            lifecycleStatus: 'Coming Soon (No Showtimes Yet)',
             isCarousel: false,
             trailer: movieRecord.trailer,
             synopsis: movieRecord.synopsis,
@@ -188,10 +186,12 @@ describe('List movies Lambda handler', () => {
             rating: movieRecord.rating,
             runtime: movieRecord.runtime,
             genres: movieRecord.genres,
-            releaseDate: '2026-09-25',
+            releaseDate: '2030-09-25',
+            startDate: '2030-09-25',
+            preSalesEligible: false,
             score: movieRecord.score,
-            showtimes: movieRecord.showtimes,
         });
+        expect(Object.keys(movies[0].showtimes as object).length).toBeGreaterThan(0);
         expect(ddbMock.commandCalls(QueryCommand).map((call) => call.args[0].input.ExclusiveStartKey))
             .toEqual([undefined, key1, key2]);
         expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThan(4 * 1024 * 1024);
@@ -252,7 +252,7 @@ describe('List movies Lambda handler', () => {
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(20);
     });
 
-    it('treats existing records without the flag as released', async () => {
+    it('derives lifecycle for records without the legacy flag', async () => {
         const legacyMovieRecord = { ...movieRecord };
         Reflect.deleteProperty(legacyMovieRecord, 'isComingSoon');
         ddbMock.on(QueryCommand).resolves({ Items: [legacyMovieRecord] });
@@ -260,7 +260,10 @@ describe('List movies Lambda handler', () => {
         const result = await handler(createEvent());
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result).movies).toMatchObject([{ isComingSoon: false }]);
+        expect(responseBody(result).movies).toMatchObject([{
+            isComingSoon: true,
+            lifecycleStatus: 'Coming Soon (No Showtimes Yet)',
+        }]);
     });
 
     it.each([

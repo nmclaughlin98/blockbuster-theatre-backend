@@ -156,6 +156,7 @@ export async function listBookedSeats(
     try {
         const resolved = await resolvePricing({
             movieId: selection.movieId,
+            date: selection.date,
             showtime: selection.showtime,
         });
         showtime = resolved.showtime;
@@ -318,6 +319,7 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
             ...(request.offerId
                 ? { offerId: request.offerId }
                 : { movieId: request.movieId }),
+            date: request.date,
             showtime: request.showtime,
         });
     } catch (error: unknown) {
@@ -343,6 +345,9 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
         { screen, time: request.showtime.time }
     );
     const legacyTableName = requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME');
+    const showtimeRegistryTableName = requiredEnvironmentVariable(
+        'SHOWTIME_REGISTRY_TABLE_NAME'
+    );
     const legacyId = legacyShowingId(
         resolved.movieId,
         request.date,
@@ -380,6 +385,16 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
                             ConditionExpression: 'attribute_not_exists(seatId)',
                         },
                     })),
+                    {
+                        ConditionCheck: {
+                            TableName: showtimeRegistryTableName,
+                            Key: { registryKey: `SHOWTIME#${showtimeId}` },
+                            ConditionExpression:
+                                'attribute_exists(registryKey) AND (attribute_not_exists(#status) OR #status = :active)',
+                            ExpressionAttributeNames: { '#status': 'status' },
+                            ExpressionAttributeValues: { ':active': 'ACTIVE' },
+                        },
+                    },
                 ],
             })
         );

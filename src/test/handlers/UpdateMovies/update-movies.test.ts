@@ -105,7 +105,7 @@ describe('Update movies Lambda handler', () => {
         expect(commands).toHaveLength(2);
         expect(commands[0].args[0].input).toMatchObject({
             Key: { tmdbId: '123', slug: 'a-movie' },
-            UpdateExpression: 'SET #field0 = :value0 REMOVE collectionId, GSI2PK, GSI2SK',
+            UpdateExpression: 'SET #field0 = :value0 REMOVE collectionId, GSI2PK, GSI2SK, showtimes',
             ConditionExpression: 'attribute_exists(tmdbId) AND attribute_exists(slug)',
             ExpressionAttributeNames: { '#field0': 'visible' },
             ExpressionAttributeValues: { ':value0': false },
@@ -121,7 +121,7 @@ describe('Update movies Lambda handler', () => {
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             Key: { tmdbId: '123', slug: 'a-movie' },
-            UpdateExpression: 'SET #field0 = :value0, #field1 = :value1, #field2 = :value2 REMOVE collectionId, GSI2PK, GSI2SK',
+            UpdateExpression: 'SET #field0 = :value0, #field1 = :value1, #field2 = :value2 REMOVE collectionId, GSI2PK, GSI2SK, showtimes',
             ExpressionAttributeNames: {
                 '#field0': 'title',
                 '#field1': 'genres',
@@ -135,24 +135,23 @@ describe('Update movies Lambda handler', () => {
         });
     });
 
-    it('accepts screened showtime slots in movie updates', async () => {
+    it('removes legacy movie showtimes while updating scheduling metadata', async () => {
         ddbMock.on(UpdateCommand).resolves({});
-        const showtimes = {
-            Monday: [
-                { screen: '1', time: '13:00' },
-                { screen: '5', time: '14:20' },
-            ],
-        };
 
-        const result = await invoke(
-            JSON.stringify({ movieIds: [123], updates: { showtimes } })
-        );
+        const result = await invoke(JSON.stringify({
+            movieIds: [123],
+            updates: { startDate: '2026-10-01', runEndDate: '2026-12-31', preSalesEligible: true },
+        }));
 
         expect(result.statusCode).toBe(200);
-        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input)
-            .toMatchObject({
-                ExpressionAttributeValues: { ':value0': showtimes },
-            });
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
+            UpdateExpression: expect.stringContaining('REMOVE collectionId, GSI2PK, GSI2SK, showtimes'),
+            ExpressionAttributeNames: {
+                '#field0': 'startDate',
+                '#field1': 'runEndDate',
+                '#field2': 'preSalesEligible',
+            },
+        });
     });
 
     it('updates a movie sort title', async () => {
@@ -164,7 +163,7 @@ describe('Update movies Lambda handler', () => {
 
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
-            UpdateExpression: 'SET #field0 = :value0 REMOVE collectionId, GSI2PK, GSI2SK',
+            UpdateExpression: 'SET #field0 = :value0 REMOVE collectionId, GSI2PK, GSI2SK, showtimes',
             ExpressionAttributeNames: { '#field0': 'sortTitle' },
             ExpressionAttributeValues: { ':value0': 'Saga 01 - First Film' },
         });
@@ -177,7 +176,7 @@ describe('Update movies Lambda handler', () => {
 
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             Key: { tmdbId: '123', slug: 'a-movie' },
-            UpdateExpression: 'SET #field0 = :value0, #gsi1sk = :gsi1sk REMOVE collectionId, GSI2PK, GSI2SK',
+            UpdateExpression: 'SET #field0 = :value0, #gsi1sk = :gsi1sk REMOVE collectionId, GSI2PK, GSI2SK, showtimes',
             ExpressionAttributeNames: {
                 '#field0': 'releaseDate',
                 '#gsi1sk': 'GSI1SK',

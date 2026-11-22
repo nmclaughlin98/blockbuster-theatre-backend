@@ -17,6 +17,8 @@
     "test:coverage": "jest --coverage --runInBand",
     "seed:pricing": "ts-node scripts/seed-pricing-offers.ts",
     "migrate:movie-image-urls": "ts-node scripts/migrate-movie-image-urls.ts",
+    "migrate:showtime-registry": "ts-node scripts/migrate-showtime-registry.ts",
+    "migrate:movie-showtimes": "ts-node scripts/migrate-movie-showtimes.ts",
     "sync:dev": "ts-node scripts/sync-prod-to-dev.ts",
     "update:movie-showtimes": "ts-node scripts/update-movie-showtimes.ts",
     "update:offer-showtimes": "ts-node scripts/update-offer-showtimes.ts",
@@ -51,6 +53,7 @@
     "@aws-sdk/lib-dynamodb": "^3.500.0",
     "aws-cdk-lib": "^2.274.0",
     "constructs": "^10.3.0",
+    "dotenv": "^18.0.10",
     "pdfkit": "^0.20.2",
     "qrcode": "^1.5.4"
   },

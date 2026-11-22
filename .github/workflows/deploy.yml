@@ -1,5 +1,5 @@
 name: 2. Deploy Stack 🚀
-run-name: "🚀 Deploy Stack (${{ inputs.target_env != 'auto' && inputs.target_env || inputs.environment || (github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch == 'dev' && 'dev' || github.ref == 'refs/heads/main' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
+run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env != 'auto' && inputs.target_env || inputs.environment || (github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch == 'dev' && 'dev' || github.ref == 'refs/heads/main' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
   workflow_run:
@@ -21,6 +21,14 @@ on:
           - auto
           - dev
           - prod
+      target_stack:
+        description: 'Stack to deploy (backend or auth)'
+        required: false
+        type: choice
+        default: backend
+        options:
+          - backend
+          - auth
       environment:
         description: 'Legacy environment input (leave empty when using target_env)'
         required: false
@@ -51,6 +59,7 @@ jobs:
       build_run_id: ${{ steps.select_build.outputs.build_run_id }}
       deploy_branch: ${{ steps.select_build.outputs.deploy_branch }}
       deploy_environment: ${{ steps.select_build.outputs.deploy_environment }}
+      deploy_stack: ${{ steps.select_build.outputs.deploy_stack }}
 
     steps:
       - name: Checkout Repository
@@ -66,127 +75,19 @@ jobs:
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
           INPUT_ENVIRONMENT: ${{ inputs.environment }}
           INPUT_TARGET_ENV: ${{ inputs.target_env }}
+          INPUT_TARGET_STACK: ${{ inputs.target_stack }}
           INPUT_ALLOW_NON_MAIN_PROD: ${{ inputs.allow_non_main_prod }}
           TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
           TRIGGER_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node .github/scripts/select-build.js
+
+      - name: Backup Workflow Scripts
+        id: backup_scripts
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            BUILD_RUN_ID="$TRIGGER_RUN_ID"
-            TARGET_BUILD="$TRIGGER_RUN_NUMBER"
-            TARGET_BRANCH="$TRIGGER_HEAD_BRANCH"
-            BUILD_SHA="$TRIGGER_HEAD_SHA"
-            if [ "$TARGET_BRANCH" = "main" ]; then
-              TARGET_ENVIRONMENT=prod
-            elif [ "$TARGET_BRANCH" = "dev" ]; then
-              TARGET_ENVIRONMENT=dev
-            else
-              echo "Error: Only main and dev builds can be deployed."
-              exit 1
-            fi
-          else
-            TARGET_ENVIRONMENT="${INPUT_TARGET_ENV:-auto}"
-            if [ "$TARGET_ENVIRONMENT" = "auto" ]; then
-              if [ -n "$INPUT_ENVIRONMENT" ]; then
-                TARGET_ENVIRONMENT="$INPUT_ENVIRONMENT"
-              elif [ "$GITHUB_REF" = "refs/heads/main" ]; then
-                TARGET_ENVIRONMENT=prod
-              else
-                TARGET_ENVIRONMENT=dev
-              fi
-            elif [ -n "$INPUT_ENVIRONMENT" ] && [ "$INPUT_ENVIRONMENT" != "$TARGET_ENVIRONMENT" ]; then
-              echo "Error: target_env and the legacy environment input disagree."
-              exit 1
-            fi
-            if [ "$TARGET_ENVIRONMENT" != "prod" ] && [ "$TARGET_ENVIRONMENT" != "dev" ]; then
-              echo "Error: Environment must be 'dev' or 'prod'."
-              exit 1
-            fi
-            ALLOW_NON_MAIN_PROD="${INPUT_ALLOW_NON_MAIN_PROD:-false}"
-            if [ "$ALLOW_NON_MAIN_PROD" != "true" ] && [ "$ALLOW_NON_MAIN_PROD" != "false" ]; then
-              echo "Error: Production branch override must be true or false."
-              exit 1
-            fi
-            if [ "$TARGET_ENVIRONMENT" = "prod" ]; then
-              if [[ "$GITHUB_REF" != refs/heads/* ]]; then
-                echo "Error: Production deployments must be triggered from a branch."
-                exit 1
-              fi
-              if [ "$ALLOW_NON_MAIN_PROD" = "false" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
-                echo "Error: Production deployments must be triggered from main."
-                exit 1
-              fi
-            fi
-            TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
-            ENDPOINT="repos/${GITHUB_REPOSITORY}/actions/workflows/build.yml/runs?per_page=100"
-
-            if [ "$TARGET_ENVIRONMENT" = "prod" ]; then
-              ENDPOINT="${ENDPOINT}&event=push&status=success"
-              BRANCH_FILTER=()
-              if [ "$ALLOW_NON_MAIN_PROD" = "false" ]; then
-                BRANCH_FILTER=(-f "branch=main")
-              elif [ "$TARGET_BUILD" = "latest" ]; then
-                BRANCH_FILTER=(-f "branch=${GITHUB_REF#refs/heads/}")
-              fi
-              if [ "$TARGET_BUILD" = "latest" ]; then
-                BUILD_INFO=$(gh api -X GET "$ENDPOINT" "${BRANCH_FILTER[@]}" --jq '.workflow_runs[0] | select(. != null) | [.id, .run_number, .head_sha, .head_branch, .event, .conclusion, .head_repository.full_name] | @tsv')
-              else
-                if ! [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
-                  echo "Error: Build number must be numeric or 'latest'."
-                  exit 1
-                fi
-                BUILD_INFO=$(gh api -X GET --paginate "$ENDPOINT" "${BRANCH_FILTER[@]}" --jq ".workflow_runs[] | select(.run_number == ${TARGET_BUILD}) | [.id, .run_number, .head_sha, .head_branch, .event, .conclusion, .head_repository.full_name] | @tsv")
-              fi
-              IFS=$'\t' read -r BUILD_RUN_ID TARGET_BUILD BUILD_SHA TARGET_BRANCH BUILD_EVENT BUILD_CONCLUSION BUILD_REPOSITORY <<< "$BUILD_INFO"
-              if [ -z "$TARGET_BRANCH" ] || [ "$BUILD_EVENT" != "push" ] || \
-                 [ "$BUILD_CONCLUSION" != "success" ] || [ "$BUILD_REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
-                echo "Error: Production requires a successful push build from this repository."
-                exit 1
-              fi
-              if [ "$ALLOW_NON_MAIN_PROD" = "false" ] && [ "$TARGET_BRANCH" != "main" ]; then
-                echo "Error: Production requires a main push build unless the override is enabled."
-                exit 1
-              fi
-              if [ "$ALLOW_NON_MAIN_PROD" = "true" ] && [ "${INPUT_BUILD_NUMBER:-latest}" = "latest" ] && \
-                 [ "$TARGET_BRANCH" != "${GITHUB_REF#refs/heads/}" ]; then
-                echo "Error: The latest build must come from the selected branch."
-                exit 1
-              fi
-              if [ "$ALLOW_NON_MAIN_PROD" = "true" ]; then
-                echo "::warning::Production branch override enabled. Review the selected build before deploying."
-                echo "**Warning:** Production branch override enabled." >> "$GITHUB_STEP_SUMMARY"
-              fi
-            elif [ "$TARGET_BUILD" = "latest" ]; then
-              BUILD_INFO=$(gh api "$ENDPOINT" --jq '.workflow_runs[0] | select(. != null) | [.id, .run_number, .head_sha, .head_branch] | @tsv')
-            else
-              if ! [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
-                echo "Error: Build number must be numeric or 'latest'."
-                exit 1
-              fi
-              BUILD_INFO=$(gh api --paginate "$ENDPOINT" --jq ".workflow_runs[] | select(.run_number == ${TARGET_BUILD}) | [.id, .run_number, .head_sha, .head_branch] | @tsv")
-            fi
-
-            if [ "$TARGET_ENVIRONMENT" = "dev" ]; then
-              IFS=$'\t' read -r BUILD_RUN_ID TARGET_BUILD BUILD_SHA TARGET_BRANCH <<< "$BUILD_INFO"
-            fi
-            if ! [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ && "$TARGET_BUILD" =~ ^[0-9]+$ && "$BUILD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "Error: No build found for the requested build number."
-              exit 1
-            fi
-          fi
-
-          echo "build_number=${TARGET_BUILD}" >> "$GITHUB_OUTPUT"
-          echo "build_run_id=${BUILD_RUN_ID}" >> "$GITHUB_OUTPUT"
-          echo "deploy_environment=${TARGET_ENVIRONMENT}" >> "$GITHUB_OUTPUT"
-          echo "deploy_branch=${TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
-          echo "build_sha=${BUILD_SHA}" >> "$GITHUB_OUTPUT"
-
-          echo "## 🚀 Deploying Build #${TARGET_BUILD}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Build Number:** \`${TARGET_BUILD}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Deployment Environment:** \`${TARGET_ENVIRONMENT}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Build Branch:** \`${TARGET_BRANCH}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Build Run ID:** \`${BUILD_RUN_ID}\`" >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p /tmp/workflow-scripts
+          cp -r .github/scripts/* /tmp/workflow-scripts/
 
       - name: Checkout Build Source
         id: checkout_build
@@ -194,6 +95,12 @@ jobs:
         with:
           ref: ${{ steps.select_build.outputs.build_sha }}
           persist-credentials: false
+
+      - name: Restore Workflow Scripts
+        id: restore_scripts
+        run: |
+          mkdir -p .github/scripts
+          cp -r /tmp/workflow-scripts/* .github/scripts/
 
       - name: Setup Node.js
         id: setup_node
@@ -212,21 +119,9 @@ jobs:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
           DEPLOY_ENVIRONMENT: ${{ steps.select_build.outputs.deploy_environment }}
+          DEPLOY_STACK: ${{ steps.select_build.outputs.deploy_stack }}
           TMDB_API_KEY: 'ci-synth-placeholder'
-        run: |
-          npx cdk synth -c env="$DEPLOY_ENVIRONMENT" --output cdk-out
-          node -e '
-            const manifest = require("./cdk-out/manifest.json");
-            const stacks = Object.entries(manifest.artifacts)
-              .filter(([, artifact]) => artifact.type === "aws:cloudformation:stack")
-              .map(([name]) => name);
-            const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
-              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
-            if (stacks.length !== 1 || stacks[0] !== expected) {
-              console.error(`Expected only ${expected}; synthesized: ${stacks.join(", ") || "no stacks"}`);
-              process.exit(1);
-            }
-          '
+        run: node .github/scripts/synth-stack.js
 
       - name: Upload Deployment Assembly
         uses: actions/upload-artifact@v7
@@ -250,7 +145,7 @@ jobs:
         id: checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - name: Setup Node.js
@@ -275,47 +170,8 @@ jobs:
         id: validate_assembly
         env:
           DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
-        run: |
-          node -e '
-            const fs = require("fs");
-            const path = require("path");
-            const root = path.resolve("cdk-out");
-            const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
-              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
-            const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json")));
-            const artifacts = manifest.artifacts;
-            const allowed = new Set(["aws:cloudformation:stack", "cdk:asset-manifest", "cdk:tree", "cdk:feature-flag-report"]);
-            const stacks = Object.entries(artifacts).filter(([, a]) => a.type === "aws:cloudformation:stack");
-            if (stacks.length !== 1 || stacks[0][0] !== expected ||
-                stacks[0][1].properties.templateFile !== `${expected}.template.json` ||
-                Object.values(artifacts).some(a => !allowed.has(a.type))) throw new Error("Unexpected assembly artifacts");
-            const template = JSON.parse(fs.readFileSync(path.join(root, `${expected}.template.json`)));
-            if (template.Parameters?.TmdbApiKey?.NoEcho !== true) throw new Error("Missing masked TMDB key parameter");
-            const suffix = process.env.DEPLOY_ENVIRONMENT === "dev" ? "-DEV" : "";
-            for (const name of ["blockbuster-theatre-add-movies-handler", "blockbuster-theatre-refresh-movie-collection-handler"]) {
-              const matches = Object.values(template.Resources || {}).filter(r =>
-                r.Type === "AWS::Lambda::Function" && r.Properties?.FunctionName === `${name}${suffix}`);
-              if (matches.length !== 1 || matches[0].Properties.Environment?.Variables?.TMDB_API_KEY?.Ref !== "TmdbApiKey") {
-                throw new Error(`Unexpected TMDB key configuration for ${name}${suffix}`);
-              }
-            }
-            for (const artifact of Object.values(artifacts).filter(a => a.type === "cdk:asset-manifest")) {
-              const file = artifact.properties.file;
-              if (file !== `${expected}.assets.json`) throw new Error("Unexpected asset manifest");
-              const assets = JSON.parse(fs.readFileSync(path.join(root, file)));
-              if (Object.keys(assets.dockerImages || {}).length) throw new Error("Docker assets are not supported");
-              for (const asset of Object.values(assets.files || {})) {
-                const source = asset.source;
-                if (!source || Object.keys(source).some(k => k !== "path" && k !== "packaging") ||
-                    !(/^asset\.[0-9a-f]{64}$/.test(source.path) ||
-                      (source.path === `${expected}.template.json` && source.packaging === "file")) ||
-                    !["zip", "file"].includes(source.packaging) ||
-                    fs.lstatSync(path.join(root, source.path)).isSymbolicLink()) {
-                  throw new Error("Unexpected asset source");
-                }
-              }
-            }
-          '
+          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
+        run: node .github/scripts/validate-assembly.js
 
       - name: Configure AWS Credentials
         id: configure_aws
@@ -331,64 +187,16 @@ jobs:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
           DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
+          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          PROD_POSTMAN_CLIENT_ID: ${{ vars.PROD_POSTMAN_CLIENT_ID }}
-        run: |
-          if [[ ! "$TMDB_API_KEY" =~ [^[:space:]] ]]; then
-            echo "Error: TMDB_API_KEY must be configured as a non-empty GitHub Environment secret."
-            exit 1
-          fi
-          PARAMETERS=(--parameters "TmdbApiKey=${TMDB_API_KEY}")
-          if [ "$DEPLOY_ENVIRONMENT" = "dev" ]; then
-            POSTMAN_PARAMETER_REQUIRED=$(node -e '
-              const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
-              if (template.Parameters?.ProdPostmanClientId) console.log("true");
-            ')
-            if [ "$POSTMAN_PARAMETER_REQUIRED" = "true" ]; then
-              if [[ ! "$PROD_POSTMAN_CLIENT_ID" =~ [^[:space:]] ]]; then
-                echo "Error: PROD_POSTMAN_CLIENT_ID must be configured as a non-empty dev GitHub Environment variable."
-                exit 1
-              fi
-              PARAMETERS+=(--parameters "ProdPostmanClientId=${PROD_POSTMAN_CLIENT_ID}")
-            fi
-            REQUIRED_PARAMETERS=$(node -e '
-              const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
-              for (const name of ["ProdUserPoolId", "ProdUserPoolClientId"]) {
-                if (template.Parameters?.[name]) console.log(name);
-              }
-            ')
-            if [ -n "$REQUIRED_PARAMETERS" ]; then
-              OUTPUTS=$(
-                CREDENTIALS=$(aws sts assume-role \
-                  --role-arn "arn:aws:iam::${CDK_DEFAULT_ACCOUNT}:role/cdk-hnb659fds-deploy-role-${CDK_DEFAULT_ACCOUNT}-${CDK_DEFAULT_REGION}" \
-                  --role-session-name github-actions-cognito-lookup --output json) || exit 1
-                AWS_ACCESS_KEY_ID=$(jq -er '.Credentials.AccessKeyId | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
-                AWS_SECRET_ACCESS_KEY=$(jq -er '.Credentials.SecretAccessKey | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
-                AWS_SESSION_TOKEN=$(jq -er '.Credentials.SessionToken | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
-                export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-                aws cloudformation describe-stacks --stack-name BlockbusterTheatreBackendStack --output json
-              )
-              while IFS= read -r PARAMETER; do
-                case "$PARAMETER" in
-                  ProdUserPoolId) OUTPUT_KEY=UserPoolId ;;
-                  ProdUserPoolClientId) OUTPUT_KEY=UserPoolClientId ;;
-                esac
-                VALUE=$(jq -er --arg key "$OUTPUT_KEY" \
-                  '.Stacks[0].Outputs[] | select(.OutputKey == $key) | .OutputValue | strings | select(length > 0)' <<< "$OUTPUTS") || {
-                  echo "Error: Production stack output $OUTPUT_KEY is missing."
-                  exit 1
-                }
-                PARAMETERS+=(--parameters "${PARAMETER}=${VALUE}")
-              done <<< "$REQUIRED_PARAMETERS"
-            fi
-          fi
-          npx cdk deploy --app cdk-out --require-approval never "${PARAMETERS[@]}"
+        run: node .github/scripts/deploy-stack.js
 
       - name: Write Deploy Summary
         if: always()
         env:
           DEPLOY_BRANCH: ${{ needs.prepare.outputs.deploy_branch }}
           DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
+          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
           DEPLOY_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
           DEPLOY_BUILD_RUN_ID: ${{ needs.prepare.outputs.build_run_id }}
           JOB_STATUS: ${{ job.status }}
@@ -399,41 +207,4 @@ jobs:
           VALIDATE_ASSEMBLY_OUTCOME: ${{ steps.validate_assembly.outcome }}
           CONFIGURE_AWS_OUTCOME: ${{ steps.configure_aws.outcome }}
           DEPLOY_CDK_OUTCOME: ${{ steps.deploy_cdk.outcome }}
-        run: |
-          COMPLETED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          {
-            echo "### 🚀 Deploy Summary"
-            echo "**Completed at:** \`${COMPLETED_AT}\`"
-            echo "**Status:** \`${JOB_STATUS}\`"
-            echo "**Branch:** \`${DEPLOY_BRANCH}\`"
-            echo "**Environment:** \`${DEPLOY_ENVIRONMENT}\`"
-            echo "**Build Number:** \`${DEPLOY_BUILD_NUMBER}\`"
-            if [ -n "$DEPLOY_BUILD_RUN_ID" ]; then
-              echo "**Build Run ID:** \`${DEPLOY_BUILD_RUN_ID}\`"
-            fi
-
-            if [ "$JOB_STATUS" = "failure" ]; then
-              echo
-              echo "#### Failure Summary"
-              FAILED_STEP_FOUND=false
-              for step in \
-                "Checkout Repository:${CHECKOUT_OUTCOME}" \
-                "Setup Node.js:${SETUP_NODE_OUTCOME}" \
-                "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
-                "Download Deployment Assembly:${DOWNLOAD_ASSEMBLY_OUTCOME}" \
-                "Validate Deployment Assembly:${VALIDATE_ASSEMBLY_OUTCOME}" \
-                "Configure AWS Credentials:${CONFIGURE_AWS_OUTCOME}" \
-                "Deploy CDK Stack:${DEPLOY_CDK_OUTCOME}"; do
-                STEP_NAME="${step%%:*}"
-                STEP_OUTCOME="${step#*:}"
-                if [ "$STEP_OUTCOME" = "failure" ]; then
-                  echo "- ${STEP_NAME} failed."
-                  FAILED_STEP_FOUND=true
-                fi
-              done
-              if [ "$FAILED_STEP_FOUND" = false ]; then
-                echo "- The job failed, but no individual step reported a failure."
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "Deploy of build #${DEPLOY_BUILD_NUMBER} on ${DEPLOY_BRANCH}: ${JOB_STATUS} at ${COMPLETED_AT}"
+        run: node .github/scripts/write-summary.js deploy

@@ -1,7 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
-import { resourceName, type EnvironmentName } from './environment';
+import { resourceName, type EnvironmentName } from '../shared';
 
 export class DatabaseConstruct extends Construct {
     public readonly movieCatalogueTable: dynamodb.Table;
@@ -123,6 +123,12 @@ export class DatabaseConstruct extends Construct {
             partitionKey: { name: 'registryKey', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy,
+        });
+        this.showtimeRegistryTable.addGlobalSecondaryIndex({
+            indexName: 'ShowtimesByDate',
+            partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'GSI1SK', type: dynamodb.AttributeType.STRING },
+            projectionType: dynamodb.ProjectionType.ALL,
         });
 
         this.bookingReferencesTable = new dynamodb.Table(this, 'BlockbusterTheatreBookingReferences', {

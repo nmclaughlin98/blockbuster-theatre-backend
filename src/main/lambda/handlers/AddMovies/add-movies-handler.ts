@@ -129,7 +129,12 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
 async function upsertMovie(
     id: string,
     movieData: ReturnType<typeof projectTmdb>,
-    setComingSoon: boolean
+    setComingSoon: boolean,
+    scheduling: {
+        startDate?: string;
+        runEndDate?: string;
+        preSalesEligible?: boolean;
+    }
 ) {
     log('INFO', 'Upserting movie into DynamoDB', { id, title: movieData.title });
 
@@ -151,6 +156,13 @@ async function upsertMovie(
         throw new Error('DynamoDB returned an invalid movie record.');
     }
     const existing = existingItem;
+    const startDate = scheduling.startDate ?? existing?.startDate ?? movieData.startDate;
+    const runEndDate = scheduling.runEndDate ?? existing?.runEndDate;
+    const preSalesEligible =
+        scheduling.preSalesEligible ?? existing?.preSalesEligible ?? false;
+    if (runEndDate !== undefined && runEndDate < startDate) {
+        throw new Error('runEndDate must be on or after startDate.');
+    }
 
     const comingSoonUpdate = setComingSoon
         ? 'isComingSoon = :isComingSoon,'
@@ -179,13 +191,15 @@ async function upsertMovie(
                 still = :still,
                 trailer = :trailer,
                 poster = :poster,
-                showtimes = :showtimes,
+                startDate = :startDate,
+                ${runEndDate !== undefined ? 'runEndDate = :runEndDate,' : ''}
+                preSalesEligible = :preSalesEligible,
                 entityType = :entityType,
                 lastUpdated = :lastUpdated,
                 GSI1PK = :gsi1pk,
                 GSI1SK = :gsi1sk,
                 isCarousel = if_not_exists(isCarousel, :defaultCarousel)
-            REMOVE collectionId, GSI2PK, GSI2SK
+            REMOVE collectionId, GSI2PK, GSI2SK, showtimes
         `,
         ExpressionAttributeValues: {
             ':title': movieData.title,
@@ -205,20 +219,24 @@ async function upsertMovie(
             ':still': movieData.still,
             ':trailer': movieData.trailer,
             ':poster': movieData.poster,
-            ':showtimes': movieData.showtimes,
+            ':startDate': startDate,
+            ':preSalesEligible': preSalesEligible,
             ':entityType': 'Movie',
             ':lastUpdated': new Date().toISOString(),
             ':gsi1pk': 'MOVIE',
             ':gsi1sk': `${movieData.releaseDate || '0000-00-00'}#${id}`,
             ':defaultCarousel': false,
+            ...(runEndDate !== undefined && { ':runEndDate': runEndDate }),
         },
     };
-
     if (existing && existing.slug !== movieData.slug) {
         const { movieId, ...movieAttributes } = movieData;
-        const movedRecord = {
+        const movedRecord: Record<string, unknown> = {
             ...existing,
             ...movieAttributes,
+            startDate,
+            ...(runEndDate !== undefined && { runEndDate }),
+            preSalesEligible,
             tmdbId: String(movieId),
             entityType: 'Movie',
             lastUpdated: new Date().toISOString(),
@@ -232,6 +250,7 @@ async function upsertMovie(
         delete movedRecord.collectionId;
         delete movedRecord.GSI2PK;
         delete movedRecord.GSI2SK;
+        delete movedRecord.showtimes;
         await docClient.send(
             new TransactWriteCommand({
                 TransactItems: [
@@ -304,10 +323,35 @@ export const handler = async (
         const request = isRecord(parsed) ? parsed : undefined;
         const movieIds = request?.movieIds;
         const isComingSoon = request?.isComingSoon;
+        const startDate = request?.startDate;
+        const runEndDate = request?.runEndDate;
+        const preSalesEligible = request?.preSalesEligible;
 
         if (isComingSoon !== undefined && typeof isComingSoon !== 'boolean') {
             log('WARN', 'Request rejected: isComingSoon must be a boolean', { requestId });
             return json(400, { message: 'isComingSoon must be a boolean.' });
+        }
+        const validDate = (value: unknown): value is string => {
+            if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+            const parsedDate = new Date(`${value}T00:00:00.000Z`);
+            return !Number.isNaN(parsedDate.getTime())
+                && parsedDate.toISOString().slice(0, 10) === value;
+        };
+        if (startDate !== undefined && !validDate(startDate)) {
+            return json(400, { message: 'startDate must be a valid YYYY-MM-DD date.' });
+        }
+        if (runEndDate !== undefined && !validDate(runEndDate)) {
+            return json(400, { message: 'runEndDate must be a valid YYYY-MM-DD date.' });
+        }
+        if (preSalesEligible !== undefined && typeof preSalesEligible !== 'boolean') {
+            return json(400, { message: 'preSalesEligible must be a boolean.' });
+        }
+        if (
+            typeof startDate === 'string'
+            && typeof runEndDate === 'string'
+            && runEndDate < startDate
+        ) {
+            return json(400, { message: 'runEndDate must be on or after startDate.' });
         }
 
         if (!Array.isArray(movieIds) || movieIds.length === 0) {
@@ -348,8 +392,13 @@ export const handler = async (
             async (id) => {
                 try {
                     const raw = await fetchTmdbMovie(id);
-                    const movieData = projectTmdb(raw, isComingSoon);
-                    await upsertMovie(id, movieData, isComingSoon !== undefined);
+                    const scheduling = {
+                        ...(typeof startDate === 'string' && { startDate }),
+                        ...(typeof runEndDate === 'string' && { runEndDate }),
+                        ...(typeof preSalesEligible === 'boolean' && { preSalesEligible }),
+                    };
+                    const movieData = projectTmdb(raw, isComingSoon, scheduling);
+                    await upsertMovie(id, movieData, isComingSoon !== undefined, scheduling);
                     log('INFO', 'Movie processed successfully', {
                         requestId,
                         id,

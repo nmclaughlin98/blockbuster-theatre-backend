@@ -6,6 +6,13 @@ import {
     type NativeAttributeValue,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from './dynamodb-client';
+import { addShowtimeIds, listShowtimesForDate } from '../utils/showtime-ids';
+import {
+    hasUpcomingTemplateScreenings,
+    isMovieScheduleDateAllowed,
+    movieLifecycleStatus,
+} from '../utils/movie-lifecycle';
+import { generateShowtimes } from '../utils/showtime-schedule';
 import type {
     MovieRecord,
     OfferRecord,
@@ -15,7 +22,6 @@ import type {
     ScreenedShowtime,
 } from '../../lib/interfaces';
 import { isMovieRecord, isMovieShowtimes } from '../utils/movie-validation';
-import { addShowtimeIds } from '../utils/showtime-ids';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -128,6 +134,7 @@ function requiredTableName(name: string): string {
 function parseSelection(value: unknown): {
     movieId?: string;
     offerId?: string;
+    date?: string;
     showtime: ShowtimeSelection;
 } {
     if (!isRecord(value)) {
@@ -135,12 +142,12 @@ function parseSelection(value: unknown): {
     }
     if (
         Object.keys(value).some(
-            (key) => !['movieId', 'offerId', 'showtime', 'tickets'].includes(key)
+            (key) => !['movieId', 'offerId', 'showtime', 'tickets', 'date'].includes(key)
         )
     ) {
         throw new PricingServiceError(
             400,
-            'Only movieId or offerId, showtime, and tickets are accepted.'
+            'Only movieId or offerId, showtime, optional date, and tickets are accepted.'
         );
     }
 
@@ -190,9 +197,23 @@ function parseSelection(value: unknown): {
         );
     }
 
+    let date: string | undefined;
+    if (value.date !== undefined) {
+        if (
+            typeof value.date !== 'string' ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(value.date) ||
+            Number.isNaN(new Date(`${value.date}T00:00:00.000Z`).getTime()) ||
+            new Date(`${value.date}T00:00:00.000Z`).toISOString().slice(0, 10) !== value.date
+        ) {
+            throw new PricingServiceError(400, 'date must be a valid YYYY-MM-DD date.');
+        }
+        date = value.date;
+    }
+
     return {
         movieId,
         offerId,
+        date,
         showtime: { day, time, ...(isScreen(screen) && { screen }) },
     };
 }
@@ -252,17 +273,51 @@ async function getPricing(pricingId: string): Promise<PricingRecord> {
     return result.Item;
 }
 
-function validateScheduledTime(
+async function validateScheduledTime(
     movie: MovieRecord,
     offer: OfferRecord | undefined,
-    showtime: ShowtimeSelection
-): ShowtimeSelection {
-    const schedule = offer?.overrideShowtimes ?? movie.showtimes;
-    const matches = schedule[showtime.day]?.filter(
+    showtime: ShowtimeSelection,
+    date?: string
+): Promise<ShowtimeSelection> {
+    const schedule = offer?.overrideShowtimes ?? generateShowtimes(
+        movie.tmdbId,
+        movie.releaseDate,
+        movie.score
+    );
+    const matches = schedule?.[showtime.day]?.filter(
         (entry) =>
             entry.time === showtime.time &&
             (showtime.screen === undefined || entry.screen === showtime.screen)
     );
+    if (offer?.overrideShowtimes !== undefined && !matches?.length) {
+        throw new PricingServiceError(400, 'The selected showtime is not available.');
+    }
+    if (date) {
+        if (!isMovieScheduleDateAllowed(movie, date)) {
+            throw new PricingServiceError(400, 'The selected showtime is not available.');
+        }
+        if (offer?.overrideShowtimes !== undefined) {
+            await addShowtimeIds(movie.tmdbId, offer.overrideShowtimes, date, 'OFFER');
+        }
+        const showtimes = await listShowtimesForDate(date);
+        const matchingRecord = showtimes.find(
+            (record) =>
+                record.movieId === movie.tmdbId &&
+                record.day === showtime.day &&
+                record.time === showtime.time &&
+                isScreen(record.screen) &&
+                (showtime.screen === undefined || record.screen === showtime.screen) &&
+                record.status !== 'CANCELLED' &&
+                record.status !== 'CLOSING'
+        );
+        if (!matchingRecord) {
+            throw new PricingServiceError(400, 'The selected showtime is not available.');
+        }
+        return {
+            ...showtime,
+            screen: showtime.screen ?? matchingRecord.screen,
+        };
+    }
     if (!matches?.length) {
         throw new PricingServiceError(400, 'The selected showtime is not available.');
     }
@@ -283,7 +338,7 @@ export async function resolvePricing(value: unknown): Promise<ResolvedPricing> {
     const movie = offer
         ? await getMovie(movieId, false)
         : await getMovie(movieId);
-    const showtime = validateScheduledTime(movie, offer, request.showtime);
+    const showtime = await validateScheduledTime(movie, offer, request.showtime, request.date);
 
     const pricingId = offer?.pricingId ?? standardPricingId(request.showtime);
     const pricing = await getPricing(pricingId);
@@ -350,12 +405,12 @@ export async function validateCheckout(value: unknown): Promise<{
 
     if (
         Object.keys(value).some(
-            (key) => !['movieId', 'offerId', 'showtime', 'tickets'].includes(key)
+            (key) => !['movieId', 'offerId', 'showtime', 'tickets', 'date'].includes(key)
         )
     ) {
         throw new PricingServiceError(
             400,
-            'Only movieId or offerId, showtime, and tickets are accepted.'
+            'Only movieId or offerId, showtime, optional date, and tickets are accepted.'
         );
     }
     const tickets = parseTicketRequest(value.tickets);
@@ -437,7 +492,20 @@ export async function listFilmSelections(date?: string): Promise<FilmSelection[]
             if (!isMovieRecord(item)) {
                 throw new Error('DynamoDB returned an invalid movie record.');
             }
-            if (item.visible && item.isComingSoon !== true) movies.push(item);
+            if (!item.visible) continue;
+            const lifecycleStatus = movieLifecycleStatus(
+                item,
+                hasUpcomingTemplateScreenings(
+                    item,
+                    generateShowtimes(item.tmdbId, item.releaseDate, item.score)
+                )
+            );
+            if (
+                lifecycleStatus === 'Now Showing' ||
+                lifecycleStatus === 'Coming Soon (Pre-Sales Open)'
+            ) {
+                movies.push(item);
+            }
         }
         movieStartKey = result.LastEvaluatedKey;
     } while (movieStartKey);
@@ -483,7 +551,8 @@ export async function listFilmSelections(date?: string): Promise<FilmSelection[]
             overrideShowtimes: await addShowtimeIds(
                 offer.featuredMovieId,
                 offer.overrideShowtimes ?? {},
-                date
+                date,
+                'OFFER'
             ),
         });
     }

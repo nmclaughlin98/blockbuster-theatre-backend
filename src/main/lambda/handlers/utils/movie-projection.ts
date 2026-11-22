@@ -7,8 +7,14 @@ import type {
     TmdbMovieResponse,
 } from '../../lib/interfaces';
 import { generateShowtimes } from './showtime-schedule';
-import { addShowtimeIds } from './showtime-ids';
 import { TMDB_MOVIE_METADATA_OVERRIDES } from './movie-metadata-overrides';
+import {
+    hasUpcomingTemplateScreenings,
+    movieLifecycleStatus,
+    movieStartDate,
+    todayInTheatre,
+} from './movie-lifecycle';
+import { getMovieShowtimes } from './movie-schedule-service';
 
 function slugify(text: string): string {
     return text
@@ -43,13 +49,19 @@ export function originalTmdbImageUrl(url: string): string {
  * @returns Movie summary with a date-only release date.
  */
 export function projectMovieSummary(movie: MovieRecord): MovieSummary {
+    const showtimes = generateShowtimes(movie.tmdbId, movie.releaseDate, movie.score);
+    const lifecycleStatus = movieLifecycleStatus(
+        movie,
+        hasUpcomingTemplateScreenings(movie, showtimes)
+    );
     return {
         slug: movie.slug,
         sortTitle: movie.sortTitle ?? movie.title,
         movieId: Number(movie.tmdbId),
         title: movie.title,
         visible: movie.visible,
-        isComingSoon: movie.isComingSoon ?? false,
+        isComingSoon: lifecycleStatus.startsWith('Coming Soon'),
+        lifecycleStatus,
         isCarousel: movie.isCarousel ?? false,
         trailer: movie.trailer,
         synopsis: movie.synopsis,
@@ -61,8 +73,11 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
         genres: movie.genres,
         mainGenre: movie.mainGenre,
         releaseDate: movie.releaseDate.slice(0, 10),
+        startDate: movieStartDate(movie),
+        ...(movie.runEndDate && { runEndDate: movie.runEndDate }),
+        preSalesEligible: movie.preSalesEligible ?? false,
         score: movie.score,
-        showtimes: movie.showtimes,
+        showtimes,
     };
 }
 
@@ -75,19 +90,25 @@ export async function projectMovieDetail(
     movie: MovieRecord,
     date?: string
 ): Promise<MovieDetail> {
+    const showtimes = await getMovieShowtimes(movie, date);
+    const lifecycleStatus = movieLifecycleStatus(movie, Object.keys(showtimes).length > 0);
     return {
         slug: movie.slug,
         sortTitle: movie.sortTitle ?? movie.title,
         movieId: Number(movie.tmdbId),
         title: movie.title,
         visible: movie.visible,
-        isComingSoon: movie.isComingSoon ?? false,
+        isComingSoon: lifecycleStatus.startsWith('Coming Soon'),
+        lifecycleStatus,
         genres: movie.genres,
         mainGenre: movie.mainGenre,
         rating: movie.rating,
         score: movie.score,
         runtime: movie.runtime,
         releaseDate: movie.releaseDate,
+        startDate: movieStartDate(movie),
+        ...(movie.runEndDate && { runEndDate: movie.runEndDate }),
+        preSalesEligible: movie.preSalesEligible ?? false,
         poster: originalTmdbImageUrl(movie.poster),
         still: originalTmdbImageUrl(movie.still),
         starring: movie.starring,
@@ -95,7 +116,7 @@ export async function projectMovieDetail(
         synopsis: movie.synopsis,
         tagline: movie.tagline,
         trailer: movie.trailer,
-        showtimes: await addShowtimeIds(movie.tmdbId, movie.showtimes, date),
+        showtimes,
     };
 }
 
@@ -107,7 +128,12 @@ export async function projectMovieDetail(
  */
 export function projectTmdb(
     raw: TmdbMovieResponse,
-    isComingSoon?: boolean
+    isComingSoon?: boolean,
+    scheduling: {
+        startDate?: string;
+        runEndDate?: string;
+        preSalesEligible?: boolean;
+    } = {}
 ): MovieData {
     const metadataOverride = TMDB_MOVIE_METADATA_OVERRIDES[raw.id];
     const title = metadataOverride?.title || raw.title || 'Untitled';
@@ -132,11 +158,8 @@ export function projectTmdb(
         .join(', ') || 'Unknown';
     const score = raw.vote_average ? Number(raw.vote_average.toFixed(1)) : 0;
     const releaseDate = raw.release_date ? `${raw.release_date}T00:00:00.000Z` : '';
-    const showtimes = generateShowtimes(
-        String(raw.id),
-        releaseDate,
-        score
-    );
+    const today = todayInTheatre();
+    const releaseDateOnly = releaseDate.slice(0, 10);
     const trailerKey = raw.videos?.results?.find(
         (video) => video.site === 'YouTube' && video.type === 'Trailer' && video.key
     )?.key;
@@ -156,6 +179,10 @@ export function projectTmdb(
         score,
         runtime: raw.runtime || 0,
         releaseDate,
+        startDate: scheduling.startDate
+            ?? (releaseDateOnly > today ? releaseDateOnly : today),
+        ...(scheduling.runEndDate && { runEndDate: scheduling.runEndDate }),
+        preSalesEligible: scheduling.preSalesEligible ?? false,
         visible: true,
         isCarousel: false,
         isComingSoon: isComingSoon ?? checkIsComingSoon(raw.release_date || ''),
@@ -172,6 +199,5 @@ export function projectTmdb(
         poster: raw.poster_path
             ? `https://image.tmdb.org/t/p/original${raw.poster_path}`
             : '',
-        showtimes,
     };
 }

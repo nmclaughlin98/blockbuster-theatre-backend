@@ -1,3 +1,4 @@
+import type { MovieLifecycleStatus } from './movie-summary';
 import type { MovieShowtimes } from './showtime';
 
 export interface MovieDetail {
@@ -7,12 +8,16 @@ export interface MovieDetail {
     title: string;
     visible: boolean;
     isComingSoon: boolean;
+    lifecycleStatus: MovieLifecycleStatus;
     genres: string[];
     mainGenre: string;
     rating: string;
     score: number;
     runtime: number;
     releaseDate: string;
+    startDate: string;
+    runEndDate?: string;
+    preSalesEligible: boolean;
     poster: string;
     still: string;
     starring: string[];

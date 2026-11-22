@@ -5,23 +5,12 @@
 The project follows a clean separation of main source code and tests:
 
 ```
-src/
-├── main/               # Production source code
-│   ├── app.ts          # CDK App entry point
-│   ├── stack-configuration.ts        # Main stack definition
-│   ├── lambda.ts       # Lambda construct
-│   ├── gateway.ts      # API Gateway construct
-│   ├── dynamo-db.ts    # DynamoDB construct
-│   ├── index.ts        # Export barrel
-│   └── handlers/
-│       └── manage-items.ts  # Lambda handler
-└── test/               # Test files (mirror of main structure)
-    ├── stack.test.ts
-    ├── lambda.test.ts
-    ├── gateway.test.ts
-    ├── dynamo-db.test.ts
-    └── handlers/
-        └── add-movies.test.ts
+bin/app.ts              # CDK entry point
+lib/auth/               # Shared authentication stack and resources
+lib/backend/            # Backend stack and constructs
+lib/shared/             # Environment and SSM helpers
+src/main/lambda/        # Lambda handlers and supporting code
+src/test/               # Construct and handler tests
 ```
 
 ## Overview
@@ -194,7 +183,7 @@ Snapshots:   0 total
 
 ## Coverage
 
-Coverage is collected from `src/main/**/*.ts` and `lib/stack/gateway.ts`. Jest enforces a 90% minimum for each global coverage metric: statements, branches, functions, and lines.
+Coverage is collected from `src/main/**/*.ts`, `lib/backend/api-gateway-construct.ts`, and `lib/backend/lambdas-construct.ts`. Jest enforces a 90% minimum for each global coverage metric: statements, branches, functions, and lines.
 
 The test suite provides coverage for:
 - ✓ All HTTP methods (GET, POST, unsupported methods)

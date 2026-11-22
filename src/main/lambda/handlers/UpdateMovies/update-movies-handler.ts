@@ -13,7 +13,7 @@ import {
     mapWithConcurrency,
     normalizeMovieIds,
 } from '../utils/common';
-import { isMovieRecord, isMovieShowtimes } from '../utils/movie-validation';
+import { isMovieRecord } from '../utils/movie-validation';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient(), {
     marshallOptions: { removeUndefinedValues: true },
@@ -34,13 +34,15 @@ const mutableFields = new Set([
     'score',
     'runtime',
     'releaseDate',
+    'startDate',
+    'runEndDate',
+    'preSalesEligible',
     'poster',
     'still',
     'starring',
     'director',
     'synopsis',
     'trailer',
-    'showtimes',
 ]);
 
 type MovieUpdates = Record<string, unknown>;
@@ -60,7 +62,7 @@ function isValidFieldValue(field: string, value: unknown): boolean {
     if (field === 'sortTitle') {
         return typeof value === 'string' && Boolean(value.trim());
     }
-    if (['visible', 'isComingSoon', 'isCarousel'].includes(field)) {
+    if (['visible', 'isComingSoon', 'isCarousel', 'preSalesEligible'].includes(field)) {
         return typeof value === 'boolean';
     }
     if (['score', 'runtime'].includes(field)) {
@@ -69,8 +71,10 @@ function isValidFieldValue(field: string, value: unknown): boolean {
     if (['genres', 'starring'].includes(field)) {
         return isStringArray(value);
     }
-    if (field === 'showtimes') {
-        return isMovieShowtimes(value);
+    if (['startDate', 'runEndDate'].includes(field)) {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const date = new Date(`${value}T00:00:00.000Z`);
+        return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
     }
     return typeof value === 'string';
 }
@@ -104,12 +108,22 @@ async function updateMovie(id: string, updates: MovieUpdates): Promise<void> {
         throw new Error('DynamoDB returned an invalid or ambiguous movie record.');
     }
     const current = items[0];
+    const startDate = typeof updates.startDate === 'string'
+        ? updates.startDate
+        : current.startDate;
+    const runEndDate = typeof updates.runEndDate === 'string'
+        ? updates.runEndDate
+        : current.runEndDate;
+    if (startDate && runEndDate && runEndDate < startDate) {
+        throw new Error('runEndDate must be on or after startDate.');
+    }
 
     if (typeof updates.slug === 'string' && updates.slug !== current.slug) {
         const updated: Record<string, unknown> = { ...current, ...updates, slug: updates.slug };
         delete updated.collectionId;
         delete updated.GSI2PK;
         delete updated.GSI2SK;
+        delete updated.showtimes;
         if (typeof updates.releaseDate === 'string') {
             updated.GSI1SK = `${updates.releaseDate || '0000-00-00'}#${id}`;
         }
@@ -156,7 +170,7 @@ async function updateMovie(id: string, updates: MovieUpdates): Promise<void> {
         new UpdateCommand({
             TableName: TABLE_NAME,
             Key: { tmdbId: id, slug: current.slug },
-            UpdateExpression: `SET ${updateAssignments.join(', ')} REMOVE collectionId, GSI2PK, GSI2SK`,
+            UpdateExpression: `SET ${updateAssignments.join(', ')} REMOVE collectionId, GSI2PK, GSI2SK, showtimes`,
             ConditionExpression: 'attribute_exists(tmdbId) AND attribute_exists(slug)',
             ExpressionAttributeNames: expressionAttributeNames,
             ExpressionAttributeValues: expressionAttributeValues,

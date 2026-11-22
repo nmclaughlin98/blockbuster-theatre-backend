@@ -2,7 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { ApiGatewayConstruct } from '../../../lib/stack';
+import { ApiGatewayConstruct } from '../../../lib/backend';
 
 describe('ApiGatewayConstruct', () => {
     let stack: cdk.Stack;
@@ -31,6 +31,7 @@ describe('ApiGatewayConstruct', () => {
             listBookingsFunction: mockFunction,
             createBookingFunction: mockFunction,
             rescheduleBookingFunction: mockFunction,
+            manageShowtimesFunction: mockFunction,
             guestBookedSeatsFunction: mockFunction,
             guestBookingFunction: mockFunction,
             guestConversionFunction: mockFunction,
@@ -58,7 +59,7 @@ describe('ApiGatewayConstruct', () => {
     it('should create an HTTP API', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
-            Name: 'blockbuster-theatre-api-gateway',
+            Name: 'blockbuster-theatre-api-gateway-PROD',
             ProtocolType: 'HTTP',
         });
     });
@@ -75,7 +76,7 @@ describe('ApiGatewayConstruct', () => {
 
     it('should create API routes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 27);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 30);
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/guest',
             AuthorizationType: 'NONE',
@@ -114,6 +115,21 @@ describe('ApiGatewayConstruct', () => {
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'PATCH /bookings/reschedule-booking',
             AuthorizationType: 'NONE',
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'POST /showtimes',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'PATCH /showtimes/{showtimeId}',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
+        });
+        template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+            RouteKey: 'DELETE /showtimes/{showtimeId}',
+            AuthorizationType: 'JWT',
+            AuthorizerId: Match.anyValue(),
         });
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/newest',
@@ -205,6 +221,20 @@ describe('ApiGatewayConstruct', () => {
         // Lambda integration is implicitly tested by the successful API creation
     });
 
+    it('does not require scopes on JWT routes so SRP access tokens are accepted', () => {
+        const routes = Object.values(Template.fromStack(stack).findResources('AWS::ApiGatewayV2::Route'))
+            .filter((route) => route.Properties.AuthorizationType === 'JWT');
+        expect(routes.length).toBeGreaterThan(0);
+        for (const route of routes) {
+            expect(route.Properties.AuthorizationScopes).toBeUndefined();
+        }
+        expect(routes.map((route) => route.Properties.RouteKey)).toEqual(expect.arrayContaining([
+            'GET /api/v1/bookings/account',
+            'GET /api/v1/bookings/account/history',
+            'POST /api/v1/bookings/account',
+        ]));
+    });
+
     it('should export httpApi property', () => {
         expect(construct.httpApi).toBeDefined();
         expect(construct.httpApi.apiId).toBeDefined();
@@ -229,7 +259,7 @@ describe('ApiGatewayConstruct', () => {
     it.each(['prod', 'dev'] as const)('logs %s API access through the existing default stage', (envName) => {
         if (envName === 'dev') createGateway('dev');
         const template = Template.fromStack(stack);
-        const logName = `/aws/vendedlogs/blockbuster-theatre-api-access${envName === 'dev' ? '-DEV' : ''}`;
+        const logName = `/aws/vendedlogs/blockbuster-theatre-api-access-${envName.toUpperCase()}`;
         const groups = template.findResources('AWS::Logs::LogGroup', {
             Properties: { LogGroupName: logName },
         });

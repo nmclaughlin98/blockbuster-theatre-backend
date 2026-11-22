@@ -59,23 +59,57 @@ Cloud mode requires existing dev/test tables and AWS credentials. The local adap
 
 ## AWS infrastructure
 
-The AWS CDK app is defined in `lib/stack/`. Set `TMDB_API_KEY` to a non-empty TMDB read access token before synthesis. A direct deployment must also provide it as the masked CloudFormation parameter `TmdbApiKey`:
+## AWS infrastructure
+
+The AWS CDK infrastructure is organized into a domain-driven multi-stack architecture:
+- `bin/app.ts` — CDK entry point instantiating `BlockbusterTheatreBlockbusterTheatreAuthStack` and environment-specific `BackendStack` instances (`prod` and `dev`).
+- `lib/auth/` — Dedicated `BlockbusterTheatreAuthStack` with `terminationProtection: true` owning the shared Cognito User Pool (`BlockbusterTheatreCognitoUsers`), Cognito Domain, PreTokenGeneration trigger, Resource Server (`bookings.read`), and App Clients (`BackendClient`, `PostmanAppClient`, `AlexaAppClient`).
+- `lib/backend/` — `BackendStack` (and constructs like API Gateway, DynamoDB, SES, Lambdas) consuming Cognito identifiers from SSM Parameter Store instead of CloudFormation parameters or cross-stack exports.
+- `lib/shared/` — Shared environment helpers, resource naming utilities, and typed SSM Parameter Store read/write helpers.
+
+### Cognito Authentication & SSM Parameter Store Wiring
+
+Cognito identifiers are exported by `BlockbusterTheatreAuthStack` to AWS Systems Manager (SSM) Parameter Store under a consistent namespace:
+- `/blockbuster-theatre/auth/user-pool-id` — User Pool ID
+- `/blockbuster-theatre/auth/user-pool-arn` — User Pool ARN
+- `/blockbuster-theatre/auth/clients/backend-id` — Backend SRP App Client ID
+- `/blockbuster-theatre/auth/clients/postman-id` — Postman OAuth App Client ID
+- `/blockbuster-theatre/auth/clients/alexa-id` — Alexa Skill OAuth App Client ID
+
+Both `BlockbusterTheatreBackendStack` (prod) and `BlockbusterTheatreBackendStack-dev` resolve these values from SSM Parameter Store at deploy time. `HttpJwtAuthorizer` accepts tokens from all valid clients (`jwtAudience: [backendClientId, postmanClientId, alexaClientId]`). API Gateway routes omit `authorizationScopes` so routes accept both direct-SRP tokens and OAuth tokens. Because cross-stack CloudFormation export locks (`Fn::ImportValue`) are avoided, `BackendStack` instances (`prod` and `dev`) can be deployed, destroyed, and recreated completely independently.
+
+The shared pool has separate `bookings.read` resource servers for `https://api.blockbuster-theatre.nml-applications.com` and `https://api-dev.blockbuster-theatre.nml-applications.com`. Alexa account linking should request the corresponding full scope (`<identifier>/bookings.read`) for its target environment. These scopes are not enforced by API Gateway routes; the JWT authorizer validates the token issuer, audience and validity, not the environment-specific scope. The backend client has OAuth disabled and uses direct SRP or admin password authentication.
+
+Before deploying the auth stack, inspect the shared pool for a manually created resource server with the DEV identifier. If present and not already managed by this stack, coordinate with its consumers and remove it in the Cognito console before deployment to avoid an `AlreadyExists` conflict. Removing it can interrupt existing DEV account linking until deployment completes. Preserve the existing PROD resource server, and review `cdk diff BlockbusterTheatreBlockbusterTheatreAuthStack` before deployment.
+
+### Deployment & CI/CD
+
+Set `TMDB_API_KEY` to a non-empty TMDB read access token before backend synthesis:
 
 ```bash
-npm run deploy -- --parameters "TmdbApiKey=$TMDB_API_KEY"
+# Synthesize all stacks
+npm run synth
+
+# Synthesize a specific stack
+npx cdk synth BlockbusterTheatreBlockbusterTheatreAuthStack
+npx cdk synth -c env=prod -c stack=backend BlockbusterTheatreBackendStack
+npx cdk synth -c env=dev -c stack=backend BlockbusterTheatreBackendStack-dev
+
+# Deploy BlockbusterTheatreAuthStack independently
+npx cdk deploy BlockbusterTheatreBlockbusterTheatreAuthStack
+
+# Deploy BackendStack
+npx cdk deploy BlockbusterTheatreBackendStack --parameters "TmdbApiKey=$TMDB_API_KEY"
 ```
 
-Command-line arguments can be visible to local processes. Deployment requires AWS credentials and targets the account and region configured for CDK. Review the synthesized template with `npm run synth` before deploying. The first deployment after this change requires the parameter.
-
-The dev stack has its own API Gateway, application Lambdas and DynamoDB tables, but shares the production Cognito pool and client and the SES email identity. Cognito users and changes to those users are therefore shared; the Cognito pre-token Lambda belongs to the shared pool. Dev tables are deleted with the dev stack; production tables are retained.
-
-GitHub Actions assumes the CDK bootstrap deployment role to read the `UserPoolId` and `UserPoolClientId` outputs from the deployed `BlockbusterTheatreBackendStack`, then passes them as dev CloudFormation parameters. The production stack and outputs must already exist, and the GitHub Actions role must be allowed to assume the bootstrap deployment role. Set the dev GitHub Environment variable `PROD_POSTMAN_CLIENT_ID` to the shared Cognito `postman-test-client` ID so the dev authorizer accepts Postman tokens. For a local dev deployment, supply `--parameters ProdUserPoolId=<pool-id> --parameters ProdUserPoolClientId=<client-id> --parameters ProdPostmanClientId=<postman-client-id>` to `cdk deploy -c env=dev`, or synthesize with the corresponding `prodUserPoolId`, `prodUserPoolClientId`, and `prodPostmanClientId` CDK context values.
-
-For a manual GitHub Actions deployment, select `target_env` and optionally a build number. The job binds to the matching GitHub Environment and requires its `TMDB_API_KEY` secret. By default prod requires a successful `main` push build; dev can select builds across branches. The `allow_non_main_prod` override deliberately weakens the production restriction. Check the build and its source before deploying, especially to production. The workflow synthesizes the selected source and rejects older builds that do not support the masked TMDB parameter. The deployment assembly supports file assets, not Docker or executable assets. Automatic deployments remain limited to successful push builds on `dev` and `main`. See [API_GUIDE.md](./API_GUIDE.md) for environment and OIDC setup.
+In GitHub Actions, the deployment workflow (`deploy.yml`) supports deploying `BlockbusterTheatreAuthStack` and `BackendStack` independently via `workflow_dispatch` by specifying `target_stack: auth` or `target_stack: backend`.
 
 ## Project layout
 
-- `lib/stack/` — CDK app, Lambda functions, API Gateway routes, and DynamoDB tables
+- `bin/` — CDK application entry point
+- `lib/auth/` — Dedicated `BlockbusterTheatreAuthStack` (Cognito User Pool, Domain, Resource Server, Clients, and SSM exports)
+- `lib/backend/` — `BackendStack` (DynamoDB, SES, Lambdas, API Gateway HTTP API, and JWT Authorizer)
+- `lib/shared/` — Shared environment utilities, naming helpers, and typed SSM read/write helpers
 - `src/main/lambda/handlers/` — Lambda request handlers and booking/pricing logic
-- `src/test/` — unit tests
-- `scripts/` — data seeding and local development utilities
+- `src/test/` — Unit and integration tests
+- `scripts/` — Data seeding and local development utilities

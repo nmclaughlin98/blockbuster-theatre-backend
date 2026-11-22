@@ -3,9 +3,6 @@ run-name: '🔨 Build and Package (${{ github.head_ref || github.ref_name }} #${
 
 on:
   push:
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
@@ -43,12 +40,8 @@ jobs:
           CDK_DEFAULT_REGION: 'eu-west-2'
           TMDB_API_KEY: 'ci-synth-placeholder'
         run: |
-          if [ "$BUILD_BRANCH" = "dev" ]; then
-            CDK_ENV=dev
-          else
-            CDK_ENV=prod
-          fi
-          echo "Synthesizing the ${CDK_ENV} environment."
+          CDK_ENV=$([ "$BUILD_BRANCH" = "dev" ] && echo "dev" || echo "prod")
+          echo "Synthesizing AuthStack and BackendStack (${CDK_ENV})..."
           npx cdk synth -c env="$CDK_ENV" --output cdk-out
 
       - name: Upload Build Artifact
@@ -73,37 +66,4 @@ jobs:
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
           SYNTHESIZE_OUTCOME: ${{ steps.synthesize.outcome }}
           UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
-        run: |
-          COMPLETED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          {
-            echo "### 🚀 Build Summary"
-            echo "**Completed at:** \`${COMPLETED_AT}\`"
-            echo "**Status:** \`${JOB_STATUS}\`"
-            echo "**Branch:** \`${BUILD_BRANCH}\`"
-            echo "**Build Number:** \`${BUILD_NUMBER}\`"
-            echo "**Artifact Name:** \`build-artifact-${BUILD_NUMBER}\`"
-
-            if [ "$JOB_STATUS" = "failure" ]; then
-              echo
-              echo "#### Failure Summary"
-              FAILED_STEP_FOUND=false
-              for step in \
-                "Checkout Code:${CHECKOUT_OUTCOME}" \
-                "Setup Node.js:${SETUP_NODE_OUTCOME}" \
-                "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
-                "Check TypeScript Compilation:${COMPILE_OUTCOME}" \
-                "Synthesize CDK App:${SYNTHESIZE_OUTCOME}" \
-                "Upload Build Artifact:${UPLOAD_ARTIFACT_OUTCOME}"; do
-                STEP_NAME="${step%%:*}"
-                STEP_OUTCOME="${step#*:}"
-                if [ "$STEP_OUTCOME" = "failure" ]; then
-                  echo "- ${STEP_NAME} failed."
-                  FAILED_STEP_FOUND=true
-                fi
-              done
-              if [ "$FAILED_STEP_FOUND" = false ]; then
-                echo "- The job failed, but no individual step reported a failure."
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "Build #${BUILD_NUMBER} on ${BUILD_BRANCH}: ${JOB_STATUS} at ${COMPLETED_AT}"
+        run: node .github/scripts/write-summary.js build

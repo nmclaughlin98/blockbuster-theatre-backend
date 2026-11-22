@@ -12,7 +12,7 @@ All Lambda functions use CloudWatch Logs with a seven-day retention period and t
 
 ## API Gateway access logging
 
-The HTTP API default stage writes access logs to CloudWatch Logs in `eu-west-2`: `/aws/vendedlogs/blockbuster-theatre-api-access` for prod and `/aws/vendedlogs/blockbuster-theatre-api-access-DEV` for dev. Logs are retained for seven days. The prod log group is retained if its stack is deleted; the dev log group is deleted with its stack.
+The HTTP API default stage writes access logs to CloudWatch Logs in `eu-west-2`: `/aws/vendedlogs/blockbuster-theatre-api-access-PROD` for prod and `/aws/vendedlogs/blockbuster-theatre-api-access-DEV` for dev. Logs are retained for seven days. The prod log group is retained if its stack is deleted; the dev log group is deleted with its stack.
 
 Logs include the request ID, time, method, route key, response status and latency, integration status, and available gateway or authorizer errors. They do not explicitly include request bodies, authorization headers, tokens, query strings, or JWT claims. An authorizer error may not contain the reason for every JWT rejection. Logs begin after deployment and access logging can incur CloudWatch charges. The deploying role needs the permissions listed in the [AWS HTTP API logging documentation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html#http-api-logging.permissions).
 
@@ -51,52 +51,64 @@ The stack creates an SES email identity for `niallmclaughlin1998@gmail.com`. Aft
 
 The endpoint is intended for the deployed demo booking flow and is not available through the local API adapter. It accepts the client-provided booking summary and does not persist or independently verify a booking or price. Do not treat the email as proof of payment or a confirmed seat reservation.
 
-The maximum accepted ticket count is read from the AWS Systems Manager Parameter Store string parameter `/blockbuster-theatre/booking-configuration/max-tickets-value` in prod and `/blockbuster-theatre/booking-configuration/max-tickets-value-dev` in dev. If the parameter is not configured or does not exist, the handlers use a limit of 10. The guest-booking and booking-confirmation Lambda roles have read access to their environment's parameter.
+The maximum accepted ticket count is read from the AWS Systems Manager Parameter Store string parameter `/blockbuster-theatre/booking-configuration/max-tickets-value-PROD` in prod and `/blockbuster-theatre/booking-configuration/max-tickets-value-DEV` in dev. These parameters are external to this stack; copy the existing prod value to the new name before deployment. If the parameter is not configured or does not exist, the handlers use a limit of 10. The guest-booking and booking-confirmation Lambda roles have read access to their environment's parameter.
 
 Movie imports apply optional, per-TMDB-ID metadata overrides from `src/main/lambda/handlers/movie-metadata-overrides.ts`. The registry currently includes Star Wars title, slug, and ordering overrides; add entries there to support other franchises or collections without changing the import handler. Imported records expose `sortTitle` (falling back to the display title when no custom order is configured). Existing records are not backfilled automatically; re-import their TMDB IDs through `POST /movies` to apply overrides. The `/movies` pagination order remains based on release date and is unchanged.
 
 Movie records store TMDB `poster` and `still` URLs at original resolution. To backfill existing movie records, set `MOVIE_TABLE_NAME` and AWS credentials/region, then run `npm run migrate:movie-image-urls` to preview changes. The script scans every page and updates only those two URL attributes while preserving the rest of each record. Add `-- --apply` to write the changes after reviewing the dry-run output:
 
 ```powershell
-$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue"
+$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue-PROD"
 $env:AWS_PROFILE = "your-aws-profile"
 $env:AWS_REGION = "eu-west-2"
 npm run migrate:movie-image-urls
 npm run migrate:movie-image-urls -- --apply
 ```
 
-Newly imported movies use the same shared schedule generator as the one-time updater. Every showing has a screen from 1 to 5. Movies released more than one year ago or with a score below 5/10 are scheduled on 60% of days, with 1–2 showtimes per scheduled day. Other movies are scheduled on 85% of days, with 2–4 showtimes per scheduled day. Schedules are repeatable per movie so the preview matches the applied update.
+## Cinema screening schedule
 
-To replace every existing movie's showtimes, set the table name, AWS profile, and region, then preview the proposed schedules before applying them. The script updates only the `showtimes` attribute and follows the table's `tmdbId` and `slug` keys:
+Movie catalogue records no longer use `showtimes` as their schedule source. They store `startDate`, optional `runEndDate`, and `preSalesEligible`; scheduled screenings live in the existing `blockbuster-theatre-showtime-registry` table. Movie IDs and table keys are unchanged.
 
-```json
-{
-  "Monday": [
-    { "screen": "1", "time": "13:00" },
-    { "screen": "3", "time": "14:20" }
-  ]
-}
-```
+`POST /movies` accepts optional `startDate`, `runEndDate`, and `preSalesEligible` fields alongside `movieIds`. `startDate` defaults to the future release date, or today for a movie already released. A future release is reported as `Coming Soon (Pre-Sales Open)` only when pre-sales are enabled and at least one upcoming screening exists; otherwise it is `Coming Soon (No Showtimes Yet)`. Released movies are `Now Showing` until after `runEndDate`, when they become `Ended`.
 
-Pricing requests still select a movie showtime by its day and time.
+`GET /movies/{id}` reads active screenings from the showtime registry for the requested date, or today through the end of the current week plus five days; it does not create or modify screenings and does not access booking records. The EventBridge-triggered scheduler maintains this rolling window every six hours. It uses the existing age/score frequency rules, allows at most four screenings per movie per day, and reserves a 45-minute turnaround/trailer buffer on each screen. Manually managed and offer screenings are retained; stale past screening records are removed only when no active seat locks remain. A run end date prevents new screenings beyond that date while preserving booked screenings.
+
+JWT-protected manual screening routes use the movie ID as a query parameter:
+
+- `POST /showtimes?movieId=456` with `{ "date": "2026-12-20", "screen": "2", "time": "19:00" }` creates a screening.
+- `PATCH /showtimes/{showtimeId}?movieId=456` updates one or more of `date`, `screen`, and `time`.
+- `DELETE /showtimes/{showtimeId}?movieId=456` cancels a screening.
+
+Manual changes respect the run dates, four-screening daily cap, screen conflicts, and turnaround buffer. A screening with active bookings cannot be changed or cancelled; these requests return `409`.
+
+### Scheduling data migrations
+
+After deploying the `ShowtimesByDate` index, backfill existing registry records before relying on date-based schedule queries:
 
 ```powershell
-$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue"
+$env:SHOWTIME_REGISTRY_TABLE_NAME = "blockbuster-theatre-showtime-registry"
 $env:AWS_PROFILE = "your-aws-profile"
 $env:AWS_REGION = "eu-west-2"
-npm run update:movie-showtimes
-npm run update:movie-showtimes -- --apply
+npm run migrate:showtime-registry
+npm run migrate:showtime-registry -- --apply
 ```
 
-On macOS or Linux, use Bash or Zsh `export` commands instead:
+Legacy movie `showtimes` values are ignored by the new scheduler. Preview them before removal:
 
-```bash
-export MOVIE_TABLE_NAME="blockbuster-theatre-movie-catalogue"
-export AWS_PROFILE="your-aws-profile"
-export AWS_REGION="eu-west-2"
-npm run update:movie-showtimes
-npm run update:movie-showtimes -- --apply
+```powershell
+$env:MOVIE_TABLE_NAME = "blockbuster-theatre-movie-catalogue-PROD"
+$env:AWS_PROFILE = "your-aws-profile"
+$env:AWS_REGION = "eu-west-2"
+npm run migrate:movie-showtimes
 ```
+
+The legacy values may contain manually customized weekly schedules. Recreate any desired screenings with the manual API before removal; the migration requires an explicit confirmation flag:
+
+```powershell
+npm run migrate:movie-showtimes -- --apply --confirm-overrides-reviewed
+```
+
+Offer overrides are stored separately and continue to use screened showtime objects. Migrate legacy string-only offer overrides before deploying strict offer validation:
 
 ### Migrating existing offer overrides
 
@@ -108,11 +120,11 @@ npm run update:offer-showtimes
 npm run update:offer-showtimes -- --apply
 ```
 
-Run both the movie and offer migrations before deploying the strict showtime validation. Legacy records can otherwise cause `GET /movies`, `GET /film-selections`, or `GET /ticket-pricing` to reject the affected record.
+Run `update:offer-showtimes` for legacy offer overrides. Movie schedules are now generated from rules and stored in the screening registry.
 
 ## Deprecated showtime format
 
-The former string-only schedule format is deprecated and is no longer accepted for movie schedules or offer overrides. Requests using it are rejected:
+The former string-only schedule format is deprecated and is no longer accepted for offer overrides. Requests using it are rejected:
 
 ```json
 {
@@ -120,7 +132,7 @@ The former string-only schedule format is deprecated and is no longer accepted f
 }
 ```
 
-Use screened showtime objects instead. Existing cloud movie records must be migrated with `update:movie-showtimes`; offer overrides must be migrated with `update:offer-showtimes` before endpoints that read them can validate those records.
+Use screened showtime objects for offer overrides. Movie schedules are not written to movie records.
 
 ```json
 {
@@ -416,9 +428,11 @@ The endpoint returns the same booking details as the guest endpoint, except for 
 
 ### List account bookings
 
-`GET /api/v1/bookings/account/history` accepts a Cognito token in the `Authorization: Bearer <token>` header. Send an ID token to enable automatic guest-booking linking: only an ID token with `email_verified: true` and an email can initiate the sweep. Access tokens and unverified emails still return account history but do not initiate linking. Guest checkout does not check whether an account exists.
+`GET /api/v1/bookings/account/history` accepts a Cognito token in the `Authorization: Bearer <token>` header. For access tokens, or ID tokens without an email claim, the handler looks up the account's email and verification status in Cognito when linking is enabled. An ID token with an email must have `email_verified: true`. Unverified emails do not initiate linking. A Cognito lookup failure fails the history request. Guest checkout does not check whether an account exists.
 
-The sweep matches normalized `customerEmail` against `CustomerEmailBookings` indexes on both booking tables. It conditionally assigns only unowned booking records to the verified subject, sets `claimedAt` and `claimMethod`, and removes the guest conversion-token hash. A competing conversion or claim cannot overwrite the owner. The existing guest credential is a conversion token, not a guest ticket-view link; it cannot be used after linking. Indexes are eventually consistent, so a recently created guest booking may be discovered on a later fetch. Newly claimed bookings are included immediately in the claiming response even before the `UserBookings` index catches up.
+Automatic linking is disabled by default. It runs only when the environment's SSM String parameter is `true`: `/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS` in production or `/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS` in development. A missing parameter also disables linking. Values must be `true` or `false` (case-insensitive); invalid values or other SSM errors fail the history request. The parameter is read on each eligible history request and is not created by this stack.
+
+The sweep matches normalized `customerEmail` against `CustomerEmailUpcomingBookings` indexes on both booking tables, querying future dates and remaining showtimes today separately. It conditionally assigns only unowned booking records to the verified subject, sets `claimedAt` and `claimMethod`, and removes the guest conversion-token hash. A competing conversion or claim cannot overwrite the owner. The existing guest credential is a conversion token, not a guest ticket-view link; it cannot be used after linking. Indexes are eventually consistent, so a recently created guest booking may be discovered on a later fetch. Newly claimed bookings are included immediately in the claiming response even before the `UserBookings` index catches up.
 
 `newlyLinkedBookings` contains booking references claimed by this request and is empty on subsequent requests. One consolidated SES email is attempted for each nonempty sweep. Delivery is best effort: if SES fails, the response includes `linkNotificationSent: false`, the failure is logged, and no retry is scheduled. A request interrupted after committing a claim may not deliver its one-time response metadata to the browser. Account history and ticket availability otherwise remain subject to `UserBookings` index propagation.
 
@@ -594,7 +608,7 @@ The profile must have DynamoDB permissions for those tables and Cognito admin pe
 
 ## Prod and dev AWS environments
 
-The CDK entry point is `lib/stack/app.ts`. The environment defaults to `prod`; use `-c env=dev` to synthesize or deploy the isolated dev stack. Any other environment value is rejected.
+The CDK entry point is `bin/app.ts`. Without a context filter it synthesizes the shared auth stack and both backend environments; use `-c env=dev` to synthesize the dev backend stack.
 Set the `TMDB_API_KEY` environment variable to a non-empty TMDB read access token before synthesizing. The template contains a masked CloudFormation parameter rather than the token itself. For a direct deployment, pass the same value as `--parameters TmdbApiKey=<token>` through a secure shell; command-line arguments may be visible to local processes. The first deployment with this change requires the parameter for both environments.
 
 ```powershell
@@ -602,7 +616,9 @@ npx cdk synth -c env=prod
 npx cdk synth -c env=dev
 ```
 
-Prod keeps the existing stack ID, table names, Lambda names, API name, SES identity, API domain, and Cognito pool/client. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming existing dev tables replaces them and can delete their data. No S3 buckets are defined by this stack.
+Prod keeps the existing stack ID and uses `-PROD`-suffixed DynamoDB tables, Lambda/API names, and Cognito pool/client names. Dev uses a `BlockbusterTheatreBackendStack-dev` stack, `-DEV`-suffixed DynamoDB tables and Lambda/API names, and the `api-dev.blockbuster-theatre.nml-applications.com` API mapping. External API and Cognito domains and the SES email identity remain unchanged. Dev tables use `RemovalPolicy.DESTROY`; prod tables remain `RETAIN`. Renaming prod tables creates new, empty tables; retained old tables are not copied automatically. Copy and verify any needed data before purging the old tables. No S3 buckets are defined by this stack.
+
+The Cognito user pool is also retained on stack deletion. When recreating the stack, the unchanged Cognito domain and API mapping must be released by the old stack before the replacement can claim them. A retained pool and retained log group may still exist after deletion; inspect them before any cleanup.
 
 CDK applies `Environment=prod` or `Environment=dev` and `Project=blockbuster-theatre` to supported stack-managed resources. Adding the prod environment tag changes the prod template; imported resources and resource types without tag support cannot be tagged by this stack.
 
@@ -614,7 +630,7 @@ Dev imports the existing prod User Pool, backend App Client, and SES email ident
 
 The pool and backend client IDs can be provided through CDK context (`prodUserPoolId`, `prodUserPoolClientId`) or environment variables (`PROD_USER_POOL_ID`, `PROD_USER_POOL_CLIENT_ID`). Otherwise the dev template requires `ProdUserPoolId` and `ProdUserPoolClientId` CloudFormation parameters. The deployment workflow retrieves those parameters from the `UserPoolId` and `UserPoolClientId` outputs of the prod stack.
 
-For the Postman client, set the dev GitHub Environment variable `PROD_POSTMAN_CLIENT_ID` to the client ID of `postman-test-client` in the shared prod Cognito pool. The workflow supplies it as the required `ProdPostmanClientId` CloudFormation parameter. For direct dev deployment, supply `--parameters ProdPostmanClientId=<postman-client-id>` along with any required pool and backend client parameters; alternatively synthesize with context `prodPostmanClientId` or environment variable `PROD_POSTMAN_CLIENT_ID`. The current frontend auth flow uses SRP directly, so no Hosted UI callback/client changes are required or made to prod.
+For the Postman client, set the dev GitHub Environment variable `PROD_POSTMAN_CLIENT_ID` to the client ID of `postman-test-client-PROD` in the shared prod Cognito pool. The workflow supplies it as the required `ProdPostmanClientId` CloudFormation parameter. For direct dev deployment, supply `--parameters ProdPostmanClientId=<postman-client-id>` along with any required pool and backend client parameters; alternatively synthesize with context `prodPostmanClientId` or environment variable `PROD_POSTMAN_CLIENT_ID`. Recreating the pool or its clients changes their IDs: update the frontend and Postman configuration, update this dev variable, and redeploy dev with the new pool/client IDs.
 
 The dev API accepts the production frontend origin, local development origins, and HTTPS Cloudflare Pages previews. API Gateway HTTP API's `https://*` origin pattern is used for preview hostnames; it permits any HTTPS origin, so bearer-token handling must remain explicit and API authorization must not rely on CORS alone. `Authorization`, `Content-Type`, and common AWS/request headers are allowed.
 
@@ -624,7 +640,7 @@ The dev booking Lambdas also use the existing prod SES identity. Exercise email-
 
 ### Production data sync to dev
 
-`npm run sync:dev` scans the nine configured prod tables and writes to their `-DEV` counterparts in batches of 25, retrying DynamoDB unprocessed writes with exponential backoff. It verifies all source/target tables and key schemas before any writes. Every target must exactly end in `-DEV`, must not match a prod table, and all mappings are validated before the optional clear begins.
+`npm run sync:dev` scans the nine configured `-PROD` tables and writes to their `-DEV` counterparts in batches of 25, retrying DynamoDB unprocessed writes with exponential backoff. It verifies all source/target tables and key schemas before any writes. Every target must exactly match the `-DEV` counterpart of its `-PROD` source, must not match a prod table, and all mappings are validated before the optional clear begins. This command does not migrate the old unsuffixed prod tables.
 
 By default, sync overwrites matching keys but leaves other existing dev rows intact. Use `-- --clear` to delete every current item from all `-DEV` tables before copying. Run a clear-and-copy during a quiet period so concurrent dev writes do not race with the synchronization:
 
