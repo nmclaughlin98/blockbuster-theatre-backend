@@ -205,6 +205,50 @@ describe('deploy build selection', () => {
     });
 
     it.each([
+        ['dev', 'latest'], ['dev', '42'], ['prod', 'latest'], ['prod', '42'],
+    ])('filters a large build response before selecting the %s build %s', (environment, buildNumber) => {
+        const response = JSON.stringify({
+            workflow_runs: [{
+                id: 12345, run_number: 42, head_sha: sha, head_branch: 'main',
+                event: 'push', conclusion: 'success', head_repository: { full_name: 'owner/repo' },
+                unused_metadata: 'x'.repeat(2 * 1024 * 1024),
+            }],
+        });
+        writeFileSync(join(directory, 'response.json'), response);
+        const result = spawnSync('bash', ['-e', '-c', `
+            gh() {
+                while [ "$#" -gt 0 ]; do
+                    if [ "$1" = --jq ]; then
+                        jq -r "$2" "$RESPONSE"
+                        return
+                    fi
+                    shift
+                done
+                return 1
+            }
+            ${script}
+        `], {
+            encoding: 'utf8',
+            env: {
+                ...process.env,
+                GITHUB_EVENT_NAME: 'workflow_dispatch',
+                GITHUB_REPOSITORY: 'owner/repo',
+                GITHUB_REF: 'refs/heads/main',
+                INPUT_ENVIRONMENT: environment,
+                INPUT_TARGET_ENV: '',
+                INPUT_BUILD_NUMBER: buildNumber,
+                INPUT_ALLOW_NON_MAIN_PROD: 'false',
+                GITHUB_OUTPUT: join(directory, 'output'),
+                GITHUB_STEP_SUMMARY: join(directory, 'summary'),
+                RESPONSE: join(directory, 'response.json'),
+            },
+        });
+        expect(result.status).toBe(0);
+        expect(readFileSync(join(directory, 'output'), 'utf8'))
+            .toContain(`build_number=42\nbuild_run_id=12345\ndeploy_environment=${environment}`);
+    });
+
+    it.each([
         ['dev', 'refs/heads/main', 'dev'],
         ['prod', 'refs/heads/main', 'prod'],
         ['auto', 'refs/heads/main', 'prod'],
