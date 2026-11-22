@@ -45,7 +45,7 @@ jobs:
         run: |
           CDK_ENV=$([ "$BUILD_BRANCH" = "dev" ] && echo "dev" || echo "prod")
           echo "Synthesizing AuthStack and CoreStack (${CDK_ENV})..."
-          npx cdk synth --all -c env="$CDK_ENV" --output cdk-out
+          npx cdk synth -c env="$CDK_ENV" --output cdk-out
 
       - name: Upload Build Artifact
         id: upload_artifact
