@@ -83,12 +83,24 @@ jobs:
           TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: node .github/scripts/select-build.js
 
+      - name: Backup Workflow Scripts
+        id: backup_scripts
+        run: |
+          mkdir -p /tmp/workflow-scripts
+          cp -r .github/scripts/* /tmp/workflow-scripts/
+
       - name: Checkout Build Source
         id: checkout_build
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.select_build.outputs.build_sha }}
           persist-credentials: false
+
+      - name: Restore Workflow Scripts
+        id: restore_scripts
+        run: |
+          mkdir -p .github/scripts
+          cp -r /tmp/workflow-scripts/* .github/scripts/
 
       - name: Setup Node.js
         id: setup_node

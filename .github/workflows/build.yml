@@ -1,210 +1,72 @@
-name: 2. Deploy Stack 🚀
-run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env != 'auto' && inputs.target_env || inputs.environment || (github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch == 'dev' && 'dev' || github.ref == 'refs/heads/main' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
+name: 1. Build and Package 🔨
+run-name: '🔨 Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
 
 on:
-  workflow_run:
-    workflows:
-      - 1. Build and Package 🔨
-    types:
-      - completed
+  push:
+  pull_request:
     branches:
       - main
-      - dev
   workflow_dispatch:
-    inputs:
-      target_env:
-        description: 'Environment to deploy (auto selects prod for main, otherwise dev)'
-        required: true
-        type: choice
-        default: auto
-        options:
-          - auto
-          - dev
-          - prod
-      target_stack:
-        description: 'Stack to deploy (backend or auth)'
-        required: false
-        type: choice
-        default: backend
-        options:
-          - backend
-          - auth
-      environment:
-        description: 'Legacy environment input (leave empty when using target_env)'
-        required: false
-        type: string
-      build_number:
-        description: 'Build number to deploy (latest uses the selected branch when overriding)'
-        required: false
-        default: 'latest'
-        type: string
-      allow_non_main_prod:
-        description: 'Allow production deployments from non-main branches'
-        required: true
-        default: false
-        type: boolean
 
 jobs:
-  prepare:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
+    env:
+      BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
     outputs:
-      build_number: ${{ steps.select_build.outputs.build_number }}
-      build_run_id: ${{ steps.select_build.outputs.build_run_id }}
-      deploy_branch: ${{ steps.select_build.outputs.deploy_branch }}
-      deploy_environment: ${{ steps.select_build.outputs.deploy_environment }}
-      deploy_stack: ${{ steps.select_build.outputs.deploy_stack }}
+      build_number: ${{ github.run_number }}
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         id: checkout
         uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Select Build
-        id: select_build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
-          INPUT_ENVIRONMENT: ${{ inputs.environment }}
-          INPUT_TARGET_ENV: ${{ inputs.target_env }}
-          INPUT_TARGET_STACK: ${{ inputs.target_stack }}
-          INPUT_ALLOW_NON_MAIN_PROD: ${{ inputs.allow_non_main_prod }}
-          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
-          TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
-          TRIGGER_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: node .github/scripts/select-build.js
-
-      - name: Backup Workflow Scripts
-        id: backup_scripts
-        run: |
-          mkdir -p /tmp/workflow-scripts
-          cp -r .github/scripts/* /tmp/workflow-scripts/
-
-      - name: Checkout Build Source
-        id: checkout_build
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ steps.select_build.outputs.build_sha }}
-          persist-credentials: false
-
-      - name: Restore Workflow Scripts
-        id: restore_scripts
-        run: |
-          mkdir -p .github/scripts
-          cp -r /tmp/workflow-scripts/* .github/scripts/
 
       - name: Setup Node.js
         id: setup_node
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          package-manager-cache: false
+          cache: 'npm'
 
       - name: Install Dependencies
         id: install_dependencies
         run: npm ci --include=dev
+
+      - name: Check TypeScript Compilation
+        id: compile
+        run: npm run build
 
       - name: Synthesize CDK App
         id: synthesize
         env:
           CDK_DEFAULT_ACCOUNT: '334624057595'
           CDK_DEFAULT_REGION: 'eu-west-2'
-          DEPLOY_ENVIRONMENT: ${{ steps.select_build.outputs.deploy_environment }}
-          DEPLOY_STACK: ${{ steps.select_build.outputs.deploy_stack }}
           TMDB_API_KEY: 'ci-synth-placeholder'
-        run: node .github/scripts/synth-stack.js
+        run: |
+          CDK_ENV=$([ "$BUILD_BRANCH" = "dev" ] && echo "dev" || echo "prod")
+          echo "Synthesizing AuthStack and CoreStack (${CDK_ENV})..."
+          npx cdk synth -c env="$CDK_ENV" --output cdk-out
 
-      - name: Upload Deployment Assembly
+      - name: Upload Build Artifact
+        id: upload_artifact
         uses: actions/upload-artifact@v7
         with:
-          name: deployment-assembly
+          name: build-artifact-${{ github.run_number }}
           path: cdk-out
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 1
+          retention-days: 7
 
-  deploy:
-    needs: prepare
-    runs-on: ubuntu-latest
-    environment:
-      name: ${{ needs.prepare.outputs.deploy_environment }}
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout Workflow Source
-        id: checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - name: Setup Node.js
-        id: setup_node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - name: Install Dependencies
-        id: install_dependencies
-        run: npm ci --include=dev
-
-      - name: Download Deployment Assembly
-        id: download_assembly
-        uses: actions/download-artifact@v8
-        with:
-          name: deployment-assembly
-          path: cdk-out
-
-      - name: Validate Deployment Assembly
-        id: validate_assembly
-        env:
-          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
-          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
-        run: node .github/scripts/validate-assembly.js
-
-      - name: Configure AWS Credentials
-        id: configure_aws
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-region: eu-west-2
-          role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
-          role-session-name: github-actions-deploy
-
-      - name: Deploy CDK Stack
-        id: deploy_cdk
-        env:
-          CDK_DEFAULT_ACCOUNT: '334624057595'
-          CDK_DEFAULT_REGION: 'eu-west-2'
-          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
-          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: node .github/scripts/deploy-stack.js
-
-      - name: Write Deploy Summary
+      - name: Write Build Summary
         if: always()
         env:
-          DEPLOY_BRANCH: ${{ needs.prepare.outputs.deploy_branch }}
-          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
-          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
-          DEPLOY_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
-          DEPLOY_BUILD_RUN_ID: ${{ needs.prepare.outputs.build_run_id }}
+          BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          BUILD_NUMBER: ${{ github.run_number }}
           JOB_STATUS: ${{ job.status }}
           CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
           SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
           INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
-          DOWNLOAD_ASSEMBLY_OUTCOME: ${{ steps.download_assembly.outcome }}
-          VALIDATE_ASSEMBLY_OUTCOME: ${{ steps.validate_assembly.outcome }}
-          CONFIGURE_AWS_OUTCOME: ${{ steps.configure_aws.outcome }}
-          DEPLOY_CDK_OUTCOME: ${{ steps.deploy_cdk.outcome }}
-        run: node .github/scripts/write-summary.js deploy
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          SYNTHESIZE_OUTCOME: ${{ steps.synthesize.outcome }}
+          UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
+        run: node .github/scripts/write-summary.js build
