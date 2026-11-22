@@ -11,8 +11,22 @@ function fail(message) {
 }
 
 function ghApi(args) {
-    return JSON.parse(execFileSync('gh', ['api', ...args], { encoding: 'utf8' }));
+    const output = execFileSync('gh', ['api', ...args], {
+        encoding: 'utf8',
+        maxBuffer: 20 * 1024 * 1024,
+    });
+    return JSON.parse(output);
 }
+
+const RUN_SUMMARY_JQ = `[.workflow_runs[] | {
+  id,
+  run_number,
+  head_sha,
+  head_branch,
+  event,
+  conclusion,
+  repo_full_name: .head_repository.full_name
+}]`;
 
 const env = process.env;
 const eventName = env.GITHUB_EVENT_NAME;
@@ -94,12 +108,11 @@ if (eventName === 'workflow_run') {
         }
 
         if (requestedBuild === 'latest') {
-            const res = ghApi(['-X', 'GET', ...query]);
-            selectedRun = res.workflow_runs?.[0];
+            const runs = ghApi(['-X', 'GET', ...query, '--jq', RUN_SUMMARY_JQ]);
+            selectedRun = runs[0];
         } else {
-            const runs = ghApi(['-X', 'GET', '--paginate', ...query, '--jq', '.workflow_runs']);
-            const flat = Array.isArray(runs[0]) ? runs.flat() : runs;
-            selectedRun = flat.find((r) => String(r.run_number) === requestedBuild);
+            const pages = ghApi(['-X', 'GET', '--paginate', '--slurp', ...query, '--jq', RUN_SUMMARY_JQ]);
+            selectedRun = pages.flat().find((r) => String(r.run_number) === requestedBuild);
         }
 
         if (
@@ -107,7 +120,7 @@ if (eventName === 'workflow_run') {
             !selectedRun.head_branch ||
             selectedRun.event !== 'push' ||
             selectedRun.conclusion !== 'success' ||
-            selectedRun.head_repository?.full_name !== repo
+            selectedRun.repo_full_name !== repo
         ) {
             fail('Production requires a successful push build from this repository.');
         }
@@ -129,12 +142,11 @@ if (eventName === 'workflow_run') {
             appendFile(summaryFile, '**Warning:** Production branch override enabled.\n');
         }
     } else if (requestedBuild === 'latest') {
-        const res = ghApi([endpoint]);
-        selectedRun = res.workflow_runs?.[0];
+        const runs = ghApi([endpoint, '--jq', RUN_SUMMARY_JQ]);
+        selectedRun = runs[0];
     } else {
-        const runs = ghApi(['--paginate', endpoint, '--jq', '.workflow_runs']);
-        const flat = Array.isArray(runs[0]) ? runs.flat() : runs;
-        selectedRun = flat.find((r) => String(r.run_number) === requestedBuild);
+        const pages = ghApi(['--paginate', '--slurp', endpoint, '--jq', RUN_SUMMARY_JQ]);
+        selectedRun = pages.flat().find((r) => String(r.run_number) === requestedBuild);
     }
 
     if (!selectedRun) {
