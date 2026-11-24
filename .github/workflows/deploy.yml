@@ -1,6 +1,6 @@
 name: 2. Deploy Stack 🚀
 
-run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env || 'dev' }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
+run-name: "🚀 Deploy \${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env \vert{}\vert{} 'dev' }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
   workflow_run:
@@ -43,24 +43,23 @@ permissions:
 jobs:
   # Fast-path: if manually triggered with "latest", hand off to resolver so the real deploy gets the resolved #number in its title
   handoff-latest:
-    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build_number == 'latest' || inputs.build_number == '') }}
+    if: \${{ github.event_name == 'workflow_dispatch' && (inputs.build_number == 'latest' || inputs.build_number == '') }}
     runs-on: ubuntu-latest
     steps:
       - name: Hand off to latest build resolver
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: \${{ github.token }}
         run: |
-          gh api \
-            --method POST \
-            "repos/${{ github.repository }}/dispatches" \
-            -f event_type="resolve-latest-build" \
-            -f "client_payload[target_stack]=${{ inputs.target_stack || 'backend' }}" \
-            -f "client_payload[target_env]=${{ inputs.target_env || 'dev' }}" \
-            -f "client_payload[source_branch]=${{ github.ref_name }}"
+          gh workflow run deploy-resolver.yml \
+            --repo "\${{ github.repository }}" \
+            --ref "\${{ github.ref_name }}" \
+            -f target_stack="\${{ inputs.target_stack || 'backend' }}" \
+            -f target_env="\${{ inputs.target_env || 'dev' }}" \
+            -f source_branch="\${{ github.ref_name }}"
 
   # Main deploy job: runs whenever a concrete build number is known (workflow_run OR resolved manual run)
   deploy:
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.build_number != 'latest' && inputs.build_number != '') }}
+    if: \${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.build_number != 'latest' && inputs.build_number != '') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -69,25 +68,25 @@ jobs:
       - name: Resolve build run ID
         id: resolve
         env:
-          GH_TOKEN: ${{ github.token }}
-          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
-          WORKFLOW_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
-          INPUT_BUILD: ${{ inputs.build_number }}
+          GH_TOKEN: \${{ github.token }}
+          WORKFLOW_RUN_ID: \${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_NUMBER: \${{ github.event.workflow_run.run_number }}
+          INPUT_BUILD: \${{ inputs.build_number }}
         run: |
-          if [ -n "$WORKFLOW_RUN_ID" ]; then
-            RUN_ID="$WORKFLOW_RUN_ID"
-            BUILD_NUM="$WORKFLOW_RUN_NUMBER"
+          if [ -n "\$WORKFLOW_RUN_ID" ]; then
+            RUN_ID="\$WORKFLOW_RUN_ID"
+            BUILD_NUM="\$WORKFLOW_RUN_NUMBER"
           else
-            BUILD_NUM="$INPUT_BUILD"
-            BUILD_WORKFLOW_ID=$(gh api "repos/${{ github.repository }}/actions/workflows" \
+            BUILD_NUM="\$INPUT_BUILD"
+            BUILD_WORKFLOW_ID=\$(gh api "repos/\${{ github.repository }}/actions/workflows" \
               --jq '.workflows[] | select(.name | startswith("1. Build and Package")) | .id' | head -n 1)
 
-            RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?per_page=50" \
-              --jq ".workflow_runs[] | select(.run_number == ${BUILD_NUM}) | .id" | head -n 1)
+            RUN_ID=\$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?per_page=50" \
+              --jq ".workflow_runs[] | select(.run_number == \${BUILD_NUM}) | .id" | head -n 1)
           fi
 
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "Could not resolve build run ID for Build #${BUILD_NUM}."
+          if [ -z "$RUN_ID" ] \vert{}\vert{} [ "$RUN_ID" = "null" ]; then
+            echo "Could not resolve build run ID for Build #\${BUILD_NUM}."
             exit 1
           fi
 
@@ -97,10 +96,10 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v7
         with:
-          name: build-artifact-${{ steps.resolve.outputs.build_number }}
+          name: build-artifact-\${{ steps.resolve.outputs.build_number }}
           path: cdk-out
-          run-id: ${{ steps.resolve.outputs.run_id }}
-          github-token: ${{ github.token }}
+          run-id: \${{ steps.resolve.outputs.run_id }}
+          github-token: \${{ github.token }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -120,14 +119,14 @@ jobs:
 
       - name: Deploy CDK stack
         env:
-          TARGET_ENV: ${{ inputs.target_env || 'dev' }}
-          TARGET_STACK: ${{ inputs.target_stack || 'backend' }}
+          TARGET_ENV: \${{ inputs.target_env || 'dev' }}
+          TARGET_STACK: \${{ inputs.target_stack || 'backend' }}
         run: |
-          if [ "$TARGET_STACK" = "both" ] || [ "$TARGET_STACK" = "all" ]; then
-            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" --all --context env="$TARGET_ENV" --require-approval never
-          elif [ "$TARGET_STACK" = "auth" ]; then
-            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreAuthStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never
+          if [ "$TARGET_STACK" = "both" ] \vert{}\vert{} [ "$TARGET_STACK" = "all" ]; then
+            npx aws-cdk deploy --app "cdk-out/\${TARGET_ENV}" --all --context env="\$TARGET_ENV" --require-approval never
+          elif [ "\$TARGET_STACK" = "auth" ]; then
+            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreAuthStack-${TARGET_ENV}" --context env="\$TARGET_ENV" --require-approval never
           else
-            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreBackendStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never
+            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreBackendStack-${TARGET_ENV}" --context env="\$TARGET_ENV" --require-approval never
           fi
-          echo "Deployment of $TARGET_STACK stack for $TARGET_ENV environment completed."
+          echo "Deployment of $TARGET_STACK stack for$TARGET_ENV environment completed."
