@@ -122,12 +122,21 @@ jobs:
         env:
           TARGET_ENV: ${{ inputs.target_env || 'dev' }}
           TARGET_STACK: ${{ inputs.target_stack || 'backend' }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
+          PARAMETERS=()
+          if [ "$TARGET_STACK" != "auth" ]; then
+            if [[ ! "$TMDB_API_KEY" =~ [^[:space:]] ]]; then
+              echo "TMDB_API_KEY must be configured as a non-empty repository secret."
+              exit 1
+            fi
+            PARAMETERS=(--parameters "BlockbusterTheatreBackendStack-${TARGET_ENV}:TmdbApiKey=$TMDB_API_KEY")
+          fi
           if [ "$TARGET_STACK" = "both" ] || [ "$TARGET_STACK" = "all" ]; then
-            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" --all --context env="$TARGET_ENV" --require-approval never
+            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" --all --context env="$TARGET_ENV" --require-approval never "${PARAMETERS[@]}"
           elif [ "$TARGET_STACK" = "auth" ]; then
             npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreAuthStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never
           else
-            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreBackendStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never
+            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreBackendStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never "${PARAMETERS[@]}"
           fi
           echo "Deployment of $TARGET_STACK stack for $TARGET_ENV environment completed."
