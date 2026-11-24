@@ -15,7 +15,10 @@ function parseTargetEnv() {
 }
 
 async function loadScheduleService() {
-    const entryPoint = path.join(REPO_ROOT, 'src/utils/movie-schedule-service.ts');
+    const entryPoint = path.join(
+        REPO_ROOT,
+        'src/main/lambda/handlers/utils/movie-schedule-service.ts'
+    );
     const result = await build({
         entryPoints: [entryPoint],
         bundle: true,
