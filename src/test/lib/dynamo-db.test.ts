@@ -15,7 +15,7 @@ describe('DatabaseConstruct', () => {
     it('should create a DynamoDB table', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movie-catalogue-PROD',
+            TableName: 'blockbuster-theatre-prod-movie-catalogue',
             BillingMode: 'PAY_PER_REQUEST',
         });
     });
@@ -40,7 +40,7 @@ describe('DatabaseConstruct', () => {
     it('should store TMDB list collections without a hierarchy index', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movie-collections-PROD',
+            TableName: 'blockbuster-theatre-prod-movie-collections',
             KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
             BillingMode: 'PAY_PER_REQUEST',
         });
@@ -49,7 +49,7 @@ describe('DatabaseConstruct', () => {
 
     it('indexes guest email on both booking tables', () => {
         const template = Template.fromStack(stack);
-        for (const TableName of ['blockbuster-theatre-bookings-PROD', 'blockbuster-theatre-bookings-by-showtime-PROD']) {
+        for (const TableName of ['blockbuster-theatre-prod-bookings', 'blockbuster-theatre-prod-bookings-by-showtime']) {
             template.hasResourceProperties('AWS::DynamoDB::Table', {
                 TableName,
                 GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
@@ -63,7 +63,7 @@ describe('DatabaseConstruct', () => {
 
     it('indexes guest email and date for upcoming booking lookups', () => {
         const template = Template.fromStack(stack);
-        for (const TableName of ['blockbuster-theatre-bookings-PROD', 'blockbuster-theatre-bookings-by-showtime-PROD']) {
+        for (const TableName of ['blockbuster-theatre-prod-bookings', 'blockbuster-theatre-prod-bookings-by-showtime']) {
             template.hasResourceProperties('AWS::DynamoDB::Table', {
                 TableName,
                 GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
@@ -81,7 +81,7 @@ describe('DatabaseConstruct', () => {
     it('indexes showtime registry records by date without changing the table key', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-showtime-registry-PROD',
+            TableName: 'blockbuster-theatre-prod-showtime-registry',
             KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
             GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
                 IndexName: 'ShowtimesByDate',
@@ -107,7 +107,7 @@ describe('DatabaseConstruct', () => {
     it('should index movies by their numeric rating for top picks', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-movie-catalogue-PROD',
+            TableName: 'blockbuster-theatre-prod-movie-catalogue',
             GlobalSecondaryIndexes: Match.arrayWith([
                 {
                     IndexName: 'GSI2',
@@ -141,7 +141,7 @@ describe('DatabaseConstruct', () => {
         const template = Template.fromStack(stack);
         template.hasResource('AWS::DynamoDB::Table', Match.objectLike({
             Properties: Match.objectLike({
-                TableName: 'blockbuster-theatre-movie-collections-PROD',
+                TableName: 'blockbuster-theatre-prod-movie-collections',
             }),
             DeletionPolicy: 'Retain',
             UpdateReplacePolicy: 'Retain',

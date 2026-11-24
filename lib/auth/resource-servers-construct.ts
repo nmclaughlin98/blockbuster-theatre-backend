@@ -1,5 +1,5 @@
 import * as cognito from 'aws-cdk-lib/aws-cognito';
-import { type EnvironmentName } from '../shared';
+import { resourceName, type EnvironmentName } from '../shared';
 
 export function createBookingsResourceServer(
     userPool: cognito.UserPool,
@@ -14,7 +14,10 @@ export function createBookingsResourceServer(
         ? 'BookingsResourceServer'
         : 'DevBookingsResourceServer', {
         identifier,
-        userPoolResourceServerName: 'blockbuster-theatre-bookings-resource-server',
+        userPoolResourceServerName: resourceName(
+            'blockbuster-theatre-bookings-resource-server',
+            envName
+        ),
         scopes: [readBookingsScope],
     });
     return { resourceServer, readBookingsScope };

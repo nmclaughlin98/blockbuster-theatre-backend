@@ -10,6 +10,7 @@ import {
     AuthSsmHelper,
     type AuthParameters,
     type EnvironmentName,
+    resourceName,
 } from '../shared';
 
 export interface BackendStackProps extends cdk.StackProps {
@@ -68,7 +69,7 @@ export class BackendStack extends cdk.Stack {
 
         // 2. HTTP JWT Authorizer accepting SRP backend client and OAuth clients (Postman, Alexa)
         this.jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
-            'CognitoJwtAuthorizer',
+            resourceName('blockbuster-theatre-CognitoJwtAuthorizer', envName),
             `https://cognito-idp.${this.region}.amazonaws.com/${this.authParameters.userPoolId}`,
             {
                 jwtAudience: [

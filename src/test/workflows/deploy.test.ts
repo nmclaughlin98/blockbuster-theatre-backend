@@ -370,7 +370,8 @@ describe('deploy build selection', () => {
         const root = join(directory, 'cdk-out');
         mkdirSync(root);
         const stack = environment === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
-        const suffix = environment === 'dev' ? '-DEV' : '-PROD';
+        const prefix = `blockbuster-theatre-${environment}-`;
+        const otherPrefix = `blockbuster-theatre-${environment === 'dev' ? 'prod' : 'dev'}-`;
         const assetName = `asset.${'b'.repeat(64)}`;
         mkdirSync(join(root, assetName));
         writeFileSync(join(root, `${stack}.template.json`), JSON.stringify({
@@ -381,7 +382,7 @@ describe('deploy build selection', () => {
             ].map((name, index) => [`Function${index}`, {
                 Type: 'AWS::Lambda::Function',
                 Properties: {
-                    FunctionName: `${name}${suffix}`,
+                    FunctionName: name.replace('blockbuster-theatre-', prefix),
                     Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
                 },
             }])),
@@ -407,7 +408,7 @@ describe('deploy build selection', () => {
         expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
         const templatePath = join(root, `${stack}.template.json`);
         const wrongEnvironmentTemplate = readFileSync(templatePath, 'utf8')
-            .replaceAll(suffix, environment === 'dev' ? '-PROD' : '-DEV');
+            .replaceAll(prefix, otherPrefix);
         writeFileSync(templatePath, wrongEnvironmentTemplate);
         expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
         writeFileSync(join(root, `${stack}.template.json`), '{}');

@@ -29,11 +29,13 @@ describe('sync production data to dev', () => {
         jest.restoreAllMocks();
     });
 
-    it('defines a -DEV counterpart for every production table', () => {
+    it('defines a dev-prefixed counterpart for every production table', () => {
         expect(PROD_TO_DEV_TABLES).toHaveLength(PROD_TABLE_NAMES.length);
         for (const mapping of PROD_TO_DEV_TABLES) {
-            expect(mapping.sourceTable).toMatch(/-PROD$/);
-            expect(mapping.targetTable).toBe(mapping.sourceTable.replace(/-PROD$/, '-DEV'));
+            expect(mapping.sourceTable).toMatch(/^blockbuster-theatre-prod-/);
+            expect(mapping.targetTable).toBe(
+                mapping.sourceTable.replace(/^blockbuster-theatre-prod-/, 'blockbuster-theatre-dev-')
+            );
         }
     });
 
@@ -46,7 +48,7 @@ describe('sync production data to dev', () => {
                 mappings: [{
                     sourceTable,
                     targetTable: kind === 'production' ? sourceTable
-                        : kind === 'lowercase' ? sourceTable.replace(/-PROD$/, '-dev')
+                        : kind === 'lowercase' ? sourceTable.replace('blockbuster-theatre-prod-', 'blockbuster-theatre-DEV-')
                             : PROD_TO_DEV_TABLES[1].targetTable,
                 }],
                 clear: true,

@@ -57,8 +57,8 @@ describe('BlockbusterTheatreAuthStack', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::Cognito::UserPoolResourceServer', 2);
         for (const [identifier, name] of [
-            ['https://api.blockbuster-theatre.nml-applications.com', 'blockbuster-theatre-bookings-resource-server-PROD'],
-            ['https://api-dev.blockbuster-theatre.nml-applications.com', 'blockbuster-theatre-bookings-resource-server-DEV'],
+            ['https://api.blockbuster-theatre.nml-applications.com', 'blockbuster-theatre-prod-bookings-resource-server'],
+            ['https://api-dev.blockbuster-theatre.nml-applications.com', 'blockbuster-theatre-dev-bookings-resource-server'],
         ]) {
             template.hasResourceProperties('AWS::Cognito::UserPoolResourceServer', {
                 Identifier: identifier,
@@ -71,7 +71,7 @@ describe('BlockbusterTheatreAuthStack', () => {
     it('creates BackendClient with SRP authentication flows', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-            ClientName: 'blockbuster-theatre-backend-PROD',
+            ClientName: 'blockbuster-theatre-prod-backend',
             GenerateSecret: false,
             ExplicitAuthFlows: Match.arrayEquals([
                 'ALLOW_ADMIN_USER_PASSWORD_AUTH',
@@ -160,7 +160,7 @@ describe('BlockbusterTheatreAuthStack', () => {
         const template = Template.fromStack(stack);
         const poolId = Object.keys(template.findResources('AWS::Cognito::UserPool'))[0];
         const functions = template.findResources('AWS::Lambda::Function', {
-            Properties: { FunctionName: 'blockbuster-theatre-pre-token-generation-handler-PROD' },
+            Properties: { FunctionName: 'blockbuster-theatre-prod-pre-token-generation-handler' },
         });
         const functionId = Object.keys(functions)[0];
 
