@@ -40,9 +40,11 @@ jobs:
           CDK_DEFAULT_REGION: 'eu-west-2'
           TMDB_API_KEY: 'ci-synth-placeholder'
         run: |
-          CDK_ENV=$([ "$BUILD_BRANCH" = "dev" ] && echo "dev" || echo "prod")
-          echo "Synthesizing AuthStack and BackendStack (${CDK_ENV})..."
-          npx cdk synth -c env="$CDK_ENV" --output cdk-out
+          echo "Synthesizing AuthStack and BackendStack (dev)..."
+          npx cdk synth -c env=dev --output cdk-out/dev
+
+          echo "Synthesizing AuthStack and BackendStack (prod)..."
+          npx cdk synth -c env=prod --output cdk-out/prod
 
       - name: Upload Build Artifact
         id: upload_artifact
