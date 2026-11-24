@@ -42,7 +42,7 @@ permissions:
 
 jobs:
   # Fast-path: if manually triggered with "latest", hand off to resolver so the real deploy gets the resolved #number in its title
-  handoff-latest:
+handoff-latest:
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build_number == 'latest' || inputs.build_number == '') }}
     runs-on: ubuntu-latest
     steps:
@@ -55,7 +55,8 @@ jobs:
             --ref "${{ github.ref_name }}" \
             -f target_stack="${{ inputs.target_stack || 'backend' }}" \
             -f target_env="${{ inputs.target_env || 'dev' }}" \
-            -f source_branch="${{ github.ref_name }}"
+            -f source_branch="${{ github.ref_name }}" \
+            -f handoff_run_id="${{ github.run_id }}"
 
   # Main deploy job: runs whenever a concrete build number is known (workflow_run OR resolved manual run)
   deploy:
