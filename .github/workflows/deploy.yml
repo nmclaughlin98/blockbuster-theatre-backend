@@ -1,5 +1,5 @@
 name: 2. Deploy Stack 🚀
-run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env != 'auto' && inputs.target_env || inputs.environment || (github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch == 'dev' && 'dev' || github.ref == 'refs/heads/main' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
+run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env != 'auto' && inputs.target_env || (github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch == 'dev' && 'dev' || github.ref == 'refs/heads/main' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
   workflow_run:
@@ -16,7 +16,7 @@ on:
         description: 'Environment to deploy (auto selects prod for main, otherwise dev)'
         required: true
         type: choice
-        default: auto
+        default: dev
         options:
           - auto
           - dev
@@ -29,10 +29,6 @@ on:
         options:
           - backend
           - auth
-      environment:
-        description: 'Legacy environment input (leave empty when using target_env)'
-        required: false
-        type: string
       build_number:
         description: 'Build number to deploy (latest uses the selected branch when overriding)'
         required: false
@@ -73,7 +69,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
-          INPUT_ENVIRONMENT: ${{ inputs.environment }}
           INPUT_TARGET_ENV: ${{ inputs.target_env }}
           INPUT_TARGET_STACK: ${{ inputs.target_stack }}
           INPUT_ALLOW_NON_MAIN_PROD: ${{ inputs.allow_non_main_prod }}

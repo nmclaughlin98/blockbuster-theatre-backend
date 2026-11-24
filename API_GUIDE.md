@@ -655,7 +655,7 @@ This copies production records, including customer and booking data. Restrict ac
 
 ### GitHub Actions deployments
 
-The build workflow synthesizes `prod` for `main` and `dev` for `dev`. The deploy workflow deploys a successful `main` push build to prod and a successful `dev` push build to dev. Manual dispatch accepts `target_env` (`auto`, `prod`, or `dev`); `auto` selects prod for `main` and dev otherwise. The existing `environment` input remains available for older callers when `target_env` is `auto`. The deploy job uses the matching GitHub Environment.
+The build workflow synthesizes `prod` for `main` and `dev` for `dev`. The deploy workflow deploys a successful `main` push build to prod and a successful `dev` push build to dev. Manual dispatch accepts `target_env` (`auto`, `prod`, or `dev`) and defaults to `dev`; `auto` selects prod for `main` and dev otherwise. The deploy job uses the matching GitHub Environment.
 
 Create GitHub Environments named `prod` and `dev`, and add a non-empty `TMDB_API_KEY` environment secret to each. Add the `PROD_POSTMAN_CLIENT_ID` environment variable to `dev` as described above; it is not required for prod. Table names, SES sender, the other Cognito IDs, Lambda settings, and the optional max-tickets SSM parameter name are supplied by CDK or the deploy workflow. No WalletWallet credentials are used by the current backend. Runtime SSM and AWS resources still need their existing permissions and configuration.
 

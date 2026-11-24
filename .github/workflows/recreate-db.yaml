@@ -56,5 +56,5 @@ jobs:
 
       - name: Update movie showtimes
         env:
-          MOVIE_TABLE_NAME: blockbuster-theatre-${{ inputs.environment }}-movie-catalogue
-        run: npx ts-node scripts/update-movie-showtimes.ts --apply
+          TARGET_ENV: ${{ inputs.environment }}
+        run: node .github/scripts/update-movie-showtimes.mjs --env="$TARGET_ENV" --apply

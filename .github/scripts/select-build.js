@@ -60,19 +60,14 @@ if (eventName === 'workflow_run') {
 
     targetStack = 'backend';
 } else {
-    targetEnvironment = env.INPUT_TARGET_ENV || 'auto';
-    const legacyEnv = env.INPUT_ENVIRONMENT || '';
+    targetEnvironment = env.INPUT_TARGET_ENV || 'dev';
 
     if (targetEnvironment === 'auto') {
-        if (legacyEnv) {
-            targetEnvironment = legacyEnv;
-        } else if (env.GITHUB_REF === 'refs/heads/main') {
+        if (env.GITHUB_REF === 'refs/heads/main') {
             targetEnvironment = 'prod';
         } else {
             targetEnvironment = 'dev';
         }
-    } else if (legacyEnv && legacyEnv !== targetEnvironment) {
-        fail('target_env and the legacy environment input disagree.');
     }
 
     if (targetEnvironment !== 'prod' && targetEnvironment !== 'dev') {
