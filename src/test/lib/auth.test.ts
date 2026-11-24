@@ -56,13 +56,13 @@ describe('BlockbusterTheatreAuthStack', () => {
     it('creates PROD and DEV resource servers with the bookings.read scope', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::Cognito::UserPoolResourceServer', 2);
-        for (const [identifier, name] of [
-            ['https://api.blockbuster-theatre.nml-applications.com', 'blockbuster-theatre-prod-bookings-resource-server'],
-            ['https://api-dev.blockbuster-theatre.nml-applications.com', 'blockbuster-theatre-dev-bookings-resource-server'],
+        for (const identifier of [
+            'https://api.blockbuster-theatre.nml-applications.com',
+            'https://api-dev.blockbuster-theatre.nml-applications.com',
         ]) {
             template.hasResourceProperties('AWS::Cognito::UserPoolResourceServer', {
                 Identifier: identifier,
-                Name: name,
+                Name: 'blockbuster-theatre-bookings-resource-server',
                 Scopes: [{ ScopeName: 'bookings.read', ScopeDescription: 'Read customer bookings' }],
             });
         }
@@ -71,7 +71,7 @@ describe('BlockbusterTheatreAuthStack', () => {
     it('creates BackendClient with SRP authentication flows', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-            ClientName: 'blockbuster-theatre-prod-backend',
+            ClientName: 'blockbuster-theatre-backend',
             GenerateSecret: false,
             ExplicitAuthFlows: Match.arrayEquals([
                 'ALLOW_ADMIN_USER_PASSWORD_AUTH',
@@ -87,7 +87,7 @@ describe('BlockbusterTheatreAuthStack', () => {
     it('creates PostmanAppClient with Authorization Code Grant', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-            ClientName: 'postman-test-client-PROD',
+            ClientName: 'postman-test-client',
             GenerateSecret: false,
             AllowedOAuthFlows: ['code'],
             CallbackURLs: [
@@ -100,7 +100,7 @@ describe('BlockbusterTheatreAuthStack', () => {
     it('allows the Alexa client to request both environment-specific bookings.read scopes', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
-            ClientName: 'alexa-skill-client-PROD',
+            ClientName: 'alexa-skill-client',
             GenerateSecret: false,
             AllowedOAuthFlows: ['code'],
             CallbackURLs: Match.arrayWith([
@@ -112,7 +112,7 @@ describe('BlockbusterTheatreAuthStack', () => {
 
         const clients = template.findResources('AWS::Cognito::UserPoolClient');
         const alexaClient = Object.values(clients).find(
-            (c) => c.Properties.ClientName === 'alexa-skill-client-PROD'
+            (c) => c.Properties.ClientName === 'alexa-skill-client'
         );
         expect(alexaClient).toBeDefined();
         const scopes = alexaClient!.Properties.AllowedOAuthScopes;
@@ -160,7 +160,7 @@ describe('BlockbusterTheatreAuthStack', () => {
         const template = Template.fromStack(stack);
         const poolId = Object.keys(template.findResources('AWS::Cognito::UserPool'))[0];
         const functions = template.findResources('AWS::Lambda::Function', {
-            Properties: { FunctionName: 'blockbuster-theatre-prod-pre-token-generation-handler' },
+            Properties: { FunctionName: 'blockbuster-theatre-pre-token-generation-handler' },
         });
         const functionId = Object.keys(functions)[0];
 

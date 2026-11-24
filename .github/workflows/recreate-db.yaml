@@ -53,3 +53,8 @@ jobs:
             CLEAR_FLAG="--clear"
           fi
           node .github/scripts/recreate-cloud-db.mjs --env="$TARGET_ENV" $CLEAR_FLAG
+
+      - name: Update movie showtimes
+        env:
+          MOVIE_TABLE_NAME: blockbuster-theatre-${{ inputs.environment }}-movie-catalogue
+        run: npx ts-node scripts/update-movie-showtimes.ts --apply
