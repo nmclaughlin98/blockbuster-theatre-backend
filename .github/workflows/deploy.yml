@@ -42,7 +42,7 @@ permissions:
 
 jobs:
   # Fast-path: if manually triggered with "latest", hand off to resolver so the real deploy gets the resolved #number in its title
-handoff-latest:
+  handoff-latest:
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build_number == 'latest' || inputs.build_number == '') }}
     runs-on: ubuntu-latest
     steps:
