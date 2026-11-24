@@ -52,10 +52,10 @@ jobs:
         run: |
           gh workflow run deploy-resolver.yml \
             --repo "${{ github.repository }}" \
-            --ref main \
+            --ref "${{ github.ref_name }}" \
             -f target_stack="${{ inputs.target_stack || 'backend' }}" \
             -f target_env="${{ inputs.target_env || 'dev' }}" \
-            -f source_branch="${{ github.ref_name }}"
+            -f build_number="latest"
 
   # Main deploy job: runs whenever a concrete build number is known (workflow_run OR resolved manual run)
   deploy:
