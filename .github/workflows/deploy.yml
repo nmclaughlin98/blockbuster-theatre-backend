@@ -50,12 +50,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run deploy-resolver.yml \
-            --repo "${{ github.repository }}" \
-            --ref "${{ github.ref_name }}" \
-            -f target_stack="${{ inputs.target_stack || 'backend' }}" \
-            -f target_env="${{ inputs.target_env || 'dev' }}" \
-            -f build_number="latest"
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/dispatches" \
+            -f event_type="resolve-latest-build" \
+            -f "client_payload[target_stack]=${{ inputs.target_stack || 'backend' }}" \
+            -f "client_payload[target_env]=${{ inputs.target_env || 'dev' }}" \
+            -f "client_payload[source_branch]=${{ github.ref_name }}"
 
   # Main deploy job: runs whenever a concrete build number is known (workflow_run OR resolved manual run)
   deploy:

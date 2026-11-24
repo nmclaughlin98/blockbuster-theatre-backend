@@ -1,23 +1,11 @@
 name: Resolve Latest Build Number 🔎
 
-run-name: "🔎 Resolve Latest Build (${{ inputs.target_stack }} → ${{ inputs.target_env }})"
+run-name: "🔎 Resolve Latest Build (${{ github.event.client_payload.target_stack }} → ${{ github.event.client_payload.target_env }})"
 
 on:
-  workflow_dispatch:
-    inputs:
-      target_stack:
-        description: 'Target stack'
-        required: true
-        type: string
-      target_env:
-        description: 'Target environment'
-        required: true
-        type: string
-      source_branch:
-        description: 'Branch to check for latest build first'
-        required: false
-        default: 'main'
-        type: string
+  repository_dispatch:
+    types:
+      - resolve-latest-build
 
 permissions:
   actions: write
@@ -30,17 +18,14 @@ jobs:
       - name: Find latest successful build & trigger deploy.yml
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_STACK: ${{ github.event.client_payload.target_stack }}
+          TARGET_ENV: ${{ github.event.client_payload.target_env }}
+          SOURCE_BRANCH: ${{ github.event.client_payload.source_branch }}
         run: |
           BUILD_WORKFLOW_ID=$(gh api "repos/${{ github.repository }}/actions/workflows" \
             --jq '.workflows[] | select(.name | startswith("1. Build and Package")) | .id' | head -n 1)
 
-          if [ -z "$BUILD_WORKFLOW_ID" ]; then
-            echo "Could not find workflow starting with '1. Build and Package'."
-            exit 1
-          fi
-
-          # Check the branch you triggered from first (e.g. feature branch), otherwise fall back to main
-          LATEST_NUM=$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?branch=${{ inputs.source_branch }}&status=success&per_page=1" \
+          LATEST_NUM=$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?branch=${SOURCE_BRANCH}&status=success&per_page=1" \
             --jq '.workflow_runs[0].run_number')
 
           if [ -z "$LATEST_NUM" ] || [ "$LATEST_NUM" = "null" ]; then
@@ -53,10 +38,9 @@ jobs:
             exit 1
           fi
 
-          echo "Resolved latest build #${LATEST_NUM}. Triggering deploy.yml..."
           gh workflow run deploy.yml \
             --repo "${{ github.repository }}" \
-            --ref main \
-            -f target_stack="${{ inputs.target_stack }}" \
-            -f target_env="${{ inputs.target_env }}" \
+            --ref "${SOURCE_BRANCH:-main}" \
+            -f target_stack="$TARGET_STACK" \
+            -f target_env="$TARGET_ENV" \
             -f build_number="$LATEST_NUM"
