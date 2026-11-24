@@ -21,14 +21,13 @@ on:
         options:
           - backend
           - auth
-          - all
+          - both
       target_env:
         description: 'Target environment'
         required: true
-        default: 'auto'
+        default: 'dev'
         type: choice
         options:
-          - auto
           - dev
           - prod
       build_number:
@@ -71,8 +70,14 @@ jobs:
           fi
           echo "env=$TARGET_ENV" >> "$GITHUB_OUTPUT"
 
-          # Match the branch that synthesized that environment in build.yml
-          BUILD_BRANCH=$([ "$TARGET_ENV" = "prod" ] && echo "main" || echo "dev")
+          # Resolve the Build workflow ID by name (works regardless of .yml/.yaml filename)
+          BUILD_WORKFLOW_ID=$(gh api "repos/${{ github.repository }}/actions/workflows" \
+            --jq '.workflows[] | select(.name | startswith("1. Build and Package")) | .id' | head -n 1)
+
+          if [ -z "$BUILD_WORKFLOW_ID" ]; then
+            echo "Could not find workflow starting with '1. Build and Package'."
+            exit 1
+          fi
 
           # 2. Resolve build run ID & number
           if [ -n "$WORKFLOW_RUN_ID" ]; then
@@ -80,26 +85,25 @@ jobs:
             BUILD_NUM="$WORKFLOW_RUN_NUMBER"
           elif [ "$INPUT_BUILD" != "latest" ] && [ -n "$INPUT_BUILD" ]; then
             BUILD_NUM="$INPUT_BUILD"
-            RUN_ID=$(gh run list \
-              --repo "${{ github.repository }}" \
-              --workflow "build.yml" \
-              --json databaseId,number \
-              --jq ".[] | select(.number == ${BUILD_NUM}) | .databaseId" | head -n 1)
+            RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?per_page=50" \
+              --jq ".workflow_runs[] | select(.run_number == ${BUILD_NUM}) | .id" | head -n 1)
           else
-            LATEST_JSON=$(gh run list \
-              --repo "${{ github.repository }}" \
-              --workflow "build.yml" \
-              --branch "$BUILD_BRANCH" \
-              --status success \
-              --limit 1 \
-              --json databaseId,number \
-              --jq '.[0]')
-            RUN_ID=$(echo "$LATEST_JSON" | jq -r '.databaseId')
-            BUILD_NUM=$(echo "$LATEST_JSON" | jq -r '.number')
+            PREFERRED_BRANCH=$([ "$TARGET_ENV" = "prod" ] && echo "main" || echo "dev")
+            LATEST_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?branch=${PREFERRED_BRANCH}&status=success&per_page=1" \
+              --jq '.workflow_runs[0]')
+
+            # Fallback to latest successful build across any branch if preferred branch has none yet
+            if [ -z "$LATEST_JSON" ] || [ "$LATEST_JSON" = "null" ]; then
+              LATEST_JSON=$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?status=success&per_page=1" \
+                --jq '.workflow_runs[0]')
+            fi
+
+            RUN_ID=$(echo "$LATEST_JSON" | jq -r '.id')
+            BUILD_NUM=$(echo "$LATEST_JSON" | jq -r '.run_number')
           fi
 
           if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "Could not resolve a valid build run ID for branch ${BUILD_BRANCH}."
+            echo "Could not resolve a valid build run ID."
             exit 1
           fi
 
@@ -134,7 +138,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
+          role-session-name: github-actions-deploy
           aws-region: eu-west-2
 
       - name: Deploy CDK stack
@@ -142,7 +147,7 @@ jobs:
           TARGET_ENV: ${{ steps.resolve.outputs.env }}
           TARGET_STACK: ${{ inputs.target_stack || 'backend' }}
         run: |
-          if [ "$TARGET_STACK" = "all" ]; then
+          if [ "$TARGET_STACK" = "both" ] || [ "$TARGET_STACK" = "all" ]; then
             npx aws-cdk deploy --app cdk-out --all --context env="$TARGET_ENV" --require-approval never
           elif [ "$TARGET_STACK" = "auth" ]; then
             npx aws-cdk deploy --app cdk-out "BlockbusterTheatreAuthStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never
