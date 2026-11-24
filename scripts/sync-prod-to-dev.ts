@@ -61,13 +61,13 @@ export function assertSafeTargetTables(
         if (
             !expectedTarget
             || targetTable !== expectedTarget
-            || !targetTable.endsWith('-DEV')
+            || !targetTable.startsWith('blockbuster-theatre-dev-')
             || productionTableNames.has(targetTable)
             || targetTable === sourceTable
             || seenTargets.has(targetTable)
         ) {
             throw new Error(
-                `Unsafe sync target "${targetTable}". Every target must be a unique -DEV table and must not match a production table.`
+                `Unsafe sync target "${targetTable}". Every target must be a unique blockbuster-theatre-dev- table and must not match a production table.`
             );
         }
         seenTargets.add(targetTable);

@@ -1,0 +1,61 @@
+name: Recreate DynamoDB Seed Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      clear_existing:
+        description: 'Clear existing items in Movies, Pricing & Offers tables first'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  recreate-db:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
+          role-session-name: github-actions-seed
+          aws-region: eu-west-2
+
+      - name: Run database seed script
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          CLEAR_FLAG=""
+          if [ "${{ inputs.clear_existing }}" = "true" ]; then
+            CLEAR_FLAG="--clear"
+          fi
+          node .github/scripts/recreate-cloud-db.mjs --env="$TARGET_ENV" $CLEAR_FLAG
+
+      - name: Update movie showtimes
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+        run: node .github/scripts/update-movie-showtimes.mjs --env="$TARGET_ENV" --apply

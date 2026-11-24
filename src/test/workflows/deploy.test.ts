@@ -3,6 +3,26 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+describe('workflow environment inputs', () => {
+    it('defaults deploy target_env to dev without a legacy environment input', () => {
+        const workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
+            .replace(/\r\n/g, '\n');
+        const inputs = workflow.split('    inputs:\n')[1].split('      target_stack:\n')[0];
+
+        expect(inputs).toMatch(/target_env:[\s\S]*?default: dev/);
+        expect(inputs).not.toContain('environment:');
+    });
+
+    it('uses target_env for database recreation and defaults it to dev', () => {
+        const workflow = readFileSync(join(process.cwd(), '.github/workflows/recreate-db.yaml'), 'utf8')
+            .replace(/\r\n/g, '\n');
+        const inputs = workflow.split('    inputs:\n')[1].split('      clear_existing:\n')[0];
+
+        expect(inputs).toMatch(/target_env:[\s\S]*?default: 'dev'/);
+        expect(inputs).not.toContain('environment:');
+    });
+});
+
 describe('deploy Cognito parameters', () => {
     let directory: string;
     let script: string;
@@ -183,7 +203,7 @@ describe('deploy build selection', () => {
                 GITHUB_EVENT_NAME: 'workflow_dispatch',
                 GITHUB_REPOSITORY: 'owner/repo',
                 GITHUB_REF: 'refs/heads/main',
-                INPUT_ENVIRONMENT: 'dev',
+                INPUT_TARGET_ENV: 'dev',
                 GITHUB_OUTPUT: join(directory, 'output'),
                 GITHUB_STEP_SUMMARY: join(directory, 'summary'),
                 CALLS: join(directory, 'calls'),
@@ -216,22 +236,16 @@ describe('deploy build selection', () => {
             ? `12345\t42\t${sha}\tmain\tpush\tsuccess\towner/repo`
             : `12345\t42\t${sha}\tfeature`;
         const result = runStep(info, {
-            INPUT_ENVIRONMENT: '', INPUT_TARGET_ENV: input, GITHUB_REF: ref,
+            INPUT_TARGET_ENV: input, GITHUB_REF: ref,
         });
         expect(result.status).toBe(0);
         expect(readFileSync(join(directory, 'output'), 'utf8'))
             .toContain(`deploy_environment=${expected}`);
     });
 
-    it('rejects conflicting target and legacy environment inputs', () => {
-        const result = runStep('', { INPUT_TARGET_ENV: 'prod', INPUT_ENVIRONMENT: 'dev' });
-        expect(result.status).toBe(1);
-        expect(result.stdout).toContain('environment input disagree');
-    });
-
     it('finds a successful main push build for prod', () => {
         const result = runStep(`23456\t17\t${sha}\tmain\tpush\tsuccess\towner/repo`, {
-            INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '17',
+            INPUT_TARGET_ENV: 'prod', INPUT_BUILD_NUMBER: '17',
         });
         expect(result.status).toBe(0);
         const calls = readFileSync(join(directory, 'calls'), 'utf8');
@@ -245,7 +259,7 @@ describe('deploy build selection', () => {
 
     it('selects the latest successful main push for prod', () => {
         const result = runStep(`23456\t17\t${sha}\tmain\tpush\tsuccess\towner/repo`, {
-            INPUT_ENVIRONMENT: 'prod',
+            INPUT_TARGET_ENV: 'prod',
         });
         expect(result.status).toBe(0);
         const calls = readFileSync(join(directory, 'calls'), 'utf8');
@@ -255,7 +269,7 @@ describe('deploy build selection', () => {
     });
 
     it('rejects prod dispatch from outside main before querying builds', () => {
-        const result = runStep('', { INPUT_ENVIRONMENT: 'prod', GITHUB_REF: 'refs/heads/dev' });
+        const result = runStep('', { INPUT_TARGET_ENV: 'prod', GITHUB_REF: 'refs/heads/dev' });
         expect(result.status).toBe(1);
         expect(result.stdout).toContain('must be triggered from main');
     });
@@ -267,7 +281,7 @@ describe('deploy build selection', () => {
         ['main', 'push', 'success', 'other/repo'],
     ])('rejects untrusted prod build metadata: %s %s %s %s', (branch, event, conclusion, repository) => {
         const result = runStep(`23456\t17\t${sha}\t${branch}\t${event}\t${conclusion}\t${repository}`, {
-            INPUT_ENVIRONMENT: 'prod',
+            INPUT_TARGET_ENV: 'prod',
         });
         expect(result.status).toBe(1);
         expect(result.stdout).toContain(branch === 'feature'
@@ -277,7 +291,7 @@ describe('deploy build selection', () => {
 
     it('allows the latest successful push from the selected branch with the prod override', () => {
         const result = runStep(`23456\t17\t${sha}\tfeature/example\tpush\tsuccess\towner/repo`, {
-            INPUT_ENVIRONMENT: 'prod',
+            INPUT_TARGET_ENV: 'prod',
             INPUT_ALLOW_NON_MAIN_PROD: 'true',
             GITHUB_REF: 'refs/heads/feature/example',
         });
@@ -289,7 +303,7 @@ describe('deploy build selection', () => {
 
     it('allows a numbered successful push from another branch with the prod override', () => {
         const result = runStep(`23456\t17\t${sha}\tfeature\tpush\tsuccess\towner/repo`, {
-            INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '17', INPUT_ALLOW_NON_MAIN_PROD: 'true',
+            INPUT_TARGET_ENV: 'prod', INPUT_BUILD_NUMBER: '17', INPUT_ALLOW_NON_MAIN_PROD: 'true',
         });
         expect(result.status).toBe(0);
         expect(readFileSync(join(directory, 'calls'), 'utf8')).not.toContain('-f branch=');
@@ -301,17 +315,17 @@ describe('deploy build selection', () => {
         ['feature', 'push', 'success', 'other/repo'],
     ])('rejects unsafe prod override builds: %s %s %s %s', (branch, event, conclusion, repository) => {
         const result = runStep(`23456\t17\t${sha}\t${branch}\t${event}\t${conclusion}\t${repository}`, {
-            INPUT_ENVIRONMENT: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', INPUT_BUILD_NUMBER: '17',
+            INPUT_TARGET_ENV: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', INPUT_BUILD_NUMBER: '17',
         });
         expect(result.status).toBe(1);
     });
 
     it('rejects a latest override build from a different branch and rejects tag dispatches', () => {
         expect(runStep(`23456\t17\t${sha}\tother\tpush\tsuccess\towner/repo`, {
-            INPUT_ENVIRONMENT: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', GITHUB_REF: 'refs/heads/feature',
+            INPUT_TARGET_ENV: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', GITHUB_REF: 'refs/heads/feature',
         }).status).toBe(1);
         expect(runStep('', {
-            INPUT_ENVIRONMENT: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', GITHUB_REF: 'refs/tags/v1',
+            INPUT_TARGET_ENV: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', GITHUB_REF: 'refs/tags/v1',
         }).status).toBe(1);
     });
 
@@ -323,10 +337,10 @@ describe('deploy build selection', () => {
 
     it('rejects invalid build numbers and environments', () => {
         expect(runStep('', { INPUT_BUILD_NUMBER: '1; echo bad' }).status).toBe(1);
-        expect(runStep('', { INPUT_ENVIRONMENT: 'prod', INPUT_BUILD_NUMBER: '1; echo bad' }).status).toBe(1);
-        expect(runStep('', { INPUT_ENVIRONMENT: 'prod' }).status).toBe(1);
-        expect(runStep('', { INPUT_ENVIRONMENT: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'yes' }).status).toBe(1);
-        expect(runStep('', { INPUT_ENVIRONMENT: 'staging' }).status).toBe(1);
+        expect(runStep('', { INPUT_TARGET_ENV: 'prod', INPUT_BUILD_NUMBER: '1; echo bad' }).status).toBe(1);
+        expect(runStep('', { INPUT_TARGET_ENV: 'prod' }).status).toBe(1);
+        expect(runStep('', { INPUT_TARGET_ENV: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'yes' }).status).toBe(1);
+        expect(runStep('', { INPUT_TARGET_ENV: 'staging' }).status).toBe(1);
     });
 
     it.each([['dev', 'dev'], ['main', 'prod']])('uses the triggering %s build', (branch, environment) => {
@@ -370,7 +384,8 @@ describe('deploy build selection', () => {
         const root = join(directory, 'cdk-out');
         mkdirSync(root);
         const stack = environment === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
-        const suffix = environment === 'dev' ? '-DEV' : '-PROD';
+        const prefix = `blockbuster-theatre-${environment}-`;
+        const otherPrefix = `blockbuster-theatre-${environment === 'dev' ? 'prod' : 'dev'}-`;
         const assetName = `asset.${'b'.repeat(64)}`;
         mkdirSync(join(root, assetName));
         writeFileSync(join(root, `${stack}.template.json`), JSON.stringify({
@@ -381,7 +396,7 @@ describe('deploy build selection', () => {
             ].map((name, index) => [`Function${index}`, {
                 Type: 'AWS::Lambda::Function',
                 Properties: {
-                    FunctionName: `${name}${suffix}`,
+                    FunctionName: name.replace('blockbuster-theatre-', prefix),
                     Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
                 },
             }])),
@@ -407,7 +422,7 @@ describe('deploy build selection', () => {
         expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
         const templatePath = join(root, `${stack}.template.json`);
         const wrongEnvironmentTemplate = readFileSync(templatePath, 'utf8')
-            .replaceAll(suffix, environment === 'dev' ? '-PROD' : '-DEV');
+            .replaceAll(prefix, otherPrefix);
         writeFileSync(templatePath, wrongEnvironmentTemplate);
         expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
         writeFileSync(join(root, `${stack}.template.json`), '{}');

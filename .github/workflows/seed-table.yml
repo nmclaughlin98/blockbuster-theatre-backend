@@ -6,11 +6,11 @@ on:
       target_env:
         description: 'Target environment'
         required: true
-        default: 'prod'
+        default: 'dev'
         type: choice
         options:
-          - prod
           - dev
+          - prod
       action:
         description: 'Operation to run'
         required: true
@@ -57,35 +57,10 @@ jobs:
           role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
           role-session-name: github-actions-seed
 
-      - name: Resolve DynamoDB table names from CloudFormation
-        id: tables
-        run: |
-          STACK_NAME="BlockbusterTheatreBackendStack"
-          if [ "${{ inputs.target_env }}" = "dev" ]; then
-            STACK_NAME="BlockbusterTheatreBackendStack-dev"
-          fi
-
-          # Adjust OutputKey names if your BackendStack uses different CfnOutput logical IDs
-          OUTPUTS=$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs" \
-            --output json)
-
-          echo "Stack Outputs:"
-          echo "$OUTPUTS"
-
-          MOVIES_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey | test("Movie.*Table"; "i")) | .OutputValue' | head -n 1)
-          PRICING_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey | test("Pricing.*Table"; "i")) | .OutputValue' | head -n 1)
-          OFFERS_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey | test("Offer.*Table"; "i")) | .OutputValue' | head -n 1)
-
-          echo "movies_table=$MOVIES_TABLE" >> "$GITHUB_OUTPUT"
-          echo "pricing_table=$PRICING_TABLE" >> "$GITHUB_OUTPUT"
-          echo "offers_table=$OFFERS_TABLE" >> "$GITHUB_OUTPUT"
-
       - name: Update movie showtimes
         if: inputs.action == 'all' || inputs.action == 'showtimes-only'
         env:
-          MOVIE_TABLE_NAME: ${{ steps.tables.outputs.movies_table }}
+          MOVIE_TABLE_NAME: blockbuster-theatre-${{ inputs.target_env }}-movie-catalogue
         run: |
           APPLY_FLAG="--apply"
           if [ "${{ inputs.dry_run }}" = "true" ]; then
@@ -96,8 +71,8 @@ jobs:
       - name: Seed ticket pricing packages
         if: (inputs.action == 'all' || inputs.action == 'pricing-only') && inputs.dry_run == false
         env:
-          PRICING_TABLE_NAME: ${{ steps.tables.outputs.pricing_table }}
-          OFFERS_TABLE_NAME: ${{ steps.tables.outputs.offers_table }}
-          MOVIES_TABLE_NAME: ${{ steps.tables.outputs.movies_table }}
+          PRICING_TABLE_NAME: blockbuster-theatre-${{ inputs.target_env }}-ticket-pricing
+          OFFERS_TABLE_NAME: blockbuster-theatre-${{ inputs.target_env }}-booking-offers
+          MOVIES_TABLE_NAME: blockbuster-theatre-${{ inputs.target_env }}-movie-catalogue
         run: |
           npx ts-node scripts/seed-pricing-offers.ts

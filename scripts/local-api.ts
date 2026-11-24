@@ -24,10 +24,10 @@ function requireCloudTestTable(environmentVariable: string): string {
     }
     if (
         !/^[A-Za-z0-9_.-]{3,255}$/.test(tableName) ||
-        !/-(dev|development|test|testing|staging|sandbox)$/i.test(tableName)
+        !/(^|[-_])(dev|development|test|testing|staging|sandbox)([-_]|$)/i.test(tableName)
     ) {
         throw new Error(
-            `${environmentVariable} must be a valid DynamoDB table name ending in -dev, -development, -test, -testing, -staging, or -sandbox.`
+            `${environmentVariable} must be a valid DynamoDB table name with a distinct dev, development, test, testing, staging, or sandbox environment segment.`
         );
     }
     return tableName;

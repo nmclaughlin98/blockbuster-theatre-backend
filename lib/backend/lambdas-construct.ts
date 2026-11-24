@@ -140,9 +140,10 @@ export class LambdaConstruct extends Construct {
             'MaxTicketsParameter',
             scopedMaxTicketsParameterName
         );
-        const allowLinkBookingsParameterName = envName === 'prod'
-            ? '/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS'
-            : '/blockbuster-theatre/parameter-configurations-dev/ALLOW_LINK_BOOKINGS';
+        const allowLinkBookingsParameterName = resourceName(
+            '/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS',
+            envName
+        );
         const allowLinkBookingsParameter = ssm.StringParameter.fromStringParameterName(
             this,
             'AllowLinkBookingsParameter',

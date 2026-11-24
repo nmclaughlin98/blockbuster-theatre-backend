@@ -11,7 +11,15 @@ export function parseEnvironmentName(value: unknown): EnvironmentName {
 }
 
 export function resourceName(baseName: string, envName: EnvironmentName): string {
-    return `${baseName}-${envName.toUpperCase()}`;
+    const projectPrefix = 'blockbuster-theatre';
+    const prefixIndex = baseName.indexOf(projectPrefix);
+    if (prefixIndex === -1) {
+        return `${baseName}-${envName.toUpperCase()}`;
+    }
+
+    return `${baseName.slice(0, prefixIndex)}${projectPrefix}-${envName}${baseName.slice(
+        prefixIndex + projectPrefix.length
+    )}`;
 }
 
 export function maxTicketsParameterForEnvironment(

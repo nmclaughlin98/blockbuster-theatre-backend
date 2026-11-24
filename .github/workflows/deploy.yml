@@ -1,210 +1,133 @@
 name: 2. Deploy Stack 🚀
-run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env != 'auto' && inputs.target_env || inputs.environment || (github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch == 'dev' && 'dev' || github.ref == 'refs/heads/main' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
+
+run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env || 'dev' }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
   workflow_run:
     workflows:
-      - 1. Build and Package 🔨
+      - '1. Build and Package 🔨'
     types:
       - completed
     branches:
       - main
-      - dev
   workflow_dispatch:
     inputs:
-      target_env:
-        description: 'Environment to deploy (auto selects prod for main, otherwise dev)'
-        required: true
-        type: choice
-        default: auto
-        options:
-          - auto
-          - dev
-          - prod
       target_stack:
-        description: 'Stack to deploy (backend or auth)'
-        required: false
+        description: 'Target stack to deploy'
+        required: true
+        default: 'backend'
         type: choice
-        default: backend
         options:
           - backend
           - auth
-      environment:
-        description: 'Legacy environment input (leave empty when using target_env)'
-        required: false
-        type: string
+          - both
+      target_env:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
       build_number:
-        description: 'Build number to deploy (latest uses the selected branch when overriding)'
-        required: false
+        description: 'Build run number (or "latest")'
+        required: true
         default: 'latest'
         type: string
-      allow_non_main_prod:
-        description: 'Allow production deployments from non-main branches'
-        required: true
-        default: false
-        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+  actions: write
 
 jobs:
-  prepare:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
+  # Fast-path: if manually triggered with "latest", hand off to resolver so the real deploy gets the resolved #number in its title
+handoff-latest:
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build_number == 'latest' || inputs.build_number == '') }}
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-    outputs:
-      build_number: ${{ steps.select_build.outputs.build_number }}
-      build_run_id: ${{ steps.select_build.outputs.build_run_id }}
-      deploy_branch: ${{ steps.select_build.outputs.deploy_branch }}
-      deploy_environment: ${{ steps.select_build.outputs.deploy_environment }}
-      deploy_stack: ${{ steps.select_build.outputs.deploy_stack }}
-
     steps:
-      - name: Checkout Repository
-        id: checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Select Build
-        id: select_build
+      - name: Hand off to latest build resolver
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
-          INPUT_ENVIRONMENT: ${{ inputs.environment }}
-          INPUT_TARGET_ENV: ${{ inputs.target_env }}
-          INPUT_TARGET_STACK: ${{ inputs.target_stack }}
-          INPUT_ALLOW_NON_MAIN_PROD: ${{ inputs.allow_non_main_prod }}
-          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
-          TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
-          TRIGGER_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: node .github/scripts/select-build.js
-
-      - name: Backup Workflow Scripts
-        id: backup_scripts
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p /tmp/workflow-scripts
-          cp -r .github/scripts/* /tmp/workflow-scripts/
+          gh workflow run deploy-resolver.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}" \
+            -f target_stack="${{ inputs.target_stack || 'backend' }}" \
+            -f target_env="${{ inputs.target_env || 'dev' }}" \
+            -f source_branch="${{ github.ref_name }}" \
+            -f handoff_run_id="${{ github.run_id }}"
 
-      - name: Checkout Build Source
-        id: checkout_build
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ steps.select_build.outputs.build_sha }}
-          persist-credentials: false
-
-      - name: Restore Workflow Scripts
-        id: restore_scripts
-        run: |
-          mkdir -p .github/scripts
-          cp -r /tmp/workflow-scripts/* .github/scripts/
-
-      - name: Setup Node.js
-        id: setup_node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - name: Install Dependencies
-        id: install_dependencies
-        run: npm ci --include=dev
-
-      - name: Synthesize CDK App
-        id: synthesize
-        env:
-          CDK_DEFAULT_ACCOUNT: '334624057595'
-          CDK_DEFAULT_REGION: 'eu-west-2'
-          DEPLOY_ENVIRONMENT: ${{ steps.select_build.outputs.deploy_environment }}
-          DEPLOY_STACK: ${{ steps.select_build.outputs.deploy_stack }}
-          TMDB_API_KEY: 'ci-synth-placeholder'
-        run: node .github/scripts/synth-stack.js
-
-      - name: Upload Deployment Assembly
-        uses: actions/upload-artifact@v7
-        with:
-          name: deployment-assembly
-          path: cdk-out
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 1
-
+  # Main deploy job: runs whenever a concrete build number is known (workflow_run OR resolved manual run)
   deploy:
-    needs: prepare
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.build_number != 'latest' && inputs.build_number != '') }}
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ needs.prepare.outputs.deploy_environment }}
-    permissions:
-      id-token: write
-      contents: read
     steps:
-      - name: Checkout Workflow Source
-        id: checkout
+      - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Resolve build run ID
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          INPUT_BUILD: ${{ inputs.build_number }}
+        run: |
+          if [ -n "$WORKFLOW_RUN_ID" ]; then
+            RUN_ID="$WORKFLOW_RUN_ID"
+            BUILD_NUM="$WORKFLOW_RUN_NUMBER"
+          else
+            BUILD_NUM="$INPUT_BUILD"
+            BUILD_WORKFLOW_ID=$(gh api "repos/${{ github.repository }}/actions/workflows" \
+              --jq '.workflows[] | select(.name | startswith("1. Build and Package")) | .id' | head -n 1)
+
+            RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?per_page=50" \
+              --jq ".workflow_runs[] | select(.run_number == ${BUILD_NUM}) | .id" | head -n 1)
+          fi
+
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "Could not resolve build run ID for Build #${BUILD_NUM}."
+            exit 1
+          fi
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          persist-credentials: false
+          name: build-artifact-${{ steps.resolve.outputs.build_number }}
+          path: cdk-out
+          run-id: ${{ steps.resolve.outputs.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Setup Node.js
-        id: setup_node
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          package-manager-cache: false
+          cache: npm
 
-      - name: Install Dependencies
-        id: install_dependencies
-        run: npm ci --include=dev
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Download Deployment Assembly
-        id: download_assembly
-        uses: actions/download-artifact@v8
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          name: deployment-assembly
-          path: cdk-out
-
-      - name: Validate Deployment Assembly
-        id: validate_assembly
-        env:
-          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
-          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
-        run: node .github/scripts/validate-assembly.js
-
-      - name: Configure AWS Credentials
-        id: configure_aws
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-region: eu-west-2
           role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
           role-session-name: github-actions-deploy
+          aws-region: eu-west-2
 
-      - name: Deploy CDK Stack
-        id: deploy_cdk
+      - name: Deploy CDK stack
         env:
-          CDK_DEFAULT_ACCOUNT: '334624057595'
-          CDK_DEFAULT_REGION: 'eu-west-2'
-          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
-          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: node .github/scripts/deploy-stack.js
-
-      - name: Write Deploy Summary
-        if: always()
-        env:
-          DEPLOY_BRANCH: ${{ needs.prepare.outputs.deploy_branch }}
-          DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
-          DEPLOY_STACK: ${{ needs.prepare.outputs.deploy_stack }}
-          DEPLOY_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
-          DEPLOY_BUILD_RUN_ID: ${{ needs.prepare.outputs.build_run_id }}
-          JOB_STATUS: ${{ job.status }}
-          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
-          SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
-          INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
-          DOWNLOAD_ASSEMBLY_OUTCOME: ${{ steps.download_assembly.outcome }}
-          VALIDATE_ASSEMBLY_OUTCOME: ${{ steps.validate_assembly.outcome }}
-          CONFIGURE_AWS_OUTCOME: ${{ steps.configure_aws.outcome }}
-          DEPLOY_CDK_OUTCOME: ${{ steps.deploy_cdk.outcome }}
-        run: node .github/scripts/write-summary.js deploy
+          TARGET_ENV: ${{ inputs.target_env || 'dev' }}
+          TARGET_STACK: ${{ inputs.target_stack || 'backend' }}
+        run: |
+          if [ "$TARGET_STACK" = "both" ] || [ "$TARGET_STACK" = "all" ]; then
+            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" --all --context env="$TARGET_ENV" --require-approval never
+          elif [ "$TARGET_STACK" = "auth" ]; then
+            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreAuthStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never
+          else
+            npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreBackendStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never
+          fi
+          echo "Deployment of $TARGET_STACK stack for $TARGET_ENV environment completed."

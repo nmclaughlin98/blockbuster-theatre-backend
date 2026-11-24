@@ -37,7 +37,7 @@ if (!isAuth) {
         throw new Error('Missing masked TMDB key parameter');
     }
 
-    const suffix = deployEnv === 'dev' ? '-DEV' : '-PROD';
+    const prefix = `blockbuster-theatre-${deployEnv}-`;
     const tmdbLambdas = [
         'blockbuster-theatre-add-movies-handler',
         'blockbuster-theatre-refresh-movie-collection-handler',
@@ -45,14 +45,15 @@ if (!isAuth) {
 
     for (const name of tmdbLambdas) {
         const matches = Object.values(template.Resources || {}).filter(
-            (r) => r.Type === 'AWS::Lambda::Function' && r.Properties?.FunctionName === `${name}${suffix}`
+            (r) => r.Type === 'AWS::Lambda::Function'
+                && r.Properties?.FunctionName === name.replace('blockbuster-theatre-', prefix)
         );
 
         if (
             matches.length !== 1 ||
             matches[0].Properties.Environment?.Variables?.TMDB_API_KEY?.Ref !== 'TmdbApiKey'
         ) {
-            throw new Error(`Unexpected TMDB key configuration for ${name}${suffix}`);
+            throw new Error(`Unexpected TMDB key configuration for ${name.replace('blockbuster-theatre-', prefix)}`);
         }
     }
 } else {
