@@ -27,7 +27,7 @@ if (shouldInstantiateAuth && (!envContext || envContext === 'prod' || stackConte
 // 2. Environment-specific BackendStack instances (prod and dev) consuming SSM parameters
 if (shouldInstantiateBackend) {
     if (!envContext || envContext === 'prod') {
-        new BackendStack(app, 'BlockbusterTheatreBackendStack', {
+        new BackendStack(app, 'BlockbusterTheatreBackendStack-prod', {
             description: 'BlockbusterTheatre Backend Infrastructure (Prod)',
             envName: 'prod',
             env: awsEnv
