@@ -40,7 +40,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
+          role-session-name: github-actions-seed
           aws-region: eu-west-2
 
       - name: Run database seed script
