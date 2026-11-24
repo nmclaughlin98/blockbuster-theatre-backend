@@ -51,11 +51,18 @@ async function readSeedJson(filename) {
 }
 
 async function fetchTmdbMovie(tmdbId, apiKey) {
+    const token = apiKey.trim();
     const url = new URL(`https://api.themoviedb.org/3/movie/${encodeURIComponent(tmdbId)}`);
-    url.searchParams.set('api_key', apiKey);
     url.searchParams.set('append_to_response', 'credits,videos,release_dates');
 
-    const response = await fetch(url);
+    const headers = { Accept: 'application/json' };
+    if (token.startsWith('eyJ') || token.length > 64) {
+        headers.Authorization = `Bearer ${token}`;
+    } else {
+        url.searchParams.set('api_key', token);
+    }
+
+    const response = await fetch(url, { headers });
     if (!response.ok) {
         throw new Error(`TMDB lookup failed for ${tmdbId}: HTTP ${response.status}`);
     }
