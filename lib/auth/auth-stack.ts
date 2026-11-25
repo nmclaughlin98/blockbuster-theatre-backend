@@ -32,24 +32,25 @@ export class AuthStack extends cdk.Stack {
         cdk.Tags.of(this).add('Project', 'blockbuster-theatre');
         cdk.Tags.of(this).add('StackType', 'auth');
 
-        const envName = 'prod';
         const removalPolicy = props.removalPolicy ?? cdk.RemovalPolicy.RETAIN;
 
         ({ userPool: this.userPool, userPoolDomain: this.userPoolDomain } = createCognitoResources(
             this,
             removalPolicy,
-            props.domainPrefix ?? 'blockbuster-theatre'
+            props.domainPrefix ?? 'blockbuster-theatre',
         ));
+
         ({ resourceServer: this.resourceServer, readBookingsScope: this.readBookingsScope } =
             createBookingsResourceServer(
                 this.userPool,
-                props.resourceServerIdentifier ?? 'https://api.blockbuster-theatre.nml-applications.com'
+                props.resourceServerIdentifier ?? 'https://api.blockbuster-theatre.nml-applications.com',
             ));
+
         ({ resourceServer: this.devResourceServer, readBookingsScope: this.devReadBookingsScope } =
             createBookingsResourceServer(
                 this.userPool,
                 'https://api-dev.blockbuster-theatre.nml-applications.com',
-                'dev'
+                'dev',
             ));
 
         // 5. Postman App Client (OAuth Authorization Code Grant)
@@ -60,11 +61,7 @@ export class AuthStack extends cdk.Stack {
                 flows: {
                     authorizationCodeGrant: true,
                 },
-                scopes: [
-                    cognito.OAuthScope.OPENID,
-                    cognito.OAuthScope.EMAIL,
-                    cognito.OAuthScope.PROFILE,
-                ],
+                scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
                 callbackUrls: [
                     'https://oauth.pstmn.io/v1/callback',
                     'https://oauth.pstmn.io/v1/browser-callback',
@@ -141,22 +138,27 @@ export class AuthStack extends cdk.Stack {
             value: this.userPool.userPoolId,
             description: 'Cognito user pool ID',
         });
+
         new cdk.CfnOutput(this, 'UserPoolArn', {
             value: this.userPool.userPoolArn,
             description: 'Cognito user pool ARN',
         });
+
         new cdk.CfnOutput(this, 'BackendClientId', {
             value: this.backendClient.userPoolClientId,
             description: 'Cognito public backend app client ID (SRP)',
         });
+
         new cdk.CfnOutput(this, 'PostmanClientId', {
             value: this.postmanClient.userPoolClientId,
             description: 'Cognito Postman app client ID (OAuth)',
         });
+
         new cdk.CfnOutput(this, 'AlexaClientId', {
             value: this.alexaClient.userPoolClientId,
             description: 'Cognito Alexa app client ID (OAuth)',
         });
+
         if (this.loginUrl) {
             new cdk.CfnOutput(this, 'CognitoLoginUrl', {
                 value: this.loginUrl,

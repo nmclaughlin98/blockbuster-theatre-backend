@@ -8,17 +8,15 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 
 function parseTargetEnv() {
     const envArg =
-        process.argv.find((arg) => arg.startsWith('--env='))?.split('=')[1] ??
-        process.env.TARGET_ENV?.trim();
+        process.argv.find((arg) => arg.startsWith('--env='))?.split('=')[1] ?? process.env.TARGET_ENV?.trim();
+
     if (envArg === 'dev' || envArg === 'prod') return envArg;
+
     throw new Error('Specify --env=dev or --env=prod (or set TARGET_ENV).');
 }
 
 async function loadScheduleService() {
-    const entryPoint = path.join(
-        REPO_ROOT,
-        'src/main/lambda/handlers/utils/movie-schedule-service.ts'
-    );
+    const entryPoint = path.join(REPO_ROOT, 'src/main/lambda/handlers/utils/movie-schedule-service.ts');
     const result = await build({
         entryPoints: [entryPoint],
         bundle: true,
@@ -31,6 +29,7 @@ async function loadScheduleService() {
 
     const tempFile = path.join(__dirname, `.movie-schedule-service.${Date.now()}.mjs`);
     await writeFile(tempFile, result.outputFiles[0].text, 'utf8');
+
     try {
         return await import(pathToFileURL(tempFile).href);
     } finally {
@@ -52,7 +51,7 @@ async function main() {
     const summary = await maintainRollingSchedule({ cleanPast: true });
 
     console.log(
-        `✅ Showtime registry updated for ${env}: ${summary.screenings} active screenings across ${summary.datesProcessed} dates (${summary.staleScreeningsRemoved} past screenings cleaned).`
+        `✅ Showtime registry updated for ${env}: ${summary.screenings} active screenings across ${summary.datesProcessed} dates (${summary.staleScreeningsRemoved} past screenings cleaned).`,
     );
 }
 

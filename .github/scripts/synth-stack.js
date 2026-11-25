@@ -15,10 +15,30 @@ if (deployStack === 'auth') {
     cdkArgs = ['cdk', 'synth', ...expectedStacks, '-c', 'stack=auth', '--output', 'cdk-out'];
 } else if (deployStack === 'both') {
     expectedStacks = ['BlockbusterTheatreAuthStack', backendStack];
-    cdkArgs = ['cdk', 'synth', ...expectedStacks, '-c', `env=${deployEnv}`, '-c', 'stack=all', '--output', 'cdk-out'];
+    cdkArgs = [
+        'cdk',
+        'synth',
+        ...expectedStacks,
+        '-c',
+        `env=${deployEnv}`,
+        '-c',
+        'stack=all',
+        '--output',
+        'cdk-out',
+    ];
 } else {
     expectedStacks = [backendStack];
-    cdkArgs = ['cdk', 'synth', ...expectedStacks, '-c', `env=${deployEnv}`, '-c', 'stack=backend', '--output', 'cdk-out'];
+    cdkArgs = [
+        'cdk',
+        'synth',
+        ...expectedStacks,
+        '-c',
+        `env=${deployEnv}`,
+        '-c',
+        'stack=backend',
+        '--output',
+        'cdk-out',
+    ];
 }
 
 execFileSync('npx', cdkArgs, { stdio: 'inherit' });
@@ -33,7 +53,7 @@ const unexpectedStacks = stacks.filter((name) => !expectedStacks.includes(name))
 
 if (missingStacks.length > 0 || unexpectedStacks.length > 0) {
     console.error(
-        `Expected stacks [${expectedStacks.join(', ')}]; synthesized: [${stacks.join(', ') || 'no stacks'}]`
+        `Expected stacks [${expectedStacks.join(', ')}]; synthesized: [${stacks.join(', ') || 'no stacks'}]`,
     );
     process.exit(1);
 }

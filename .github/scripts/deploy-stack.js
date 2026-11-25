@@ -9,7 +9,7 @@ function deployAuth() {
     execFileSync(
         'npx',
         ['cdk', 'deploy', 'BlockbusterTheatreAuthStack', '--app', 'cdk-out', '--require-approval', 'never'],
-        { stdio: 'inherit' }
+        { stdio: 'inherit' },
     );
 }
 
@@ -36,7 +36,7 @@ function deployBackend() {
             '--parameters',
             `TmdbApiKey=${tmdbApiKey}`,
         ],
-        { stdio: 'inherit' }
+        { stdio: 'inherit' },
     );
 }
 

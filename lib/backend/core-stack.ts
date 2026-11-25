@@ -6,12 +6,7 @@ import { Construct } from 'constructs';
 import { DatabaseConstruct } from './database-construct';
 import { ApiGatewayConstruct } from './api-gateway-construct';
 import { LambdaConstruct } from './lambdas-construct';
-import {
-    AuthSsmHelper,
-    type AuthParameters,
-    type EnvironmentName,
-    resourceName,
-} from '../shared';
+import { AuthSsmHelper, type AuthParameters, type EnvironmentName, resourceName } from '../shared';
 
 export interface BackendStackProps extends cdk.StackProps {
     readonly envName?: EnvironmentName;
@@ -41,6 +36,7 @@ export class BackendStack extends cdk.Stack {
             prodAlexaClientId,
             ...stackProps
         } = props;
+
         super(scope, id, stackProps);
 
         cdk.Tags.of(this).add('Project', 'blockbuster-theatre');
@@ -58,13 +54,13 @@ export class BackendStack extends cdk.Stack {
         this.userPool = cognito.UserPool.fromUserPoolId(
             this,
             'ImportedUserPool',
-            this.authParameters.userPoolId
+            this.authParameters.userPoolId,
         );
 
         this.userPoolClient = cognito.UserPoolClient.fromUserPoolClientId(
             this,
             'ImportedBackendClient',
-            this.authParameters.backendClientId
+            this.authParameters.backendClientId,
         );
 
         // 2. HTTP JWT Authorizer accepting SRP backend client and OAuth clients (Postman, Alexa)
@@ -77,22 +73,23 @@ export class BackendStack extends cdk.Stack {
                     this.authParameters.postmanClientId,
                     this.authParameters.alexaClientId,
                 ],
-            }
+            },
         );
 
         // 3. DynamoDB Tables
         this.database = new DatabaseConstruct(this, 'MoviesDatabase', envName);
 
         // 4. SES Booking Email Identity
-        const bookingEmailIdentity = envName === 'prod'
-            ? new ses.EmailIdentity(this, 'BookingEmailIdentity', {
-                identity: ses.Identity.email('niallmclaughlin1998@gmail.com'),
-            })
-            : ses.EmailIdentity.fromEmailIdentityName(
-                this,
-                'ImportedBookingEmailIdentity',
-                'niallmclaughlin1998@gmail.com'
-            );
+        const bookingEmailIdentity =
+            envName === 'prod'
+                ? new ses.EmailIdentity(this, 'BookingEmailIdentity', {
+                      identity: ses.Identity.email('niallmclaughlin1998@gmail.com'),
+                  })
+                : ses.EmailIdentity.fromEmailIdentityName(
+                      this,
+                      'ImportedBookingEmailIdentity',
+                      'niallmclaughlin1998@gmail.com',
+                  );
 
         // 5. Lambda Functions & Table Permissions
         this.lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {
@@ -146,14 +143,17 @@ export class BackendStack extends cdk.Stack {
             value: this.apiGateway.httpApi.url!,
             description: 'Base HTTP endpoint for WinForms, WinUI 3, SwiftUI, and Web SPA',
         });
+
         new cdk.CfnOutput(this, 'UserPoolId', {
             value: this.authParameters.userPoolId,
             description: 'Cognito user pool ID for frontend authentication',
         });
+
         new cdk.CfnOutput(this, 'UserPoolClientId', {
             value: this.authParameters.backendClientId,
             description: 'Cognito public app client ID for frontend authentication',
         });
+
         new cdk.CfnOutput(this, 'UserPoolIssuer', {
             value: `https://cognito-idp.${this.region}.amazonaws.com/${this.authParameters.userPoolId}`,
             description: 'JWT issuer configured on the API Gateway authorizer',

@@ -6,17 +6,14 @@ import {
     CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { createHash } from 'crypto';
-import {
-    DynamoDBDocumentClient,
-    GetCommand,
-    TransactWriteCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
 import { GuestConversionTokenRecord } from '../../lib/interfaces/GuestConversionTokenRecord';
 
 const cognitoClient = new CognitoIdentityProviderClient({
     region: process.env.AWS_REGION ?? 'eu-west-2',
 });
+
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const CONVERSION_TOKEN_PATTERN = /^cnv_tok_[A-Za-z0-9_-]{43}$/;
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{12,256}$/;
@@ -26,16 +23,14 @@ type UnknownRecord = Record<string, unknown>;
 export class GuestConversionError extends Error {
     constructor(
         public readonly statusCode: number,
-        message: string
+        message: string,
     ) {
         super(message);
         this.name = 'GuestConversionError';
     }
 }
 
-function isGuestConversionTokenRecord(
-    value: unknown
-): value is GuestConversionTokenRecord {
+function isGuestConversionTokenRecord(value: unknown): value is GuestConversionTokenRecord {
     return (
         isRecord(value) &&
         typeof value.tokenHash === 'string' &&
@@ -53,7 +48,9 @@ function isRecord(value: unknown): value is UnknownRecord {
 
 function requiredEnvironmentVariable(name: string): string {
     const value = process.env[name];
+
     if (!value) throw new GuestConversionError(500, `${name} is not configured.`);
+
     return value;
 }
 
@@ -72,30 +69,31 @@ function parseRequest(value: unknown): GuestConversionRequest {
     if (
         !isRecord(value) ||
         Object.keys(value).some(
-            (key) => !['conversionToken', 'password', 'firstName', 'surname'].includes(key)
+            (key) => !['conversionToken', 'password', 'firstName', 'surname'].includes(key),
         )
     ) {
         throw new GuestConversionError(
             400,
-            'Only conversionToken, password, firstName, and surname are accepted.'
+            'Only conversionToken, password, firstName, and surname are accepted.',
         );
     }
-    if (
-        typeof value.conversionToken !== 'string' ||
-        !CONVERSION_TOKEN_PATTERN.test(value.conversionToken)
-    ) {
+
+    if (typeof value.conversionToken !== 'string' || !CONVERSION_TOKEN_PATTERN.test(value.conversionToken)) {
         throw new GuestConversionError(400, 'A valid conversionToken is required.');
     }
+
     if (typeof value.password !== 'string' || !PASSWORD_PATTERN.test(value.password)) {
         throw new GuestConversionError(
             400,
-            'Password must be 12-256 characters and include uppercase, lowercase, numeric, and symbol characters.'
+            'Password must be 12-256 characters and include uppercase, lowercase, numeric, and symbol characters.',
         );
     }
+
     const firstName = value.firstName;
     const surname = value.surname;
     const hasFirstName = firstName !== undefined;
     const hasSurname = surname !== undefined;
+
     if (
         hasFirstName !== hasSurname ||
         (hasFirstName &&
@@ -108,13 +106,15 @@ function parseRequest(value: unknown): GuestConversionRequest {
     ) {
         throw new GuestConversionError(400, 'A valid firstName and surname are required.');
     }
+
     return {
         conversionToken: value.conversionToken,
         password: value.password,
-        ...(typeof firstName === 'string' && typeof surname === 'string' && {
-            firstName: firstName.trim(),
-            surname: surname.trim(),
-        }),
+        ...(typeof firstName === 'string' &&
+            typeof surname === 'string' && {
+                firstName: firstName.trim(),
+                surname: surname.trim(),
+            }),
     };
 }
 
@@ -122,9 +122,10 @@ async function authenticateExistingUser(
     userPoolId: string,
     clientId: string,
     email: string,
-    password: string
+    password: string,
 ): Promise<{ userId?: string; accessToken: string; refreshToken: string }> {
     let response;
+
     try {
         response = await cognitoClient.send(
             new AdminInitiateAuthCommand({
@@ -132,7 +133,7 @@ async function authenticateExistingUser(
                 ClientId: clientId,
                 AuthFlow: 'ADMIN_USER_PASSWORD_AUTH',
                 AuthParameters: { USERNAME: email, PASSWORD: password },
-            })
+            }),
         );
     } catch (error: unknown) {
         if (
@@ -141,15 +142,20 @@ async function authenticateExistingUser(
         ) {
             throw new GuestConversionError(409, 'An account already exists for this email.');
         }
+
         throw error;
     }
+
     const authentication = response.AuthenticationResult;
+
     if (!authentication?.AccessToken || !authentication.RefreshToken) {
         throw new GuestConversionError(500, 'Cognito did not return a complete token set.');
     }
+
     const user = await cognitoClient.send(
-        new AdminGetUserCommand({ UserPoolId: userPoolId, Username: email })
+        new AdminGetUserCommand({ UserPoolId: userPoolId, Username: email }),
     );
+
     return {
         userId: user.UserAttributes?.find((attribute) => attribute.Name === 'sub')?.Value,
         accessToken: authentication.AccessToken,
@@ -175,22 +181,29 @@ export async function convertGuestAccount(value: unknown): Promise<{
             TableName: tokensTableName,
             Key: { tokenHash },
             ConsistentRead: true,
-        })
+        }),
     );
+
     if (!tokenResult.Item) {
         throw new GuestConversionError(404, 'Guest conversion token is invalid.');
     }
+
     if (!isGuestConversionTokenRecord(tokenResult.Item)) {
         throw new Error('DynamoDB returned an invalid guest conversion token record.');
     }
+
     const tokenRecord = tokenResult.Item;
+
     if (!tokenRecord.showtimeId && !tokenRecord.showingId) {
         throw new Error('Guest conversion token does not reference a booking partition.');
     }
+
     if (tokenRecord.consumedAt) {
         throw new GuestConversionError(409, 'Guest conversion token has already been used.');
     }
+
     const now = Math.floor(Date.now() / 1000);
+
     if (tokenRecord.expiresAt <= now) {
         throw new GuestConversionError(410, 'Guest conversion token has expired.');
     }
@@ -198,20 +211,24 @@ export async function convertGuestAccount(value: unknown): Promise<{
     const bookingTableName = tokenRecord.showtimeId
         ? bookingsTableName
         : requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME');
+
     const bookingKey = {
         ...(tokenRecord.showtimeId
             ? { showtimeId: tokenRecord.showtimeId }
             : { showingId: tokenRecord.showingId }),
         seatId: `BOOKING#${tokenRecord.bookingId}`,
     };
+
     const bookingResult = await docClient.send(
         new GetCommand({
             TableName: bookingTableName,
             Key: bookingKey,
             ConsistentRead: true,
-        })
+        }),
     );
+
     const booking = bookingResult.Item;
+
     if (
         !booking ||
         booking.recordType !== 'BOOKING' ||
@@ -221,25 +238,27 @@ export async function convertGuestAccount(value: unknown): Promise<{
     ) {
         throw new GuestConversionError(410, 'Guest booking for this token is unavailable.');
     }
-    const guestNameParts = typeof booking.customerName === 'string'
-        ? booking.customerName.trim().split(/\s+/)
-        : [];
+
+    const guestNameParts =
+        typeof booking.customerName === 'string' ? booking.customerName.trim().split(/\s+/) : [];
+
     const firstName = request.firstName ?? guestNameParts.shift() ?? '';
     const surname = request.surname ?? (guestNameParts.join(' ') || 'Guest');
     const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ');
+
     if (
         !firstName ||
         !surname ||
         (request.firstName !== undefined &&
-            normalizeName(`${firstName} ${surname}`) !== normalizeName(
-                typeof booking.customerName === 'string' ? booking.customerName : ''
-            ))
+            normalizeName(`${firstName} ${surname}`) !==
+                normalizeName(typeof booking.customerName === 'string' ? booking.customerName : ''))
     ) {
         throw new GuestConversionError(400, 'The account name must match the guest booking details.');
     }
 
     let createdUserId: string | undefined;
     let auth: { accessToken: string; refreshToken: string };
+
     try {
         const created = await cognitoClient.send(
             new AdminCreateUserCommand({
@@ -251,25 +270,29 @@ export async function convertGuestAccount(value: unknown): Promise<{
                     { Name: 'given_name', Value: firstName },
                     { Name: 'family_name', Value: surname },
                 ],
-            })
+            }),
         );
+
         createdUserId = created.User?.Attributes?.find((attribute) => attribute.Name === 'sub')?.Value;
+
         if (!createdUserId) {
             throw new GuestConversionError(500, 'Cognito did not return the new user ID.');
         }
+
         await cognitoClient.send(
             new AdminSetUserPasswordCommand({
                 UserPoolId: userPoolId,
                 Username: tokenRecord.customerEmail,
                 Password: request.password,
                 Permanent: true,
-            })
+            }),
         );
+
         auth = await authenticateExistingUser(
             userPoolId,
             clientId,
             tokenRecord.customerEmail,
-            request.password
+            request.password,
         );
     } catch (error: unknown) {
         if (error instanceof Error && error.name === 'UsernameExistsException') {
@@ -277,7 +300,7 @@ export async function convertGuestAccount(value: unknown): Promise<{
                 userPoolId,
                 clientId,
                 tokenRecord.customerEmail,
-                request.password
+                request.password,
             );
         } else if (
             error instanceof Error &&
@@ -291,11 +314,9 @@ export async function convertGuestAccount(value: unknown): Promise<{
     }
 
     const userId = createdUserId ?? auth.userId;
+
     if (!userId) {
-        throw new GuestConversionError(
-            500,
-            'Unable to resolve the account ID for the converted guest.'
-        );
+        throw new GuestConversionError(500, 'Unable to resolve the account ID for the converted guest.');
     }
 
     try {
@@ -307,8 +328,7 @@ export async function convertGuestAccount(value: unknown): Promise<{
                             TableName: tokensTableName,
                             Key: { tokenHash },
                             UpdateExpression: 'SET consumedAt = :consumedAt, userId = :userId',
-                            ConditionExpression:
-                                'attribute_not_exists(consumedAt) AND expiresAt > :now',
+                            ConditionExpression: 'attribute_not_exists(consumedAt) AND expiresAt > :now',
                             ExpressionAttributeValues: {
                                 ':consumedAt': new Date().toISOString(),
                                 ':userId': userId,
@@ -333,19 +353,19 @@ export async function convertGuestAccount(value: unknown): Promise<{
                         },
                     },
                 ],
-            })
+            }),
         );
     } catch (error: unknown) {
         if (
             error instanceof Error &&
             error.name === 'TransactionCanceledException' &&
-            (error as { CancellationReasons?: Array<{ Code?: string }> })
-                .CancellationReasons?.some(
-                    (reason) => reason.Code === 'ConditionalCheckFailed'
-                )
+            (error as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons?.some(
+                (reason) => reason.Code === 'ConditionalCheckFailed',
+            )
         ) {
             throw new GuestConversionError(409, 'Guest conversion token has already been used or expired.');
         }
+
         throw error;
     }
 

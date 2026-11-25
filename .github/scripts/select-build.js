@@ -137,7 +137,9 @@ if (eventName === 'workflow_run') {
         }
 
         if (allowNonMainProd === 'true') {
-            console.log('::warning::Production branch override enabled. Review the selected build before deploying.');
+            console.log(
+                '::warning::Production branch override enabled. Review the selected build before deploying.',
+            );
             appendFile(summaryFile, '**Warning:** Production branch override enabled.\n');
         }
     } else if (requestedBuild === 'latest') {
@@ -177,7 +179,7 @@ appendFile(
         `deploy_branch=${targetBranch}`,
         `build_sha=${buildSha}`,
         '',
-    ].join('\n')
+    ].join('\n'),
 );
 
 appendFile(
@@ -190,5 +192,5 @@ appendFile(
         `**Build Branch:** \`${targetBranch}\``,
         `**Build Run ID:** \`${buildRunId}\``,
         '',
-    ].join('\n')
+    ].join('\n'),
 );

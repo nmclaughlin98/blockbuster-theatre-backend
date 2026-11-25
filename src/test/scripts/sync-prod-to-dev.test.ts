@@ -1,19 +1,7 @@
-import {
-    DescribeTableCommand,
-    DynamoDBClient,
-    ListTablesCommand,
-} from '@aws-sdk/client-dynamodb';
-import {
-    BatchWriteCommand,
-    DynamoDBDocumentClient,
-    ScanCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { DescribeTableCommand, DynamoDBClient, ListTablesCommand } from '@aws-sdk/client-dynamodb';
+import { BatchWriteCommand, DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-import {
-    PROD_TABLE_NAMES,
-    PROD_TO_DEV_TABLES,
-    syncProdToDev,
-} from '../../../scripts/sync-prod-to-dev';
+import { PROD_TABLE_NAMES, PROD_TO_DEV_TABLES, syncProdToDev } from '../../../scripts/sync-prod-to-dev';
 
 const dynamoMock = mockClient(DynamoDBClient);
 const documentMock = mockClient(DynamoDBDocumentClient);
@@ -31,52 +19,67 @@ describe('sync production data to dev', () => {
 
     it('defines a dev-prefixed counterpart for every production table', () => {
         expect(PROD_TO_DEV_TABLES).toHaveLength(PROD_TABLE_NAMES.length);
+
         for (const mapping of PROD_TO_DEV_TABLES) {
             expect(mapping.sourceTable).toMatch(/^blockbuster-theatre-prod-/);
             expect(mapping.targetTable).toBe(
-                mapping.sourceTable.replace(/^blockbuster-theatre-prod-/, 'blockbuster-theatre-dev-')
+                mapping.sourceTable.replace(/^blockbuster-theatre-prod-/, 'blockbuster-theatre-dev-'),
             );
         }
     });
 
-    it.each(['production', 'lowercase', 'wrong-table'])('rejects %s targets before any DynamoDB operation', async (kind) => {
-        const sourceTable = PROD_TABLE_NAMES[0];
-        await expect(syncProdToDev(
-            {} as DynamoDBClient,
-            {} as DynamoDBDocumentClient,
-            {
-                mappings: [{
-                    sourceTable,
-                    targetTable: kind === 'production' ? sourceTable
-                        : kind === 'lowercase' ? sourceTable.replace('blockbuster-theatre-prod-', 'blockbuster-theatre-DEV-')
-                            : PROD_TO_DEV_TABLES[1].targetTable,
-                }],
-                clear: true,
-            }
-        )).rejects.toThrow('Unsafe sync target');
+    it.each(['production', 'lowercase', 'wrong-table'])(
+        'rejects %s targets before any DynamoDB operation',
+        async (kind) => {
+            const sourceTable = PROD_TABLE_NAMES[0];
+            await expect(
+                syncProdToDev({} as DynamoDBClient, {} as DynamoDBDocumentClient, {
+                    mappings: [
+                        {
+                            sourceTable,
+                            targetTable:
+                                kind === 'production'
+                                    ? sourceTable
+                                    : kind === 'lowercase'
+                                      ? sourceTable.replace(
+                                            'blockbuster-theatre-prod-',
+                                            'blockbuster-theatre-DEV-',
+                                        )
+                                      : PROD_TO_DEV_TABLES[1].targetTable,
+                        },
+                    ],
+                    clear: true,
+                }),
+            ).rejects.toThrow('Unsafe sync target');
 
-        expect(dynamoMock.calls()).toHaveLength(0);
-        expect(documentMock.commandCalls(BatchWriteCommand)).toHaveLength(0);
-    });
+            expect(dynamoMock.calls()).toHaveLength(0);
+            expect(documentMock.commandCalls(BatchWriteCommand)).toHaveLength(0);
+        },
+    );
 
     it('paginates production scans, batches at 25 items, and retries unprocessed writes', async () => {
         const { sourceTable, targetTable } = PROD_TO_DEV_TABLES[0];
         dynamoMock.on(DescribeTableCommand).resolves({
             Table: { KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }] },
         });
-        documentMock.on(ScanCommand, { TableName: sourceTable })
+
+        documentMock
+            .on(ScanCommand, { TableName: sourceTable })
             .resolvesOnce({
                 Items: Array.from({ length: 26 }, (_, id) => ({ id })),
                 LastEvaluatedKey: { id: 25 },
             })
             .resolvesOnce({ Items: [{ id: 26 }] });
-        documentMock.on(BatchWriteCommand)
+
+        documentMock
+            .on(BatchWriteCommand)
             .resolvesOnce({
                 UnprocessedItems: {
                     [targetTable]: [{ PutRequest: { Item: { id: 0 } } }],
                 },
             })
             .resolves({});
+
         const sleep = jest.fn().mockResolvedValue(undefined);
 
         const result = await syncProdToDev(
@@ -85,7 +88,7 @@ describe('sync production data to dev', () => {
             {
                 mappings: [{ sourceTable, targetTable }],
                 sleep,
-            }
+            },
         );
 
         const batches = documentMock.commandCalls(BatchWriteCommand);
@@ -95,8 +98,9 @@ describe('sync production data to dev', () => {
         expect(sleep).toHaveBeenCalledWith(100);
         expect(result.copiedItems).toBe(27);
         expect(dynamoMock.commandCalls(ListTablesCommand)).toHaveLength(0);
-        expect(dynamoMock.commandCalls(DescribeTableCommand).map((call) => call.args[0].input.TableName))
-            .toEqual([sourceTable, targetTable]);
+        expect(
+            dynamoMock.commandCalls(DescribeTableCommand).map((call) => call.args[0].input.TableName),
+        ).toEqual([sourceTable, targetTable]);
     });
 
     it('clears only the dev target using its discovered key before copying', async () => {
@@ -104,12 +108,15 @@ describe('sync production data to dev', () => {
         dynamoMock.on(DescribeTableCommand).resolves({
             Table: { KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }] },
         });
+
         documentMock.on(ScanCommand, { TableName: targetTable }).resolves({
             Items: [{ id: 'existing-dev' }],
         });
+
         documentMock.on(ScanCommand, { TableName: sourceTable }).resolves({
             Items: [{ id: 'source' }],
         });
+
         documentMock.on(BatchWriteCommand).resolves({});
 
         await syncProdToDev(
@@ -119,7 +126,7 @@ describe('sync production data to dev', () => {
                 mappings: [{ sourceTable, targetTable }],
                 clear: true,
                 sleep: jest.fn().mockResolvedValue(undefined),
-            }
+            },
         );
 
         const writes = documentMock.commandCalls(BatchWriteCommand);
@@ -127,6 +134,7 @@ describe('sync production data to dev', () => {
         expect(writes[0].args[0].input.RequestItems?.[targetTable]).toEqual([
             { DeleteRequest: { Key: { id: 'existing-dev' } } },
         ]);
+
         expect(writes[1].args[0].input.RequestItems?.[targetTable]).toEqual([
             { PutRequest: { Item: { id: 'source' } } },
         ]);
@@ -139,18 +147,24 @@ describe('sync production data to dev', () => {
             dynamoMock.on(DescribeTableCommand).resolves({
                 Table: { KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }] },
             });
-            dynamoMock.on(DescribeTableCommand, { TableName: mappings[1][missingSide] })
-                .rejects(Object.assign(new Error('Requested resource not found'), { name: 'ResourceNotFoundException' }));
 
-            await expect(syncProdToDev(
-                dynamoMock as unknown as DynamoDBClient,
-                documentMock as unknown as DynamoDBDocumentClient,
-                { mappings, clear: true }
-            )).rejects.toThrow('Requested resource not found');
+            dynamoMock.on(DescribeTableCommand, { TableName: mappings[1][missingSide] }).rejects(
+                Object.assign(new Error('Requested resource not found'), {
+                    name: 'ResourceNotFoundException',
+                }),
+            );
+
+            await expect(
+                syncProdToDev(
+                    dynamoMock as unknown as DynamoDBClient,
+                    documentMock as unknown as DynamoDBDocumentClient,
+                    { mappings, clear: true },
+                ),
+            ).rejects.toThrow('Requested resource not found');
 
             expect(documentMock.calls()).toHaveLength(0);
             expect(dynamoMock.commandCalls(ListTablesCommand)).toHaveLength(0);
-        }
+        },
     );
 
     it('aborts before clearing or copying if a later table has a mismatched key schema', async () => {
@@ -158,15 +172,18 @@ describe('sync production data to dev', () => {
         dynamoMock.on(DescribeTableCommand).resolves({
             Table: { KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }] },
         });
+
         dynamoMock.on(DescribeTableCommand, { TableName: mappings[1].targetTable }).resolves({
             Table: { KeySchema: [{ AttributeName: 'otherId', KeyType: 'HASH' }] },
         });
 
-        await expect(syncProdToDev(
-            dynamoMock as unknown as DynamoDBClient,
-            documentMock as unknown as DynamoDBDocumentClient,
-            { mappings, clear: true }
-        )).rejects.toThrow('different key schemas');
+        await expect(
+            syncProdToDev(
+                dynamoMock as unknown as DynamoDBClient,
+                documentMock as unknown as DynamoDBDocumentClient,
+                { mappings, clear: true },
+            ),
+        ).rejects.toThrow('different key schemas');
 
         expect(documentMock.calls()).toHaveLength(0);
     });

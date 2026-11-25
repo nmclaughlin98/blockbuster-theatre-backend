@@ -30,20 +30,20 @@ Both endpoints are public and accept `limit` (1–100, default 50) and `nextToke
 
 ```json
 {
-  "bookingRef": "BBT-123456",
-  "customer": {
-    "firstName": "John",
-    "surname": "Doe",
-    "email": "guest@example.com",
-    "phone": ""
-  },
-  "movieTitle": "A Movie",
-  "date": "Tue 20 Oct 2026",
-  "time": "19:00",
-  "screen": "2",
-  "seats": ["A1", "A2"],
-  "tickets": 2,
-  "totalPrice": 15.2
+    "bookingRef": "BBT-123456",
+    "customer": {
+        "firstName": "John",
+        "surname": "Doe",
+        "email": "guest@example.com",
+        "phone": ""
+    },
+    "movieTitle": "A Movie",
+    "date": "Tue 20 Oct 2026",
+    "time": "19:00",
+    "screen": "2",
+    "seats": ["A1", "A2"],
+    "tickets": 2,
+    "totalPrice": 15.2
 }
 ```
 
@@ -128,7 +128,7 @@ The former string-only schedule format is deprecated and is no longer accepted f
 
 ```json
 {
-  "Monday": ["13:00", "14:20"]
+    "Monday": ["13:00", "14:20"]
 }
 ```
 
@@ -136,10 +136,10 @@ Use screened showtime objects for offer overrides. Movie schedules are not writt
 
 ```json
 {
-  "Monday": [
-    { "screen": "1", "time": "13:00" },
-    { "screen": "3", "time": "14:20" }
-  ]
+    "Monday": [
+        { "screen": "1", "time": "13:00" },
+        { "screen": "3", "time": "14:20" }
+    ]
 }
 ```
 
@@ -157,17 +157,17 @@ The response contains collection summaries sorted by name. Each summary includes
 
 ```json
 {
-  "collections": [
-    {
-      "collectionId": "8706524",
-      "name": "Marvel Cinematic Universe",
-      "description": "An interconnected film series.",
-      "posterUrl": "",
-      "backdropUrl": "",
-      "isActive": true,
-      "movieCount": 3
-    }
-  ]
+    "collections": [
+        {
+            "collectionId": "8706524",
+            "name": "Marvel Cinematic Universe",
+            "description": "An interconnected film series.",
+            "posterUrl": "",
+            "backdropUrl": "",
+            "isActive": true,
+            "movieCount": 3
+        }
+    ]
 }
 ```
 
@@ -181,7 +181,7 @@ Provide a non-empty `ids` array of positive TMDB list IDs as strings or numbers.
 
 ```json
 {
-  "ids": ["8706524", "1234567"]
+    "ids": ["8706524", "1234567"]
 }
 ```
 
@@ -191,24 +191,24 @@ Example partial-success response:
 
 ```json
 {
-  "message": "One or more TMDB lists could not be refreshed.",
-  "refreshedCount": 1,
-  "failedCount": 1,
-  "results": [
-    {
-      "collectionId": "8706524",
-      "success": true,
-      "name": "Marvel Cinematic Universe",
-      "movieCount": 3,
-      "lastUpdated": "2025-01-01T00:00:00.000Z"
-    },
-    {
-      "collectionId": "1234567",
-      "success": false,
-      "statusCode": 404,
-      "message": "TMDB list not found."
-    }
-  ]
+    "message": "One or more TMDB lists could not be refreshed.",
+    "refreshedCount": 1,
+    "failedCount": 1,
+    "results": [
+        {
+            "collectionId": "8706524",
+            "success": true,
+            "name": "Marvel Cinematic Universe",
+            "movieCount": 3,
+            "lastUpdated": "2025-01-01T00:00:00.000Z"
+        },
+        {
+            "collectionId": "1234567",
+            "success": false,
+            "statusCode": 404,
+            "message": "TMDB list not found."
+        }
+    ]
 }
 ```
 
@@ -220,16 +220,16 @@ Example collection portion of the response:
 
 ```json
 {
-  "collection": {
-    "collectionId": "8706524",
-    "name": "Marvel Cinematic Universe",
-    "description": "An interconnected film series.",
-    "posterUrl": "",
-    "backdropUrl": "",
-    "movieIds": ["1726", "1724", "999"],
-    "isActive": true
-  },
-  "movies": []
+    "collection": {
+        "collectionId": "8706524",
+        "name": "Marvel Cinematic Universe",
+        "description": "An interconnected film series.",
+        "posterUrl": "",
+        "backdropUrl": "",
+        "movieIds": ["1726", "1724", "999"],
+        "isActive": true
+    },
+    "movies": []
 }
 ```
 
@@ -239,21 +239,21 @@ Example collection portion of the response:
 
 ```json
 {
-  "pricing": [
-    {
-      "pricingId": "KIDS_CLUB_RATES",
-      "name": "Kids Club Rates",
-      "currency": "GBP",
-      "ticketTiers": [
+    "pricing": [
         {
-          "id": "child",
-          "label": "Kids Club Child Ticket",
-          "description": "Kids Club admission per child",
-          "price": 2.5
+            "pricingId": "KIDS_CLUB_RATES",
+            "name": "Kids Club Rates",
+            "currency": "GBP",
+            "ticketTiers": [
+                {
+                    "id": "child",
+                    "label": "Kids Club Child Ticket",
+                    "description": "Kids Club admission per child",
+                    "price": 2.5
+                }
+            ]
         }
-      ]
-    }
-  ]
+    ]
 }
 ```
 
@@ -265,21 +265,21 @@ The Crazy Tuesday package is configured as one £4 ticket tier:
 
 ```json
 {
-  "pricing": [
-    {
-      "pricingId": "CRAZY_TUESDAY_RATES",
-      "name": "Crazy Tuesday Rates",
-      "currency": "GBP",
-      "ticketTiers": [
+    "pricing": [
         {
-          "id": "crazy-tuesday",
-          "label": "Crazy Tuesday Ticket",
-          "description": "Admission for any Tuesday movie showing",
-          "price": 4
+            "pricingId": "CRAZY_TUESDAY_RATES",
+            "name": "Crazy Tuesday Rates",
+            "currency": "GBP",
+            "ticketTiers": [
+                {
+                    "id": "crazy-tuesday",
+                    "label": "Crazy Tuesday Ticket",
+                    "description": "Admission for any Tuesday movie showing",
+                    "price": 4
+                }
+            ]
         }
-      ]
-    }
-  ]
+    ]
 }
 ```
 
@@ -289,18 +289,18 @@ The Crazy Tuesday package is configured as one £4 ticket tier:
 
 ```json
 {
-  "type": "offer",
-  "id": "halloween-spooktacular",
-  "offerId": "halloween-spooktacular",
-  "title": "Halloween Spooktacular",
-  "label": "Halloween Spooktacular",
-  "displayLabel": "Halloween Spooktacular",
-  "tagline": "Through the month of October",
-  "priceDescription": "£2.50 with valid Student ID",
-  "ctaLabel": "Claim Offer",
-  "featuredMovieId": "27850",
-  "pricingId": "STANDARD_RATES",
-  "overrideShowtimes": {}
+    "type": "offer",
+    "id": "halloween-spooktacular",
+    "offerId": "halloween-spooktacular",
+    "title": "Halloween Spooktacular",
+    "label": "Halloween Spooktacular",
+    "displayLabel": "Halloween Spooktacular",
+    "tagline": "Through the month of October",
+    "priceDescription": "£2.50 with valid Student ID",
+    "ctaLabel": "Claim Offer",
+    "featuredMovieId": "27850",
+    "pricingId": "STANDARD_RATES",
+    "overrideShowtimes": {}
 }
 ```
 
@@ -312,24 +312,22 @@ The Crazy Tuesday package is configured as one £4 ticket tier:
 
 ```json
 {
-  "offers": [
-    {
-      "offerId": "kids-club",
-      "title": "Kids Club",
-      "tagline": "Every Tuesday",
-      "priceDescription": "£2.50 per child",
-      "ctaLabel": "Claim Offer",
-      "featuredMovieId": "456",
-      "pricingId": "KIDS_CLUB_RATES",
-      "isActive": true,
-      "displayLabel": "OFFER - Kids Club",
-      "overrideShowtimes": {
-        "Tuesday": [
-          { "screen": "1", "time": "11:00" }
-        ]
-      }
-    }
-  ]
+    "offers": [
+        {
+            "offerId": "kids-club",
+            "title": "Kids Club",
+            "tagline": "Every Tuesday",
+            "priceDescription": "£2.50 per child",
+            "ctaLabel": "Claim Offer",
+            "featuredMovieId": "456",
+            "pricingId": "KIDS_CLUB_RATES",
+            "isActive": true,
+            "displayLabel": "OFFER - Kids Club",
+            "overrideShowtimes": {
+                "Tuesday": [{ "screen": "1", "time": "11:00" }]
+            }
+        }
+    ]
 }
 ```
 
@@ -349,9 +347,9 @@ Catalogue showtimes repeat weekly. Both schedule endpoints accept an optional `?
 
 ```json
 {
-  "showtimeId": "559924_2026-11-01_1215",
-  "date": "2026-11-01",
-  "bookedSeats": ["F10", "F11"]
+    "showtimeId": "559924_2026-11-01_1215",
+    "date": "2026-11-01",
+    "bookedSeats": ["F10", "F11"]
 }
 ```
 
@@ -361,10 +359,10 @@ Signed-in customers can use `GET /api/v1/bookings/account` with the same query p
 
 ```json
 {
-  "showtimeId": "559924_2026-11-01_1215",
-  "date": "2026-11-01",
-  "bookedSeats": ["F10", "F11"],
-  "myBookedSeats": ["F10"]
+    "showtimeId": "559924_2026-11-01_1215",
+    "date": "2026-11-01",
+    "bookedSeats": ["F10", "F11"],
+    "myBookedSeats": ["F10"]
 }
 ```
 
@@ -376,15 +374,15 @@ The route does not return booking details or other customers' identities.
 
 ```json
 {
-  "showtimeId": "559924_2026-11-01_1215",
-  "date": "2026-11-01",
-  "seats": ["F10", "F11"],
-  "email": "customer@example.com",
-  "customerName": "Niall McLaughlin",
-  "tickets": [
-    { "tierId": "adult", "quantity": 1 },
-    { "tierId": "child", "quantity": 1 }
-  ]
+    "showtimeId": "559924_2026-11-01_1215",
+    "date": "2026-11-01",
+    "seats": ["F10", "F11"],
+    "email": "customer@example.com",
+    "customerName": "Niall McLaughlin",
+    "tickets": [
+        { "tierId": "adult", "quantity": 1 },
+        { "tierId": "child", "quantity": 1 }
+    ]
 }
 ```
 
@@ -394,23 +392,23 @@ Success returns HTTP 201:
 
 ```json
 {
-  "bookingId": "bk_990123",
-  "bookingRef": "BBT-883214",
-  "movieId": "424694",
-  "showtimeId": "559924_2026-11-01_1215",
-  "movieTitle": "Bohemian Rhapsody",
-  "date": "2026-11-01",
-  "seats": ["F10", "F11"],
-  "tickets": [
-    { "tierId": "adult", "label": "Standard Adult", "quantity": 1, "unitPrice": 9.5, "subtotal": 9.5 },
-    { "tierId": "child", "label": "Child Ticket", "quantity": 1, "unitPrice": 6, "subtotal": 6 }
-  ],
-  "totalAmount": 15.5,
-  "currency": "GBP",
-  "customerEmail": "customer@example.com",
-  "conversionToken": "cnv_tok_<opaque-random-token>",
-  "conversionTokenExpiresAt": "2026-10-26T12:15:00.000Z",
-  "confirmationEmailSent": true
+    "bookingId": "bk_990123",
+    "bookingRef": "BBT-883214",
+    "movieId": "424694",
+    "showtimeId": "559924_2026-11-01_1215",
+    "movieTitle": "Bohemian Rhapsody",
+    "date": "2026-11-01",
+    "seats": ["F10", "F11"],
+    "tickets": [
+        { "tierId": "adult", "label": "Standard Adult", "quantity": 1, "unitPrice": 9.5, "subtotal": 9.5 },
+        { "tierId": "child", "label": "Child Ticket", "quantity": 1, "unitPrice": 6, "subtotal": 6 }
+    ],
+    "totalAmount": 15.5,
+    "currency": "GBP",
+    "customerEmail": "customer@example.com",
+    "conversionToken": "cnv_tok_<opaque-random-token>",
+    "conversionTokenExpiresAt": "2026-10-26T12:15:00.000Z",
+    "confirmationEmailSent": true
 }
 ```
 
@@ -438,23 +436,23 @@ The sweep matches normalized `customerEmail` against `CustomerEmailUpcomingBooki
 
 ```json
 {
-  "newlyLinkedBookings": [],
-  "bookings": [
-    {
-      "bookingId": "bk_990123",
-      "bookingRef": "BBT-883214",
-      "movieId": "424694",
-      "movieTitle": "Bohemian Rhapsody",
-      "date": "2026-11-01",
-      "time": "12:15",
-      "screen": "5",
-      "seats": ["F10", "F11"],
-      "guestName": "Alex Smith",
-      "ticketCount": 2,
-      "totalAmount": 15.5,
-      "currency": "GBP"
-    }
-  ]
+    "newlyLinkedBookings": [],
+    "bookings": [
+        {
+            "bookingId": "bk_990123",
+            "bookingRef": "BBT-883214",
+            "movieId": "424694",
+            "movieTitle": "Bohemian Rhapsody",
+            "date": "2026-11-01",
+            "time": "12:15",
+            "screen": "5",
+            "seats": ["F10", "F11"],
+            "guestName": "Alex Smith",
+            "ticketCount": 2,
+            "totalAmount": 15.5,
+            "currency": "GBP"
+        }
+    ]
 }
 ```
 
@@ -472,10 +470,10 @@ The PDF represents an unpaid reservation; this endpoint does not process payment
 
 ```json
 {
-  "conversionToken": "cnv_tok_<opaque-random-token>",
-  "password": "SuperSecretPassword123!",
-  "firstName": "Niall",
-  "surname": "McLaughlin"
+    "conversionToken": "cnv_tok_<opaque-random-token>",
+    "password": "SuperSecretPassword123!",
+    "firstName": "Niall",
+    "surname": "McLaughlin"
 }
 ```
 
@@ -483,10 +481,10 @@ The first name and surname must match the name on the guest booking and are save
 
 ```json
 {
-  "userId": "cognito-user-id",
-  "email": "customer@example.com",
-  "accessToken": "<cognito-access-token>",
-  "refreshToken": "<cognito-refresh-token>"
+    "userId": "cognito-user-id",
+    "email": "customer@example.com",
+    "accessToken": "<cognito-access-token>",
+    "refreshToken": "<cognito-refresh-token>"
 }
 ```
 
@@ -506,10 +504,10 @@ The existing `GET /bookings` and `POST /bookings` routes remain available for co
 
 ```json
 {
-  "movieId": "456",
-  "date": "2026-11-02",
-  "showtime": { "day": "Monday", "screen": "3", "time": "19:00" },
-  "bookedSeats": ["A1", "B4", "C2"]
+    "movieId": "456",
+    "date": "2026-11-02",
+    "showtime": { "day": "Monday", "screen": "3", "time": "19:00" },
+    "bookedSeats": ["A1", "B4", "C2"]
 }
 ```
 
@@ -521,10 +519,10 @@ Use `bookedSeats` to render booked seats in the seat map. Invalid query paramete
 
 ```json
 {
-  "movieId": "456",
-  "date": "2026-11-02",
-  "showtime": { "day": "Monday", "time": "19:00" },
-  "seats": ["B4", "B5"]
+    "movieId": "456",
+    "date": "2026-11-02",
+    "showtime": { "day": "Monday", "time": "19:00" },
+    "seats": ["B4", "B5"]
 }
 ```
 
@@ -532,15 +530,15 @@ When the booking comes from an offer, also send `offerId` (with the offer's feat
 
 ```json
 {
-  "bookingId": "6b0e5f3e-...",
-  "userId": "2f9d0c7a-...",
-  "movieId": "456",
-  "movieTitle": "A Movie",
-  "date": "2026-11-02",
-  "showtimeId": "559924_2026-11-02_1900",
-  "showtime": { "day": "Monday", "screen": "3", "time": "19:00" },
-  "seats": ["B4", "B5"],
-  "bookedAt": "2026-10-25T03:19:42.816Z"
+    "bookingId": "6b0e5f3e-...",
+    "userId": "2f9d0c7a-...",
+    "movieId": "456",
+    "movieTitle": "A Movie",
+    "date": "2026-11-02",
+    "showtimeId": "559924_2026-11-02_1900",
+    "showtime": { "day": "Monday", "screen": "3", "time": "19:00" },
+    "seats": ["B4", "B5"],
+    "bookedAt": "2026-10-25T03:19:42.816Z"
 }
 ```
 
@@ -550,10 +548,10 @@ When the booking comes from an offer, also send `offerId` (with the offer's feat
 
 ```json
 {
-  "newShowtimeId": "559924_2026-11-05_1930",
-  "date": "2026-11-05",
-  "time": "19:30",
-  "screen": "3"
+    "newShowtimeId": "559924_2026-11-05_1930",
+    "date": "2026-11-05",
+    "time": "19:30",
+    "screen": "3"
 }
 ```
 

@@ -8,18 +8,22 @@ import { log } from '../utils/common';
 const cognitoClient = new CognitoIdentityProviderClient({});
 
 export const handler = async (
-    event: PreTokenGenerationTriggerEvent
+    event: PreTokenGenerationTriggerEvent,
 ): Promise<PreTokenGenerationTriggerEvent> => {
     let user;
+
     try {
-        user = await cognitoClient.send(new AdminGetUserCommand({
-            UserPoolId: event.userPoolId,
-            Username: event.userName,
-        }));
+        user = await cognitoClient.send(
+            new AdminGetUserCommand({
+                UserPoolId: event.userPoolId,
+                Username: event.userName,
+            }),
+        );
     } catch (error: unknown) {
         log('ERROR', 'Failed to retrieve user creation date', {
             errorName: error instanceof Error ? error.name : 'UnknownError',
         });
+
         throw new Error('Unable to generate token claims.');
     }
 
@@ -40,5 +44,6 @@ export const handler = async (
             groupOverrideDetails: overrides?.groupOverrideDetails ?? event.request.groupConfiguration,
         },
     };
+
     return event;
 };

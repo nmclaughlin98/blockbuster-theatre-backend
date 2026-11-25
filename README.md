@@ -62,6 +62,7 @@ Cloud mode requires existing dev/test tables and AWS credentials. The local adap
 ## AWS infrastructure
 
 The AWS CDK infrastructure is organized into a domain-driven multi-stack architecture:
+
 - `bin/app.ts` — CDK entry point instantiating `BlockbusterTheatreBlockbusterTheatreAuthStack` and environment-specific `BackendStack` instances (`prod` and `dev`).
 - `lib/auth/` — Dedicated `BlockbusterTheatreAuthStack` with `terminationProtection: true` owning the shared Cognito User Pool (`BlockbusterTheatreCognitoUsers`), Cognito Domain, PreTokenGeneration trigger, Resource Server (`bookings.read`), and App Clients (`BackendClient`, `PostmanAppClient`, `AlexaAppClient`).
 - `lib/backend/` — `BackendStack` (and constructs like API Gateway, DynamoDB, SES, Lambdas) consuming Cognito identifiers from SSM Parameter Store instead of CloudFormation parameters or cross-stack exports.
@@ -70,6 +71,7 @@ The AWS CDK infrastructure is organized into a domain-driven multi-stack archite
 ### Cognito Authentication & SSM Parameter Store Wiring
 
 Cognito identifiers are exported by `BlockbusterTheatreAuthStack` to AWS Systems Manager (SSM) Parameter Store under a consistent namespace:
+
 - `/blockbuster-theatre/auth/user-pool-id` — User Pool ID
 - `/blockbuster-theatre/auth/user-pool-arn` — User Pool ARN
 - `/blockbuster-theatre/auth/clients/backend-id` — Backend SRP App Client ID

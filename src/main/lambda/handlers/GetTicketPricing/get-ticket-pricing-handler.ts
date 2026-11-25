@@ -2,9 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { PricingServiceError, resolvePricing } from '../Shared/pricing-service';
 import { json, log } from '../utils/common';
 
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
     const query = event.queryStringParameters ?? {};
 
@@ -18,6 +16,7 @@ export const handler = async (
                 time: query.time,
             },
         });
+
         return json(200, {
             movieId: resolved.movieId,
             movieTitle: resolved.movieTitle,
@@ -41,12 +40,15 @@ export const handler = async (
                     error: error.message,
                 });
             }
+
             return json(error.statusCode, { message: error.message });
         }
+
         log('ERROR', 'Failed to resolve ticket pricing', {
             requestId,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
+
         return json(500, { message: 'Unable to resolve ticket pricing.' });
     }
 };

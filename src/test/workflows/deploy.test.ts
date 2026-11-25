@@ -5,8 +5,11 @@ import { join } from 'path';
 
 describe('workflow environment inputs', () => {
     it('defaults deploy target_env to dev without a legacy environment input', () => {
-        const workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
-            .replace(/\r\n/g, '\n');
+        const workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8').replace(
+            /\r\n/g,
+            '\n',
+        );
+
         const inputs = workflow.split('    inputs:\n')[1].split('      target_stack:\n')[0];
 
         expect(inputs).toMatch(/target_env:[\s\S]*?default: dev/);
@@ -14,8 +17,11 @@ describe('workflow environment inputs', () => {
     });
 
     it('uses target_env for database recreation and defaults it to dev', () => {
-        const workflow = readFileSync(join(process.cwd(), '.github/workflows/recreate-db.yaml'), 'utf8')
-            .replace(/\r\n/g, '\n');
+        const workflow = readFileSync(
+            join(process.cwd(), '.github/workflows/recreate-db.yaml'),
+            'utf8',
+        ).replace(/\r\n/g, '\n');
+
         const inputs = workflow.split('    inputs:\n')[1].split('      clear_existing:\n')[0];
 
         expect(inputs).toMatch(/target_env:[\s\S]*?default: 'dev'/);
@@ -29,11 +35,16 @@ describe('deploy Cognito parameters', () => {
 
     beforeEach(() => {
         directory = mkdtempSync(join(tmpdir(), 'deploy-cognito-test-'));
-        const workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
-            .replace(/\r\n/g, '\n');
-        const step = workflow.split('      - name: Deploy CDK Stack\n')[1]
+        const workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8').replace(
+            /\r\n/g,
+            '\n',
+        );
+
+        const step = workflow
+            .split('      - name: Deploy CDK Stack\n')[1]
             .split('      - name: Write Deploy Summary\n')[0];
-        script = step.split('        run: |\n')[1].replace(/^          /gm, '');
+
+        script = step.split('        run: |\n')[1].replace(/^ {10}/gm, '');
         mkdirSync(join(directory, 'cdk-out'));
     });
 
@@ -47,11 +58,19 @@ describe('deploy Cognito parameters', () => {
         environment = 'dev',
         failAssumeRole = false,
         tmdbApiKey = 'test-deploy-key',
-        postmanClientId = 'postmanclientid'
+        postmanClientId = 'postmanclientid',
     ) {
-        writeFileSync(join(directory, 'cdk-out/BlockbusterTheatreBackendStack-dev.template.json'),
-            JSON.stringify({ Parameters: parameters }));
-        return spawnSync('bash', ['-e', '-c', `
+        writeFileSync(
+            join(directory, 'cdk-out/BlockbusterTheatreBackendStack-dev.template.json'),
+            JSON.stringify({ Parameters: parameters }),
+        );
+
+        return spawnSync(
+            'bash',
+            [
+                '-e',
+                '-c',
+                `
             aws() {
                 echo "$*" >> "$CALLS"
                 if [ "$1" = sts ]; then
@@ -67,50 +86,67 @@ describe('deploy Cognito parameters', () => {
                 printf '%s\\n' "$@" >> "$ARGS"
             }
             ${script}
-        `], {
-            cwd: directory,
-            encoding: 'utf8',
-            env: {
-                ...process.env,
-                DEPLOY_ENVIRONMENT: environment,
-                OUTPUTS: JSON.stringify(outputs),
-                CALLS: join(directory, 'calls'),
-                ARGS: join(directory, 'args'),
-                LOOKUP_CREDS: join(directory, 'lookup-creds'),
-                DEPLOY_CREDS: join(directory, 'deploy-creds'),
-                CDK_DEFAULT_ACCOUNT: '334624057595',
-                CDK_DEFAULT_REGION: 'eu-west-2',
-                TMDB_API_KEY: tmdbApiKey,
-                PROD_POSTMAN_CLIENT_ID: postmanClientId,
-                AWS_ACCESS_KEY_ID: 'original-key',
-                AWS_SECRET_ACCESS_KEY: 'original-secret',
-                AWS_SESSION_TOKEN: 'original-token',
-                FAIL_ASSUME_ROLE: String(failAssumeRole),
+        `,
+            ],
+            {
+                cwd: directory,
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    DEPLOY_ENVIRONMENT: environment,
+                    OUTPUTS: JSON.stringify(outputs),
+                    CALLS: join(directory, 'calls'),
+                    ARGS: join(directory, 'args'),
+                    LOOKUP_CREDS: join(directory, 'lookup-creds'),
+                    DEPLOY_CREDS: join(directory, 'deploy-creds'),
+                    CDK_DEFAULT_ACCOUNT: '334624057595',
+                    CDK_DEFAULT_REGION: 'eu-west-2',
+                    TMDB_API_KEY: tmdbApiKey,
+                    PROD_POSTMAN_CLIENT_ID: postmanClientId,
+                    AWS_ACCESS_KEY_ID: 'original-key',
+                    AWS_SECRET_ACCESS_KEY: 'original-secret',
+                    AWS_SESSION_TOKEN: 'original-token',
+                    FAIL_ASSUME_ROLE: String(failAssumeRole),
+                },
             },
-        });
+        );
     }
 
     it('passes production stack outputs to the dev template', () => {
-        const result = runStep({ ProdUserPoolId: {}, ProdUserPoolClientId: {} }, {
-            Stacks: [{
-                Outputs: [
-                    { OutputKey: 'UserPoolId', OutputValue: 'eu-west-2_pool' },
-                    { OutputKey: 'UserPoolClientId', OutputValue: 'clientid' },
-                ]
-            }],
-        });
-        expect(result.status).toBe(0);
-        expect(readFileSync(join(directory, 'calls'), 'utf8'))
-            .toContain('describe-stacks --stack-name BlockbusterTheatreBackendStack');
-        expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
-            'sts assume-role --role-arn arn:aws:iam::334624057595:role/cdk-hnb659fds-deploy-role-334624057595-eu-west-2'
+        const result = runStep(
+            { ProdUserPoolId: {}, ProdUserPoolClientId: {} },
+            {
+                Stacks: [
+                    {
+                        Outputs: [
+                            { OutputKey: 'UserPoolId', OutputValue: 'eu-west-2_pool' },
+                            { OutputKey: 'UserPoolClientId', OutputValue: 'clientid' },
+                        ],
+                    },
+                ],
+            },
         );
-        expect(readFileSync(join(directory, 'lookup-creds'), 'utf8'))
-            .toBe('lookup-key\nlookup-secret\nlookup-token\n');
-        expect(readFileSync(join(directory, 'deploy-creds'), 'utf8'))
-            .toBe('original-key\noriginal-secret\noriginal-token\n');
-        expect(readFileSync(join(directory, 'args'), 'utf8'))
-            .toContain('--parameters\nProdUserPoolId=eu-west-2_pool\n--parameters\nProdUserPoolClientId=clientid\n');
+
+        expect(result.status).toBe(0);
+        expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
+            'describe-stacks --stack-name BlockbusterTheatreBackendStack',
+        );
+
+        expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
+            'sts assume-role --role-arn arn:aws:iam::334624057595:role/cdk-hnb659fds-deploy-role-334624057595-eu-west-2',
+        );
+
+        expect(readFileSync(join(directory, 'lookup-creds'), 'utf8')).toBe(
+            'lookup-key\nlookup-secret\nlookup-token\n',
+        );
+
+        expect(readFileSync(join(directory, 'deploy-creds'), 'utf8')).toBe(
+            'original-key\noriginal-secret\noriginal-token\n',
+        );
+
+        expect(readFileSync(join(directory, 'args'), 'utf8')).toContain(
+            '--parameters\nProdUserPoolId=eu-west-2_pool\n--parameters\nProdUserPoolClientId=clientid\n',
+        );
     });
 
     it('fails before deployment when a required output is missing', () => {
@@ -128,9 +164,13 @@ describe('deploy Cognito parameters', () => {
     });
 
     it('only supplies the output for an unconfigured pool value', () => {
-        const result = runStep({ ProdUserPoolClientId: {} }, {
-            Stacks: [{ Outputs: [{ OutputKey: 'UserPoolClientId', OutputValue: 'clientid' }] }],
-        });
+        const result = runStep(
+            { ProdUserPoolClientId: {} },
+            {
+                Stacks: [{ Outputs: [{ OutputKey: 'UserPoolClientId', OutputValue: 'clientid' }] }],
+            },
+        );
+
         expect(result.status).toBe(0);
         const args = readFileSync(join(directory, 'args'), 'utf8');
         expect(args).toContain('--parameters\nProdUserPoolClientId=clientid\n');
@@ -140,8 +180,10 @@ describe('deploy Cognito parameters', () => {
     it('passes the configured Postman client ID only when required by dev', () => {
         const result = runStep({ ProdPostmanClientId: {} }, {});
         expect(result.status).toBe(0);
-        expect(readFileSync(join(directory, 'args'), 'utf8'))
-            .toContain('--parameters\nProdPostmanClientId=postmanclientid\n');
+        expect(readFileSync(join(directory, 'args'), 'utf8')).toContain(
+            '--parameters\nProdPostmanClientId=postmanclientid\n',
+        );
+
         expect(() => readFileSync(join(directory, 'calls'))).toThrow();
     });
 
@@ -157,8 +199,9 @@ describe('deploy Cognito parameters', () => {
             const result = runStep({}, {}, environment);
             expect(result.status).toBe(0);
             expect(() => readFileSync(join(directory, 'calls'))).toThrow();
-            expect(readFileSync(join(directory, 'args'), 'utf8'))
-                .toContain('--parameters\nTmdbApiKey=test-deploy-key\n');
+            expect(readFileSync(join(directory, 'args'), 'utf8')).toContain(
+                '--parameters\nTmdbApiKey=test-deploy-key\n',
+            );
         }
     });
 
@@ -178,11 +221,16 @@ describe('deploy build selection', () => {
 
     beforeEach(() => {
         directory = mkdtempSync(join(tmpdir(), 'deploy-test-'));
-        workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8')
-            .replace(/\r\n/g, '\n');
-        const step = workflow.split('      - name: Select Build\n')[1]
+        workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8').replace(
+            /\r\n/g,
+            '\n',
+        );
+
+        const step = workflow
+            .split('      - name: Select Build\n')[1]
             .split('      - name: Checkout Build Source\n')[0];
-        script = step.split('        run: |\n')[1].replace(/^          /gm, '');
+
+        script = step.split('        run: |\n')[1].replace(/^ {10}/gm, '');
     });
 
     afterEach(() => {
@@ -190,27 +238,35 @@ describe('deploy build selection', () => {
     });
 
     function runStep(buildInfo: string, env: Record<string, string> = {}) {
-        return spawnSync('bash', ['-e', '-c', `
+        return spawnSync(
+            'bash',
+            [
+                '-e',
+                '-c',
+                `
             gh() {
                 echo "$*" >> "$CALLS"
                 printf '%s' "$BUILD_INFO"
             }
             ${script}
-        `], {
-            encoding: 'utf8',
-            env: {
-                ...process.env,
-                GITHUB_EVENT_NAME: 'workflow_dispatch',
-                GITHUB_REPOSITORY: 'owner/repo',
-                GITHUB_REF: 'refs/heads/main',
-                INPUT_TARGET_ENV: 'dev',
-                GITHUB_OUTPUT: join(directory, 'output'),
-                GITHUB_STEP_SUMMARY: join(directory, 'summary'),
-                CALLS: join(directory, 'calls'),
-                BUILD_INFO: buildInfo,
-                ...env,
+        `,
+            ],
+            {
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    GITHUB_EVENT_NAME: 'workflow_dispatch',
+                    GITHUB_REPOSITORY: 'owner/repo',
+                    GITHUB_REF: 'refs/heads/main',
+                    INPUT_TARGET_ENV: 'dev',
+                    GITHUB_OUTPUT: join(directory, 'output'),
+                    GITHUB_STEP_SUMMARY: join(directory, 'summary'),
+                    CALLS: join(directory, 'calls'),
+                    BUILD_INFO: buildInfo,
+                    ...env,
+                },
             },
-        });
+        );
     }
 
     it('selects the latest build across branches for dev', () => {
@@ -222,7 +278,7 @@ describe('deploy build selection', () => {
         expect(calls).not.toContain('branch=');
         expect(calls).not.toContain('status=');
         expect(readFileSync(join(directory, 'output'), 'utf8')).toContain(
-            `build_number=42\nbuild_run_id=12345\ndeploy_environment=dev\ndeploy_branch=environment-control\nbuild_sha=${sha}`
+            `build_number=42\nbuild_run_id=12345\ndeploy_environment=dev\ndeploy_branch=environment-control\nbuild_sha=${sha}`,
         );
     });
 
@@ -232,35 +288,42 @@ describe('deploy build selection', () => {
         ['auto', 'refs/heads/main', 'prod'],
         ['auto', 'refs/heads/feature', 'dev'],
     ])('resolves target_env %s on %s to %s', (input, ref, expected) => {
-        const info = expected === 'prod'
-            ? `12345\t42\t${sha}\tmain\tpush\tsuccess\towner/repo`
-            : `12345\t42\t${sha}\tfeature`;
+        const info =
+            expected === 'prod'
+                ? `12345\t42\t${sha}\tmain\tpush\tsuccess\towner/repo`
+                : `12345\t42\t${sha}\tfeature`;
+
         const result = runStep(info, {
-            INPUT_TARGET_ENV: input, GITHUB_REF: ref,
+            INPUT_TARGET_ENV: input,
+            GITHUB_REF: ref,
         });
+
         expect(result.status).toBe(0);
-        expect(readFileSync(join(directory, 'output'), 'utf8'))
-            .toContain(`deploy_environment=${expected}`);
+        expect(readFileSync(join(directory, 'output'), 'utf8')).toContain(`deploy_environment=${expected}`);
     });
 
     it('finds a successful main push build for prod', () => {
         const result = runStep(`23456\t17\t${sha}\tmain\tpush\tsuccess\towner/repo`, {
-            INPUT_TARGET_ENV: 'prod', INPUT_BUILD_NUMBER: '17',
+            INPUT_TARGET_ENV: 'prod',
+            INPUT_BUILD_NUMBER: '17',
         });
+
         expect(result.status).toBe(0);
         const calls = readFileSync(join(directory, 'calls'), 'utf8');
         expect(calls).toContain('--paginate');
         expect(calls).toContain('event=push&status=success');
         expect(calls).toContain('-f branch=main');
         expect(calls).toContain('select(.run_number == 17)');
-        expect(readFileSync(join(directory, 'output'), 'utf8'))
-            .toContain(`deploy_environment=prod\ndeploy_branch=main\nbuild_sha=${sha}`);
+        expect(readFileSync(join(directory, 'output'), 'utf8')).toContain(
+            `deploy_environment=prod\ndeploy_branch=main\nbuild_sha=${sha}`,
+        );
     });
 
     it('selects the latest successful main push for prod', () => {
         const result = runStep(`23456\t17\t${sha}\tmain\tpush\tsuccess\towner/repo`, {
             INPUT_TARGET_ENV: 'prod',
         });
+
         expect(result.status).toBe(0);
         const calls = readFileSync(join(directory, 'calls'), 'utf8');
         expect(calls).toContain('event=push&status=success');
@@ -283,10 +346,13 @@ describe('deploy build selection', () => {
         const result = runStep(`23456\t17\t${sha}\t${branch}\t${event}\t${conclusion}\t${repository}`, {
             INPUT_TARGET_ENV: 'prod',
         });
+
         expect(result.status).toBe(1);
-        expect(result.stdout).toContain(branch === 'feature'
-            ? 'Production requires a main push build'
-            : 'Production requires a successful push build');
+        expect(result.stdout).toContain(
+            branch === 'feature'
+                ? 'Production requires a main push build'
+                : 'Production requires a successful push build',
+        );
     });
 
     it('allows the latest successful push from the selected branch with the prod override', () => {
@@ -295,6 +361,7 @@ describe('deploy build selection', () => {
             INPUT_ALLOW_NON_MAIN_PROD: 'true',
             GITHUB_REF: 'refs/heads/feature/example',
         });
+
         expect(result.status).toBe(0);
         expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain('-f branch=feature/example');
         expect(readFileSync(join(directory, 'output'), 'utf8')).toContain('deploy_branch=feature/example');
@@ -303,8 +370,11 @@ describe('deploy build selection', () => {
 
     it('allows a numbered successful push from another branch with the prod override', () => {
         const result = runStep(`23456\t17\t${sha}\tfeature\tpush\tsuccess\towner/repo`, {
-            INPUT_TARGET_ENV: 'prod', INPUT_BUILD_NUMBER: '17', INPUT_ALLOW_NON_MAIN_PROD: 'true',
+            INPUT_TARGET_ENV: 'prod',
+            INPUT_BUILD_NUMBER: '17',
+            INPUT_ALLOW_NON_MAIN_PROD: 'true',
         });
+
         expect(result.status).toBe(0);
         expect(readFileSync(join(directory, 'calls'), 'utf8')).not.toContain('-f branch=');
     });
@@ -315,21 +385,33 @@ describe('deploy build selection', () => {
         ['feature', 'push', 'success', 'other/repo'],
     ])('rejects unsafe prod override builds: %s %s %s %s', (branch, event, conclusion, repository) => {
         const result = runStep(`23456\t17\t${sha}\t${branch}\t${event}\t${conclusion}\t${repository}`, {
-            INPUT_TARGET_ENV: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', INPUT_BUILD_NUMBER: '17',
+            INPUT_TARGET_ENV: 'prod',
+            INPUT_ALLOW_NON_MAIN_PROD: 'true',
+            INPUT_BUILD_NUMBER: '17',
         });
+
         expect(result.status).toBe(1);
     });
 
     it('rejects a latest override build from a different branch and rejects tag dispatches', () => {
-        expect(runStep(`23456\t17\t${sha}\tother\tpush\tsuccess\towner/repo`, {
-            INPUT_TARGET_ENV: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', GITHUB_REF: 'refs/heads/feature',
-        }).status).toBe(1);
-        expect(runStep('', {
-            INPUT_TARGET_ENV: 'prod', INPUT_ALLOW_NON_MAIN_PROD: 'true', GITHUB_REF: 'refs/tags/v1',
-        }).status).toBe(1);
+        expect(
+            runStep(`23456\t17\t${sha}\tother\tpush\tsuccess\towner/repo`, {
+                INPUT_TARGET_ENV: 'prod',
+                INPUT_ALLOW_NON_MAIN_PROD: 'true',
+                GITHUB_REF: 'refs/heads/feature',
+            }).status,
+        ).toBe(1);
+
+        expect(
+            runStep('', {
+                INPUT_TARGET_ENV: 'prod',
+                INPUT_ALLOW_NON_MAIN_PROD: 'true',
+                GITHUB_REF: 'refs/tags/v1',
+            }).status,
+        ).toBe(1);
     });
 
-    it.each(['', '\t', '12345\t42\tinvalid\tmain'])('rejects invalid build lookup %p', info => {
+    it.each(['', '\t', '12345\t42\tinvalid\tmain'])('rejects invalid build lookup %p', (info) => {
         const result = runStep(info);
         expect(result.status).toBe(1);
         expect(result.stdout).toContain('No build found');
@@ -343,7 +425,10 @@ describe('deploy build selection', () => {
         expect(runStep('', { INPUT_TARGET_ENV: 'staging' }).status).toBe(1);
     });
 
-    it.each([['dev', 'dev'], ['main', 'prod']])('uses the triggering %s build', (branch, environment) => {
+    it.each([
+        ['dev', 'dev'],
+        ['main', 'prod'],
+    ])('uses the triggering %s build', (branch, environment) => {
         const result = runStep('', {
             GITHUB_EVENT_NAME: 'workflow_run',
             TRIGGER_RUN_ID: '67890',
@@ -351,81 +436,140 @@ describe('deploy build selection', () => {
             TRIGGER_HEAD_BRANCH: branch,
             TRIGGER_HEAD_SHA: sha,
         });
+
         expect(result.status).toBe(0);
-        expect(readFileSync(join(directory, 'output'), 'utf8'))
-            .toContain(`deploy_environment=${environment}\ndeploy_branch=${branch}\nbuild_sha=${sha}`);
+        expect(readFileSync(join(directory, 'output'), 'utf8')).toContain(
+            `deploy_environment=${environment}\ndeploy_branch=${branch}\nbuild_sha=${sha}`,
+        );
     });
 
     it('synthesizes the selected source and refuses an assembly for the wrong environment', () => {
         expect(workflow).toContain('ref: ${{ steps.select_build.outputs.build_sha }}');
         expect(workflow).toContain('name: ${{ needs.prepare.outputs.deploy_environment }}');
         expect(workflow).toContain('TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}');
-        const synth = workflow.split('      - name: Synthesize CDK App\n')[1]
+        const synth = workflow
+            .split('      - name: Synthesize CDK App\n')[1]
             .split('      - name: Upload Deployment Assembly\n')[0]
-            .split('        run: |\n')[1].replace(/^          /gm, '');
+            .split('        run: |\n')[1]
+            .replace(/^ {10}/gm, '');
+
         const runSynth = (environment: string, stack: string) => {
-            writeFileSync(join(directory, 'manifest.json'), JSON.stringify({
-                artifacts: { [stack]: { type: 'aws:cloudformation:stack' } },
-            }));
-            return spawnSync('bash', ['-e', '-c', `
+            writeFileSync(
+                join(directory, 'manifest.json'),
+                JSON.stringify({
+                    artifacts: { [stack]: { type: 'aws:cloudformation:stack' } },
+                }),
+            );
+
+            return spawnSync(
+                'bash',
+                [
+                    '-e',
+                    '-c',
+                    `
                 npx() { mkdir -p cdk-out; cp manifest.json cdk-out/manifest.json; }
                 ${synth}
-            `], { cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: environment } });
+            `,
+                ],
+                {
+                    cwd: directory,
+                    encoding: 'utf8',
+                    env: { ...process.env, DEPLOY_ENVIRONMENT: environment },
+                },
+            );
         };
+
         expect(runSynth('dev', 'BlockbusterTheatreBackendStack-dev').status).toBe(0);
         expect(runSynth('prod', 'BlockbusterTheatreBackendStack').status).toBe(0);
         expect(runSynth('dev', 'BlockbusterTheatreBackendStack').status).toBe(1);
     });
 
-    it.each(['dev', 'prod'])('validates %s deployment assets before assuming AWS credentials', (environment) => {
-        const validate = workflow.split('      - name: Validate Deployment Assembly\n')[1]
-            .split('      - name: Configure AWS Credentials\n')[0]
-            .split('        run: |\n')[1].replace(/^          /gm, '');
-        const root = join(directory, 'cdk-out');
-        mkdirSync(root);
-        const stack = environment === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
-        const prefix = `blockbuster-theatre-${environment}-`;
-        const otherPrefix = `blockbuster-theatre-${environment === 'dev' ? 'prod' : 'dev'}-`;
-        const assetName = `asset.${'b'.repeat(64)}`;
-        mkdirSync(join(root, assetName));
-        writeFileSync(join(root, `${stack}.template.json`), JSON.stringify({
-            Parameters: { TmdbApiKey: { Type: 'String', NoEcho: true } },
-            Resources: Object.fromEntries([
-                'blockbuster-theatre-add-movies-handler',
-                'blockbuster-theatre-refresh-movie-collection-handler',
-            ].map((name, index) => [`Function${index}`, {
-                Type: 'AWS::Lambda::Function',
-                Properties: {
-                    FunctionName: name.replace('blockbuster-theatre-', prefix),
-                    Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
-                },
-            }])),
-        }));
-        writeFileSync(join(root, 'manifest.json'), JSON.stringify({
-            artifacts: {
-                [stack]: { type: 'aws:cloudformation:stack', properties: { templateFile: `${stack}.template.json` } },
-                assets: { type: 'cdk:asset-manifest', properties: { file: `${stack}.assets.json` } },
-            }
-        }));
-        const runValidation = (source: object, dockerImages = {}) => {
-            writeFileSync(join(root, `${stack}.assets.json`), JSON.stringify({
-                files: { asset: { source } }, dockerImages,
-            }));
-            return spawnSync('bash', ['-e', '-c', validate], {
-                cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: environment },
-            });
-        };
-        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(0);
-        expect(runValidation({ path: `${stack}.template.json`, packaging: 'file' }).status).toBe(0);
-        expect(runValidation({ executable: ['sh', '-c', 'echo bad'] }).status).toBe(1);
-        expect(runValidation({ path: '../secret', packaging: 'file' }).status).toBe(1);
-        expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
-        const templatePath = join(root, `${stack}.template.json`);
-        const wrongEnvironmentTemplate = readFileSync(templatePath, 'utf8')
-            .replaceAll(prefix, otherPrefix);
-        writeFileSync(templatePath, wrongEnvironmentTemplate);
-        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
-        writeFileSync(join(root, `${stack}.template.json`), '{}');
-        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
-    });
+    it.each(['dev', 'prod'])(
+        'validates %s deployment assets before assuming AWS credentials',
+        (environment) => {
+            const validate = workflow
+                .split('      - name: Validate Deployment Assembly\n')[1]
+                .split('      - name: Configure AWS Credentials\n')[0]
+                .split('        run: |\n')[1]
+                .replace(/^ {10}/gm, '');
+
+            const root = join(directory, 'cdk-out');
+            mkdirSync(root);
+            const stack =
+                environment === 'dev'
+                    ? 'BlockbusterTheatreBackendStack-dev'
+                    : 'BlockbusterTheatreBackendStack';
+
+            const prefix = `blockbuster-theatre-${environment}-`;
+            const otherPrefix = `blockbuster-theatre-${environment === 'dev' ? 'prod' : 'dev'}-`;
+            const assetName = `asset.${'b'.repeat(64)}`;
+            mkdirSync(join(root, assetName));
+            writeFileSync(
+                join(root, `${stack}.template.json`),
+                JSON.stringify({
+                    Parameters: { TmdbApiKey: { Type: 'String', NoEcho: true } },
+                    Resources: Object.fromEntries(
+                        [
+                            'blockbuster-theatre-add-movies-handler',
+                            'blockbuster-theatre-refresh-movie-collection-handler',
+                        ].map((name, index) => [
+                            `Function${index}`,
+                            {
+                                Type: 'AWS::Lambda::Function',
+                                Properties: {
+                                    FunctionName: name.replace('blockbuster-theatre-', prefix),
+                                    Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
+                                },
+                            },
+                        ]),
+                    ),
+                }),
+            );
+
+            writeFileSync(
+                join(root, 'manifest.json'),
+                JSON.stringify({
+                    artifacts: {
+                        [stack]: {
+                            type: 'aws:cloudformation:stack',
+                            properties: { templateFile: `${stack}.template.json` },
+                        },
+                        assets: { type: 'cdk:asset-manifest', properties: { file: `${stack}.assets.json` } },
+                    },
+                }),
+            );
+
+            const runValidation = (source: object, dockerImages = {}) => {
+                writeFileSync(
+                    join(root, `${stack}.assets.json`),
+                    JSON.stringify({
+                        files: { asset: { source } },
+                        dockerImages,
+                    }),
+                );
+
+                return spawnSync('bash', ['-e', '-c', validate], {
+                    cwd: directory,
+                    encoding: 'utf8',
+                    env: { ...process.env, DEPLOY_ENVIRONMENT: environment },
+                });
+            };
+
+            expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(0);
+            expect(runValidation({ path: `${stack}.template.json`, packaging: 'file' }).status).toBe(0);
+            expect(runValidation({ executable: ['sh', '-c', 'echo bad'] }).status).toBe(1);
+            expect(runValidation({ path: '../secret', packaging: 'file' }).status).toBe(1);
+            expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
+            const templatePath = join(root, `${stack}.template.json`);
+            const wrongEnvironmentTemplate = readFileSync(templatePath, 'utf8').replaceAll(
+                prefix,
+                otherPrefix,
+            );
+
+            writeFileSync(templatePath, wrongEnvironmentTemplate);
+            expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
+            writeFileSync(join(root, `${stack}.template.json`), '{}');
+            expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
+        },
+    );
 });

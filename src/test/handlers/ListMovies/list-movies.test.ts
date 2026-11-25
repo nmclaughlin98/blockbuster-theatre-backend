@@ -5,9 +5,11 @@ import { mockClient } from 'aws-sdk-client-mock';
 process.env.TABLE_NAME = 'test-movies-table';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/ListMovies/list-movies-handler') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
+let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+
+beforeAll(async () => {
+    ({ handler } = await import('../../../main/lambda/handlers/ListMovies/list-movies-handler'));
+});
 
 const movieRecord = {
     tmdbId: '456',
@@ -28,9 +30,7 @@ const movieRecord = {
     trailer: 'https://www.youtube-nocookie.com/embed/example',
 };
 
-function createEvent(
-    queryStringParameters?: Record<string, string>
-): APIGatewayProxyEventV2 {
+function createEvent(queryStringParameters?: Record<string, string>): APIGatewayProxyEventV2 {
     return {
         queryStringParameters,
         requestContext: { requestId: 'list-movies-test-request' },
@@ -41,6 +41,7 @@ function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> 
     if (typeof result === 'string') {
         throw new Error('Expected a structured API Gateway response.');
     }
+
     return JSON.parse(result.body as string) as Record<string, unknown>;
 }
 
@@ -63,6 +64,7 @@ describe('List movies Lambda handler', () => {
             GSI1PK: 'MOVIE',
             GSI1SK: '2025-01-02#123',
         };
+
         ddbMock.on(QueryCommand).resolves({
             Items: [movieRecord],
             LastEvaluatedKey: lastEvaluatedKey,
@@ -92,10 +94,12 @@ describe('List movies Lambda handler', () => {
                 score: 7.4,
             },
         ]);
+
         expect(typeof nextToken).toBe('string');
         expect(JSON.parse(Buffer.from(String(nextToken), 'base64url').toString('utf8'))).toEqual(
-            lastEvaluatedKey
+            lastEvaluatedKey,
         );
+
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-movies-table',
             IndexName: 'GSI1',
@@ -113,18 +117,17 @@ describe('List movies Lambda handler', () => {
             GSI1PK: 'MOVIE',
             GSI1SK: '2025-01-02#123',
         };
+
         ddbMock.on(QueryCommand).resolves({ Items: [] });
 
         const result = await handler(
             createEvent({
                 nextToken: Buffer.from(JSON.stringify(cursor)).toString('base64url'),
-            })
+            }),
         );
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input.ExclusiveStartKey).toEqual(
-            cursor
-        );
+        expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input.ExclusiveStartKey).toEqual(cursor);
     });
 
     it('filters hidden records while preserving explicit per-query limits', async () => {
@@ -139,6 +142,7 @@ describe('List movies Lambda handler', () => {
             movies: [{ movieId: 456 }],
             nextToken: Buffer.from(JSON.stringify(key)).toString('base64url'),
         });
+
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(1);
     });
 
@@ -150,12 +154,14 @@ describe('List movies Lambda handler', () => {
             title: `Movie ${index}`,
             visible: index !== 2 && index !== 22,
         }));
+
         const legacy = { ...records[12] };
         Reflect.deleteProperty(legacy, 'visible');
         records[12] = legacy;
         const key1 = { tmdbId: '1014', slug: 'movie-14', GSI1PK: 'MOVIE', GSI1SK: '14' };
         const key2 = { tmdbId: '1029', slug: 'movie-29', GSI1PK: 'MOVIE', GSI1SK: '29' };
-        ddbMock.on(QueryCommand)
+        ddbMock
+            .on(QueryCommand)
             .resolvesOnce({ Items: records.slice(0, 15), LastEvaluatedKey: key1 })
             .resolvesOnce({ Items: [], LastEvaluatedKey: key2 })
             .resolvesOnce({ Items: records.slice(15) });
@@ -166,8 +172,9 @@ describe('List movies Lambda handler', () => {
         expect(result).toMatchObject({ statusCode: 200 });
         expect(body.nextToken).toBeNull();
         expect(movies.map((movie) => movie.movieId)).toEqual(
-            records.filter((record) => record.visible !== false).map((record) => Number(record.tmdbId))
+            records.filter((record) => record.visible !== false).map((record) => Number(record.tmdbId)),
         );
+
         expect(new Set(movies.map((movie) => movie.movieId)).size).toBe(35);
         expect(movies[11]).toMatchObject({ movieId: 1012, visible: true });
         expect(movies[0]).toMatchObject({
@@ -191,9 +198,12 @@ describe('List movies Lambda handler', () => {
             preSalesEligible: false,
             score: movieRecord.score,
         });
+
         expect(Object.keys(movies[0].showtimes as object).length).toBeGreaterThan(0);
-        expect(ddbMock.commandCalls(QueryCommand).map((call) => call.args[0].input.ExclusiveStartKey))
-            .toEqual([undefined, key1, key2]);
+        expect(
+            ddbMock.commandCalls(QueryCommand).map((call) => call.args[0].input.ExclusiveStartKey),
+        ).toEqual([undefined, key1, key2]);
+
         expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThan(4 * 1024 * 1024);
     });
 
@@ -201,14 +211,15 @@ describe('List movies Lambda handler', () => {
         const key = { tmdbId: '456', slug: 'a-movie', GSI1PK: 'MOVIE', GSI1SK: 'first' };
         const first = { ...movieRecord, synopsis: '\0'.repeat(320_000) };
         const second = { ...movieRecord, tmdbId: '457', slug: 'next', synopsis: '\0'.repeat(320_000) };
-        ddbMock.on(QueryCommand)
+        ddbMock
+            .on(QueryCommand)
             .resolvesOnce({ Items: [first], LastEvaluatedKey: key })
             .resolvesOnce({ Items: [second] })
             .resolvesOnce({ Items: [second] });
 
         const result = await handler(createEvent());
         const body = responseBody(result);
-        expect((body.movies as unknown[])).toHaveLength(1);
+        expect(body.movies as unknown[]).toHaveLength(1);
         expect(body.nextToken).toEqual(Buffer.from(JSON.stringify(key)).toString('base64url'));
         expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(4 * 1024 * 1024);
 
@@ -226,7 +237,9 @@ describe('List movies Lambda handler', () => {
             GSI1SK: `large-${index}`,
             synopsis: '\0'.repeat(205_000),
         }));
-        ddbMock.on(QueryCommand)
+
+        ddbMock
+            .on(QueryCommand)
             .resolvesOnce({ Items: records })
             .resolvesOnce({ Items: records.slice(2) });
 
@@ -249,6 +262,7 @@ describe('List movies Lambda handler', () => {
             movies: [],
             nextToken: Buffer.from(JSON.stringify(key)).toString('base64url'),
         });
+
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(20);
     });
 
@@ -260,10 +274,12 @@ describe('List movies Lambda handler', () => {
         const result = await handler(createEvent());
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result).movies).toMatchObject([{
-            isComingSoon: true,
-            lifecycleStatus: 'Coming Soon (No Showtimes Yet)',
-        }]);
+        expect(responseBody(result).movies).toMatchObject([
+            {
+                isComingSoon: true,
+                lifecycleStatus: 'Coming Soon (No Showtimes Yet)',
+            },
+        ]);
     });
 
     it.each([
@@ -306,7 +322,8 @@ describe('List movies Lambda handler', () => {
 
     it('does not return a partial success if a later DynamoDB page fails', async () => {
         const key = { tmdbId: '456', slug: 'a-movie', GSI1PK: 'MOVIE', GSI1SK: 'first' };
-        ddbMock.on(QueryCommand)
+        ddbMock
+            .on(QueryCommand)
             .resolvesOnce({ Items: [movieRecord], LastEvaluatedKey: key })
             .rejectsOnce(new Error('DynamoDB unavailable'));
 

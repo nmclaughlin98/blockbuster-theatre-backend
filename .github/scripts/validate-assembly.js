@@ -8,8 +8,8 @@ const deployEnv = process.env.DEPLOY_ENVIRONMENT;
 const expected = isAuth
     ? 'BlockbusterTheatreAuthStack'
     : deployEnv === 'dev'
-        ? 'BlockbusterTheatreBackendStack-dev'
-        : 'BlockbusterTheatreBackendStack';
+      ? 'BlockbusterTheatreBackendStack-dev'
+      : 'BlockbusterTheatreBackendStack';
 
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const artifacts = manifest.artifacts;
@@ -45,21 +45,22 @@ if (!isAuth) {
 
     for (const name of tmdbLambdas) {
         const matches = Object.values(template.Resources || {}).filter(
-            (r) => r.Type === 'AWS::Lambda::Function'
-                && r.Properties?.FunctionName === name.replace('blockbuster-theatre-', prefix)
+            (r) =>
+                r.Type === 'AWS::Lambda::Function' &&
+                r.Properties?.FunctionName === name.replace('blockbuster-theatre-', prefix),
         );
 
         if (
             matches.length !== 1 ||
             matches[0].Properties.Environment?.Variables?.TMDB_API_KEY?.Ref !== 'TmdbApiKey'
         ) {
-            throw new Error(`Unexpected TMDB key configuration for ${name.replace('blockbuster-theatre-', prefix)}`);
+            throw new Error(
+                `Unexpected TMDB key configuration for ${name.replace('blockbuster-theatre-', prefix)}`,
+            );
         }
     }
 } else {
-    const pools = Object.values(template.Resources || {}).filter(
-        (r) => r.Type === 'AWS::Cognito::UserPool'
-    );
+    const pools = Object.values(template.Resources || {}).filter((r) => r.Type === 'AWS::Cognito::UserPool');
 
     if (pools.length !== 1 || pools[0].Properties?.UserPoolName !== `blockbuster-theatre-users`) {
         throw new Error('Missing or invalid Cognito UserPool in BlockbusterTheatreAuthStack');
