@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import { AuthStack } from '../lib/auth';
 import { BackendStack } from '../lib/backend';
