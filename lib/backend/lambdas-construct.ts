@@ -95,7 +95,7 @@ export class LambdaConstruct extends Construct {
         const configBucket = s3.Bucket.fromBucketName(this, 'RuntimeConfigBucket', configBucketName);
         const runtimeConfigEnvironment = {
             CONFIG_BUCKET_NAME: configBucketName,
-            CONFIG_KEY: process.env.CONFIG_KEY?.trim() || 'config.json',
+            CONFIG_KEY: process.env.CONFIG_KEY?.trim() || 'blockbuster-theatre/prod/config.json',
         };
 
         // PDFKit resolves its fonts and other assets relative to its installed package.

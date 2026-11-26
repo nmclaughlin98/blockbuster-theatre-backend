@@ -85,7 +85,7 @@ function cacheConfig(bucket: string, key: string, config: RuntimeConfig): Runtim
 
 export async function getRuntimeConfig(): Promise<RuntimeConfig> {
     const bucket = process.env.CONFIG_BUCKET_NAME?.trim() ?? '';
-    const key = process.env.CONFIG_KEY?.trim() || 'config.json';
+    const key = process.env.CONFIG_KEY?.trim() || 'blockbuster-theatre/prod/config.json';
     const now = Date.now();
 
     if (cached?.bucket === bucket && cached.key === key && cached.expiresAt > now) {
