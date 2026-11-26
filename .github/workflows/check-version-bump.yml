@@ -1,0 +1,49 @@
+name: Check Version Bump
+
+on:
+  pull_request:
+    branches:
+      - main
+    # Default types are [opened, synchronize, reopened], so it runs on open and every push after
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code with full tag history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare package.json version against latest Git tag
+        run: |
+          PKG_VERSION=$(jq -r .version package.json)
+          # Grab the highest SemVer tag (strips leading 'v' if present)
+          LATEST_TAG=$(git tag --list "v*" --sort=-v:refname | head -n 1 | sed 's/^v//')
+
+          echo "Current package.json version: $PKG_VERSION"
+          echo "Latest Git tag version:       ${LATEST_TAG:-none}"
+
+          # If there are no tags in the repo yet, pass automatically
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No existing tags found. Passing check."
+            exit 0
+          fi
+
+          # Use Node to accurately compare SemVer (handles 1.10.0 > 1.9.0)
+          node -e '
+            const [curr, latest] = process.argv.slice(1).map(v => v.split(".").map(Number));
+            for (let i = 0; i < 3; i++) {
+              if ((curr[i] || 0) > (latest[i] || 0)) process.exit(0);
+              if ((curr[i] || 0) < (latest[i] || 0)) {
+                console.error(`❌ Version ${process.argv[1]} is lower than latest tag ${process.argv[2]}`);
+                process.exit(1);
+              }
+            }
+            console.error(`❌ Version ${process.argv[1]} is identical to latest tag ${process.argv[2]}. Bump package.json before merging.`);
+            process.exit(1);
+          ' "$PKG_VERSION" "$LATEST_TAG"
