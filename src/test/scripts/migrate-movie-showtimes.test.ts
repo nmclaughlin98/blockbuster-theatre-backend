@@ -18,14 +18,12 @@ describe('legacy movie showtime migration', () => {
 
     it('previews legacy schedules without changing movie records', async () => {
         dynamoMock.on(ScanCommand).resolves({
-            Items: [
-                {
-                    tmdbId: '123456',
-                    slug: 'example-movie',
-                    title: 'Example Movie',
-                    showtimes: { Monday: [{ screen: '2', time: '19:00' }] },
-                },
-            ],
+            Items: [{
+                tmdbId: '123456',
+                slug: 'example-movie',
+                title: 'Example Movie',
+                showtimes: { Monday: [{ screen: '2', time: '19:00' }] },
+            }],
         });
 
         const reportSchedule = jest.fn();
@@ -42,16 +40,14 @@ describe('legacy movie showtime migration', () => {
         expect(dynamoMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
-    it('removes only the legacy showtimes attribute using the composite key', async () => {
+    it('removes only the legacy showtimes attribute using the movie key', async () => {
         dynamoMock.on(ScanCommand).resolves({
-            Items: [
-                {
-                    tmdbId: '123456',
-                    slug: 'example-movie',
-                    title: 'Example Movie',
-                    showtimes: { Monday: [{ screen: '2', time: '19:00' }] },
-                },
-            ],
+            Items: [{
+                tmdbId: '123456',
+                slug: 'example-movie',
+                title: 'Example Movie',
+                showtimes: { Monday: [{ screen: '2', time: '19:00' }] },
+            }],
         });
 
         const report = await removeLegacyMovieShowtimes(client, 'test-movies', true);
@@ -63,7 +59,7 @@ describe('legacy movie showtime migration', () => {
         });
 
         expect(dynamoMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
-            Key: { tmdbId: '123456', slug: 'example-movie' },
+            Key: { movieId: '123456' },
             UpdateExpression: 'REMOVE #showtimes',
             ExpressionAttributeNames: { '#showtimes': 'showtimes' },
         });

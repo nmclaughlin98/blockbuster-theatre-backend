@@ -40,36 +40,43 @@ if (cloudDatabaseMode) {
     process.env.LOCAL_API_DATABASE = 'cloud';
     delete process.env.DYNAMODB_ENDPOINT;
     process.env.TABLE_NAME = requireCloudTestTable('LOCAL_CLOUD_TABLE_NAME');
-    process.env.PRICING_TABLE_NAME = requireCloudTestTable('LOCAL_CLOUD_PRICING_TABLE_NAME');
-    process.env.OFFERS_TABLE_NAME = requireCloudTestTable('LOCAL_CLOUD_OFFERS_TABLE_NAME');
-    process.env.COLLECTIONS_TABLE_NAME = requireCloudTestTable('LOCAL_CLOUD_COLLECTIONS_TABLE_NAME');
-    process.env.BOOKINGS_TABLE_NAME = requireCloudTestTable('LOCAL_CLOUD_BOOKINGS_TABLE_NAME');
-    process.env.LEGACY_BOOKINGS_TABLE_NAME = requireCloudTestTable('LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME');
+    process.env.PRICING_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_PRICING_TABLE_NAME'
+    );
+    process.env.OFFERS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_OFFERS_TABLE_NAME'
+    );
+    process.env.COLLECTIONS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_COLLECTIONS_TABLE_NAME'
+    );
+    process.env.BOOKINGS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_BOOKINGS_TABLE_NAME'
+    );
+    process.env.LEGACY_BOOKINGS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME'
+    );
     process.env.SHOWTIME_REGISTRY_TABLE_NAME = requireCloudTestTable(
         'LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME',
     );
-
     process.env.BOOKING_REFERENCES_TABLE_NAME = requireCloudTestTable(
-        'LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME',
+        'LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME'
     );
-
     process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME = requireCloudTestTable(
         'LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME',
     );
 
     process.env.USER_POOL_ID = process.env.LOCAL_CLOUD_USER_POOL_ID ?? '';
     process.env.USER_POOL_CLIENT_ID = process.env.LOCAL_CLOUD_USER_POOL_CLIENT_ID ?? '';
+    process.env.POSTMAN_CLIENT_ID = process.env.LOCAL_CLOUD_POSTMAN_CLIENT_ID ?? '';
 } else {
     process.env.LOCAL_API_DATABASE = 'local';
     process.env.DYNAMODB_ENDPOINT = localEndpoint;
-    process.env.TABLE_NAME = 'blockbuster-theatre-movie-catalogue-local';
+    process.env.TABLE_NAME = 'blockbuster-theatre-movies-table-local';
     process.env.PRICING_TABLE_NAME = 'blockbuster-theatre-ticket-pricing-local';
     process.env.OFFERS_TABLE_NAME = 'blockbuster-theatre-booking-offers-local';
     process.env.COLLECTIONS_TABLE_NAME = 'blockbuster-theatre-movie-collections-local';
-    process.env.BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-by-showtime-local';
-    process.env.LEGACY_BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-local';
+    process.env.BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-table-local';
     process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'blockbuster-theatre-showtime-registry-local';
-    process.env.BOOKING_REFERENCES_TABLE_NAME = 'blockbuster-theatre-booking-references-local';
     process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME = 'blockbuster-theatre-guest-conversion-tokens-local';
 }
 
@@ -80,34 +87,38 @@ function loadHandler(path: string): LocalHandler {
 }
 
 const handlers = {
-    listMovies: loadHandler('../src/main/lambda/handlers/ListMovies/list-movies-handler'),
-    getMovie: loadHandler('../src/main/lambda/handlers/GetMovie/get-movie-handler'),
+    listMovies: loadHandler('../src/handlers/movies/list-movie-records'),
+    addMovie: loadHandler('../src/handlers/movies/add-movie-to-db'),
+    updateMovie: loadHandler('../src/handlers/movies/update-movie-record'),
+    getMovie: loadHandler('../src/handlers/movies/get-movie-record'),
     listFilmSelections: loadHandler(
-        '../src/main/lambda/handlers/ListFilmSelections/list-film-selections-handler',
+        '../src/handlers/checkout/list-checkout-selections',
     ),
-    getTicketPricing: loadHandler('../src/main/lambda/handlers/GetTicketPricing/get-ticket-pricing-handler'),
-    validateCheckout: loadHandler('../src/main/lambda/handlers/ValidateCheckout/validate-checkout-handler'),
+    getTicketPricing: loadHandler('../src/handlers/pricing/get-ticket-pricing'),
+    validateCheckout: loadHandler('../src/handlers/checkout/validate-checkout'),
     upsertTicketPricing: loadHandler(
-        '../src/main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler',
+        '../src/handlers/pricing/upsert-ticket-pricing',
     ),
     upsertBookingOffers: loadHandler(
-        '../src/main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler',
+        '../src/handlers/offers/upsert-booking-offers',
     ),
     listMovieCollections: loadHandler(
-        '../src/main/lambda/handlers/ListMovieCollections/list-movie-collections-handler',
+        '../src/handlers/collections/list-collection-records',
     ),
     getMovieCollection: loadHandler(
-        '../src/main/lambda/handlers/GetMovieCollection/get-movie-collection-handler',
+        '../src/handlers/collections/get-collection-record',
     ),
     refreshMovieCollection: loadHandler(
-        '../src/main/lambda/handlers/RefreshMovieCollection/refresh-movie-collection-handler',
+        '../src/handlers/collections/refresh-collection-records',
     ),
-    listBookings: loadHandler('../src/main/lambda/handlers/ListBookings/list-bookings-handler'),
-    createBooking: loadHandler('../src/main/lambda/handlers/CreateBooking/create-booking-handler'),
-    guestBookedSeats: loadHandler('../src/main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler'),
-    guestBooking: loadHandler('../src/main/lambda/handlers/GuestBooking/guest-booking-handler'),
-    guestConversion: loadHandler('../src/main/lambda/handlers/GuestConversion/guest-conversion-handler'),
-    manageShowtimes: loadHandler('../src/main/lambda/handlers/ManageShowtimes/manage-showtimes-handler'),
+    listBookings: loadHandler('../src/handlers/bookings/list-booking-records'),
+    createBooking: loadHandler('../src/handlers/bookings/create-booking-record'),
+    getBooking: loadHandler('../src/handlers/bookings/get-booking-record'),
+    downloadTicket: loadHandler('../src/handlers/bookings/download-booking-ticket'),
+    sendConfirmation: loadHandler('../src/handlers/bookings/send-booking-confirmation'),
+    guestConversion: loadHandler('../src/handlers/auth/convert-guest-bookings-to-registered-account'),
+    manageShowtimes: loadHandler('../src/handlers/showtimes/create-showtime-record'),
+    rescheduleBooking: loadHandler('../src/handlers/bookings/reschedule-booking-record'),
 };
 
 function corsHeaders(origin: string | undefined): Record<string, string> {
@@ -170,11 +181,14 @@ function routeRequest(
 ):
     | { handler: LocalHandler; pathParameters?: Record<string, string>; requiresLocalToken?: boolean }
     | undefined {
+    if (!pathname.startsWith('/api/v1/')) return undefined;
+    pathname = pathname.slice('/api/v1'.length);
     if (method === 'GET' && pathname === '/movies') {
         return { handler: handlers.listMovies };
     }
-
-    if (method === 'GET' && pathname === '/film-selections') {
+    if (method === 'POST' && pathname === '/movies') return { handler: handlers.addMovie, requiresLocalToken: true };
+    if (method === 'PATCH' && pathname === '/movies') return { handler: handlers.updateMovie, requiresLocalToken: true };
+    if (method === 'GET' && pathname === '/checkout/current-selections') {
         return { handler: handlers.listFilmSelections };
     }
 
@@ -182,15 +196,15 @@ function routeRequest(
         return { handler: handlers.listMovieCollections };
     }
 
-    if (method === 'GET' && pathname === '/ticket-pricing') {
+    if (method === 'GET' && pathname === '/pricing') {
         return { handler: handlers.getTicketPricing };
     }
 
-    if (method === 'POST' && pathname === '/ticket-pricing') {
+    if (method === 'POST' && pathname === '/pricing') {
         return { handler: handlers.upsertTicketPricing, requiresLocalToken: true };
     }
 
-    if (method === 'POST' && pathname === '/booking-offers') {
+    if (method === 'POST' && pathname === '/offers') {
         return { handler: handlers.upsertBookingOffers, requiresLocalToken: true };
     }
 
@@ -205,7 +219,6 @@ function routeRequest(
     if (method === 'POST' && pathname === '/bookings') {
         return { handler: handlers.createBooking };
     }
-
     if (method === 'POST' && pathname === '/showtimes') {
         return { handler: handlers.manageShowtimes, requiresLocalToken: true };
     }
@@ -221,18 +234,9 @@ function routeRequest(
             };
         }
     }
-
-    if (method === 'GET' && (pathname === '/api/v1/bookings/guest' || pathname === '/bookings/guest')) {
-        return { handler: handlers.guestBookedSeats };
-    }
-
-    if (method === 'POST' && (pathname === '/api/v1/bookings/guest' || pathname === '/bookings/guest')) {
-        return { handler: handlers.guestBooking };
-    }
-
     if (
         method === 'POST' &&
-        (pathname === '/api/v1/auth/convert-guest' || pathname === '/auth/convert-guest')
+        pathname === '/auth/convert-guest-bookings'
     ) {
         return { handler: handlers.guestConversion };
     }
@@ -242,7 +246,7 @@ function routeRequest(
     if (movieMatch) {
         return {
             handler: handlers.getMovie,
-            pathParameters: { id: movieMatch[1] },
+            pathParameters: { movieId: movieMatch[1] },
         };
     }
 
@@ -258,7 +262,7 @@ function routeRequest(
     if (collectionMatch) {
         return {
             handler: handlers.getMovieCollection,
-            pathParameters: { id: collectionMatch[1] },
+            pathParameters: { collectionId: collectionMatch[1] },
         };
     }
 
@@ -334,6 +338,9 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
         isBase64Encoded: false,
         requestContext: {
             requestId: randomUUID(),
+            ...(route.requiresLocalToken && {
+                authorizer: { jwt: { claims: { sub: 'local-operator' } } },
+            }),
             http: {
                 method: request.method ?? 'GET',
                 path: url.pathname,
@@ -369,7 +376,7 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
             ...corsHeaders(origin),
         });
 
-        response.end(result.body ?? '');
+        response.end(result.isBase64Encoded ? Buffer.from(result.body ?? '', 'base64') : result.body ?? '');
     } catch (error: unknown) {
         console.error('Local API handler failed:', error);
         sendJson(response, 500, { message: 'Local API handler failed.' }, origin);

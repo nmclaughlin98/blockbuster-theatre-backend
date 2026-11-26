@@ -54,14 +54,14 @@ describe('deploy Cognito parameters', () => {
 
     function runStep(
         parameters: Record<string, unknown>,
-        outputs: unknown,
         environment = 'dev',
         failAssumeRole = false,
         tmdbApiKey = 'test-deploy-key',
-        postmanClientId = 'postmanclientid',
+        postmanClientId = 'postmanclientid'
     ) {
+        const suffix = environment === 'prod' ? 'PROD' : 'DEV';
         writeFileSync(
-            join(directory, 'cdk-out/BlockbusterTheatreBackendStack-dev.template.json'),
+            join(directory, `cdk-out/BlockbusterTheatreBackendStack-${suffix}.template.json`),
             JSON.stringify({ Parameters: parameters }),
         );
 
@@ -71,18 +71,7 @@ describe('deploy Cognito parameters', () => {
                 '-e',
                 '-c',
                 `
-            aws() {
-                echo "$*" >> "$CALLS"
-                if [ "$1" = sts ]; then
-                    if [ "\${FAIL_ASSUME_ROLE:-false}" = true ]; then return 1; fi
-                    printf '%s' '{"Credentials":{"AccessKeyId":"lookup-key","SecretAccessKey":"lookup-secret","SessionToken":"lookup-token"}}'
-                else
-                    printf '%s\\n' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" "$AWS_SESSION_TOKEN" >> "$LOOKUP_CREDS"
-                    printf '%s' "$OUTPUTS"
-                fi
-            }
             npx() {
-                printf '%s\\n' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" "$AWS_SESSION_TOKEN" >> "$DEPLOY_CREDS"
                 printf '%s\\n' "$@" >> "$ARGS"
             }
             ${script}
@@ -94,65 +83,48 @@ describe('deploy Cognito parameters', () => {
                 env: {
                     ...process.env,
                     DEPLOY_ENVIRONMENT: environment,
-                    OUTPUTS: JSON.stringify(outputs),
-                    CALLS: join(directory, 'calls'),
                     ARGS: join(directory, 'args'),
-                    LOOKUP_CREDS: join(directory, 'lookup-creds'),
-                    DEPLOY_CREDS: join(directory, 'deploy-creds'),
-                    CDK_DEFAULT_ACCOUNT: '334624057595',
-                    CDK_DEFAULT_REGION: 'eu-west-2',
-                    TMDB_API_KEY: tmdbApiKey,
-                    PROD_POSTMAN_CLIENT_ID: postmanClientId,
-                    AWS_ACCESS_KEY_ID: 'original-key',
-                    AWS_SECRET_ACCESS_KEY: 'original-secret',
-                    AWS_SESSION_TOKEN: 'original-token',
-                    FAIL_ASSUME_ROLE: String(failAssumeRole),
+                CDK_DEFAULT_ACCOUNT: '334624057595',
+                CDK_DEFAULT_REGION: 'eu-west-2',
+                TMDB_API_KEY: 'test-deploy-key',
+                    PROD_USER_POOL_ID: 'eu-west-2_pool',
+                    PROD_USER_POOL_CLIENT_ID: 'clientid',
+                    PROD_POSTMAN_CLIENT_ID: 'postmanclientid',
+                    ...overrides,
                 },
             },
         );
     }
 
     it('passes production stack outputs to the dev template', () => {
-        const result = runStep(
-            { ProdUserPoolId: {}, ProdUserPoolClientId: {} },
-            {
-                Stacks: [
-                    {
-                        Outputs: [
-                            { OutputKey: 'UserPoolId', OutputValue: 'eu-west-2_pool' },
-                            { OutputKey: 'UserPoolClientId', OutputValue: 'clientid' },
-                        ],
-                    },
-                ],
-            },
-        );
-
+        const result = runStep({ ProdUserPoolId: {}, ProdUserPoolClientId: {} }, {
+            Stacks: [{ Outputs: [
+                { OutputKey: 'UserPoolId', OutputValue: 'eu-west-2_pool' },
+                { OutputKey: 'UserPoolClientId', OutputValue: 'clientid' },
+            ] }],
+        });
         expect(result.status).toBe(0);
+        expect(readFileSync(join(directory, 'calls'), 'utf8'))
+            .toContain('describe-stacks --stack-name BlockbusterTheatreBackendStack');
         expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
-            'describe-stacks --stack-name BlockbusterTheatreBackendStack-prod',
+            'sts assume-role --role-arn arn:aws:iam::334624057595:role/cdk-hnb659fds-deploy-role-334624057595-eu-west-2'
         );
-
-        expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
-            'sts assume-role --role-arn arn:aws:iam::334624057595:role/cdk-hnb659fds-deploy-role-334624057595-eu-west-2',
-        );
-
-        expect(readFileSync(join(directory, 'lookup-creds'), 'utf8')).toBe(
-            'lookup-key\nlookup-secret\nlookup-token\n',
-        );
-
-        expect(readFileSync(join(directory, 'deploy-creds'), 'utf8')).toBe(
-            'original-key\noriginal-secret\noriginal-token\n',
-        );
-
-        expect(readFileSync(join(directory, 'args'), 'utf8')).toContain(
-            '--parameters\nProdUserPoolId=eu-west-2_pool\n--parameters\nProdUserPoolClientId=clientid\n',
-        );
+        expect(readFileSync(join(directory, 'lookup-creds'), 'utf8'))
+            .toBe('lookup-key\nlookup-secret\nlookup-token\n');
+        expect(readFileSync(join(directory, 'deploy-creds'), 'utf8'))
+            .toBe('original-key\noriginal-secret\noriginal-token\n');
+        expect(readFileSync(join(directory, 'args'), 'utf8'))
+            .toContain('--parameters\nProdUserPoolId=eu-west-2_pool\n--parameters\nProdUserPoolClientId=clientid\n');
     });
 
-    it('fails before deployment when a required output is missing', () => {
-        const result = runStep({ ProdUserPoolClientId: {} }, { Stacks: [{ Outputs: [] }] });
+    it.each([
+        ['ProdUserPoolId', 'PROD_USER_POOL_ID'],
+        ['ProdUserPoolClientId', 'PROD_USER_POOL_CLIENT_ID'],
+        ['ProdPostmanClientId', 'PROD_POSTMAN_CLIENT_ID'],
+    ])('refuses to deploy when %s is required but missing', (parameter, variable) => {
+        const result = runStep({ [parameter]: {} }, 'prod', { [variable]: '   ' });
         expect(result.status).not.toBe(0);
-        expect(result.stdout).toContain('Production stack output UserPoolClientId is missing');
+        expect(result.stdout).toContain(`${variable} must be configured`);
         expect(() => readFileSync(join(directory, 'args'))).toThrow();
     });
 
@@ -164,13 +136,9 @@ describe('deploy Cognito parameters', () => {
     });
 
     it('only supplies the output for an unconfigured pool value', () => {
-        const result = runStep(
-            { ProdUserPoolClientId: {} },
-            {
-                Stacks: [{ Outputs: [{ OutputKey: 'UserPoolClientId', OutputValue: 'clientid' }] }],
-            },
-        );
-
+        const result = runStep({ ProdUserPoolClientId: {} }, {
+            Stacks: [{ Outputs: [{ OutputKey: 'UserPoolClientId', OutputValue: 'clientid' }] }],
+        });
         expect(result.status).toBe(0);
         const args = readFileSync(join(directory, 'args'), 'utf8');
         expect(args).toContain('--parameters\nProdUserPoolClientId=clientid\n');
@@ -180,10 +148,8 @@ describe('deploy Cognito parameters', () => {
     it('passes the configured Postman client ID only when required by dev', () => {
         const result = runStep({ ProdPostmanClientId: {} }, {});
         expect(result.status).toBe(0);
-        expect(readFileSync(join(directory, 'args'), 'utf8')).toContain(
-            '--parameters\nProdPostmanClientId=postmanclientid\n',
-        );
-
+        expect(readFileSync(join(directory, 'args'), 'utf8'))
+            .toContain('--parameters\nProdPostmanClientId=postmanclientid\n');
         expect(() => readFileSync(join(directory, 'calls'))).toThrow();
     });
 
@@ -199,17 +165,21 @@ describe('deploy Cognito parameters', () => {
             const result = runStep({}, {}, environment);
             expect(result.status).toBe(0);
             expect(() => readFileSync(join(directory, 'calls'))).toThrow();
-            expect(readFileSync(join(directory, 'args'), 'utf8')).toContain(
-                '--parameters\nTmdbApiKey=test-deploy-key\n',
-            );
+            expect(readFileSync(join(directory, 'args'), 'utf8'))
+                .toContain('--parameters\nTmdbApiKey=test-deploy-key\n');
         }
     });
 
     it('refuses to deploy without an environment-scoped TMDB key', () => {
-        const result = runStep({}, {}, 'prod', false, '   ');
+        const result = runStep({}, 'prod', { TMDB_API_KEY: '   ' });
         expect(result.status).not.toBe(0);
         expect(result.stdout).toContain('TMDB_API_KEY must be configured');
         expect(() => readFileSync(join(directory, 'args'))).toThrow();
+    });
+
+    it('keeps the deployment job disabled during the refactor', () => {
+        const workflow = readFileSync(join(process.cwd(), '.github/workflows/deploy.yml'), 'utf8');
+        expect(workflow).toMatch(/  deploy:\s*(?:#[^\n]*\n\s*)?if: \$\{\{ false \}\}/);
     });
 });
 
@@ -478,98 +448,57 @@ describe('deploy build selection', () => {
                 },
             );
         };
-
         expect(runSynth('dev', 'BlockbusterTheatreBackendStack-dev').status).toBe(0);
-        expect(runSynth('prod', 'BlockbusterTheatreBackendStack-prod').status).toBe(0);
-        expect(runSynth('dev', 'BlockbusterTheatreBackendStack-prod').status).toBe(1);
+        expect(runSynth('prod', 'BlockbusterTheatreBackendStack').status).toBe(0);
+        expect(runSynth('dev', 'BlockbusterTheatreBackendStack').status).toBe(1);
     });
 
-    it.each(['dev', 'prod'])(
-        'validates %s deployment assets before assuming AWS credentials',
-        (environment) => {
-            const validate = workflow
-                .split('      - name: Validate Deployment Assembly\n')[1]
-                .split('      - name: Configure AWS Credentials\n')[0]
-                .split('        run: |\n')[1]
-                .replace(/^ {10}/gm, '');
-
-            const root = join(directory, 'cdk-out');
-            mkdirSync(root);
-            const stack =
-                environment === 'dev'
-                    ? 'BlockbusterTheatreBackendStack-dev'
-                    : 'BlockbusterTheatreBackendStack-prod';
-
-            const prefix = `blockbuster-theatre-${environment}-`;
-            const otherPrefix = `blockbuster-theatre-${environment === 'dev' ? 'prod' : 'dev'}-`;
-            const assetName = `asset.${'b'.repeat(64)}`;
-            mkdirSync(join(root, assetName));
-            writeFileSync(
-                join(root, `${stack}.template.json`),
-                JSON.stringify({
-                    Parameters: { TmdbApiKey: { Type: 'String', NoEcho: true } },
-                    Resources: Object.fromEntries(
-                        [
-                            'blockbuster-theatre-add-movies-handler',
-                            'blockbuster-theatre-refresh-movie-collection-handler',
-                        ].map((name, index) => [
-                            `Function${index}`,
-                            {
-                                Type: 'AWS::Lambda::Function',
-                                Properties: {
-                                    FunctionName: name.replace('blockbuster-theatre-', prefix),
-                                    Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
-                                },
-                            },
-                        ]),
-                    ),
-                }),
-            );
-
-            writeFileSync(
-                join(root, 'manifest.json'),
-                JSON.stringify({
-                    artifacts: {
-                        [stack]: {
-                            type: 'aws:cloudformation:stack',
-                            properties: { templateFile: `${stack}.template.json` },
-                        },
-                        assets: { type: 'cdk:asset-manifest', properties: { file: `${stack}.assets.json` } },
-                    },
-                }),
-            );
-
-            const runValidation = (source: object, dockerImages = {}) => {
-                writeFileSync(
-                    join(root, `${stack}.assets.json`),
-                    JSON.stringify({
-                        files: { asset: { source } },
-                        dockerImages,
-                    }),
-                );
-
-                return spawnSync('bash', ['-e', '-c', validate], {
-                    cwd: directory,
-                    encoding: 'utf8',
-                    env: { ...process.env, DEPLOY_ENVIRONMENT: environment },
-                });
-            };
-
-            expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(0);
-            expect(runValidation({ path: `${stack}.template.json`, packaging: 'file' }).status).toBe(0);
-            expect(runValidation({ executable: ['sh', '-c', 'echo bad'] }).status).toBe(1);
-            expect(runValidation({ path: '../secret', packaging: 'file' }).status).toBe(1);
-            expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
-            const templatePath = join(root, `${stack}.template.json`);
-            const wrongEnvironmentTemplate = readFileSync(templatePath, 'utf8').replaceAll(
-                prefix,
-                otherPrefix,
-            );
-
-            writeFileSync(templatePath, wrongEnvironmentTemplate);
-            expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
-            writeFileSync(join(root, `${stack}.template.json`), '{}');
-            expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
-        },
-    );
+    it.each(['dev', 'prod'])('validates %s deployment assets before assuming AWS credentials', (environment) => {
+        const validate = workflow.split('      - name: Validate Deployment Assembly\n')[1]
+            .split('      - name: Configure AWS Credentials\n')[0]
+            .split('        run: |\n')[1].replace(/^          /gm, '');
+        const root = join(directory, 'cdk-out');
+        mkdirSync(root);
+        const stack = environment === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
+        const suffix = environment === 'dev' ? '-DEV' : '-PROD';
+        const assetName = `asset.${'b'.repeat(64)}`;
+        mkdirSync(join(root, assetName));
+        writeFileSync(join(root, `${stack}.template.json`), JSON.stringify({
+            Parameters: { TmdbApiKey: { Type: 'String', NoEcho: true } },
+            Resources: Object.fromEntries([
+                'blockbuster-theatre-add-movies-handler',
+                'blockbuster-theatre-refresh-movie-collection-handler',
+            ].map((name, index) => [`Function${index}`, {
+                Type: 'AWS::Lambda::Function',
+                Properties: {
+                    FunctionName: `${name}${suffix}`,
+                    Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
+                },
+            }])),
+        }));
+        writeFileSync(join(root, 'manifest.json'), JSON.stringify({ artifacts: {
+            [stack]: { type: 'aws:cloudformation:stack', properties: { templateFile: `${stack}.template.json` } },
+            assets: { type: 'cdk:asset-manifest', properties: { file: `${stack}.assets.json` } },
+        } }));
+        const runValidation = (source: object, dockerImages = {}) => {
+            writeFileSync(join(root, `${stack}.assets.json`), JSON.stringify({
+                files: { asset: { source } }, dockerImages,
+            }));
+            return spawnSync('bash', ['-e', '-c', validate], {
+                cwd: directory, encoding: 'utf8', env: { ...process.env, DEPLOY_ENVIRONMENT: environment },
+            });
+        };
+        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(0);
+        expect(runValidation({ path: `${stack}.template.json`, packaging: 'file' }).status).toBe(0);
+        expect(runValidation({ executable: ['sh', '-c', 'echo bad'] }).status).toBe(1);
+        expect(runValidation({ path: '../secret', packaging: 'file' }).status).toBe(1);
+        expect(runValidation({ path: assetName, packaging: 'zip' }, { image: {} }).status).toBe(1);
+        const templatePath = join(root, `${stack}.template.json`);
+        const wrongEnvironmentTemplate = readFileSync(templatePath, 'utf8')
+            .replaceAll(suffix, environment === 'dev' ? '-PROD' : '-DEV');
+        writeFileSync(templatePath, wrongEnvironmentTemplate);
+        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
+        writeFileSync(join(root, `${stack}.template.json`), '{}');
+        expect(runValidation({ path: assetName, packaging: 'zip' }).status).toBe(1);
+    });
 });

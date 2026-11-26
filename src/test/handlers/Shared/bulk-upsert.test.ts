@@ -6,18 +6,12 @@ process.env.OFFERS_TABLE_NAME = 'test-booking-offers';
 process.env.PRICING_TABLE_NAME = 'test-ticket-pricing';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-let upsertOffers: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-let upsertPricing: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-
-beforeAll(async () => {
-    const [offers, pricing] = await Promise.all([
-        import('../../../main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler'),
-        import('../../../main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler'),
-    ]);
-
-    upsertOffers = offers.handler;
-    upsertPricing = pricing.handler;
-});
+const { handler: upsertOffers } = require('../../../main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler') as {
+    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+};
+const { handler: upsertPricing } = require('../../../main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler') as {
+    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+};
 
 const offer = {
     offerId: 'kids-club',

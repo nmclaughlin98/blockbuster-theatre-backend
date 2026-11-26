@@ -1,8 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import {
     DynamoDBDocumentClient,
-    QueryCommand,
-    TransactWriteCommand,
+    GetCommand,
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
@@ -18,7 +17,7 @@ const ddbMock = mockClient(DynamoDBDocumentClient);
 let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 beforeAll(async () => {
-    ({ handler } = await import('../../../main/lambda/handlers/AddMovies/add-movies-handler'));
+    ({ handler } = await import('../../../handlers/movies/add-movie-to-db'));
 });
 
 const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
@@ -90,7 +89,7 @@ async function loadHandlerWithEnvironment(
     try {
         jest.resetModules();
 
-        const module = await import('../../../main/lambda/handlers/AddMovies/add-movies-handler');
+        const module = await import('../../../handlers/movies/add-movie-to-db');
 
         return module.handler;
     } finally {
@@ -111,7 +110,7 @@ function responseBody(result: Exclude<APIGatewayProxyResultV2, string>): Record<
 describe('Add movies Lambda handler', () => {
     beforeEach(() => {
         ddbMock.reset();
-        ddbMock.on(QueryCommand).resolves({ Items: [] });
+        ddbMock.on(GetCommand).resolves({});
         fetchMock.mockReset();
         fetchMock.mockResolvedValue(tmdbResponse(tmdbMovie(123)));
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -209,8 +208,7 @@ describe('Add movies Lambda handler', () => {
         );
 
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.Key).toEqual({
-            tmdbId: '123',
-            slug: 'movie-123',
+            movieId: '123',
         });
     });
 
@@ -232,11 +230,10 @@ describe('Add movies Lambda handler', () => {
         expect(input.ExpressionAttributeValues).not.toHaveProperty(':collectionId');
     });
 
-    it('moves an existing record atomically when an import changes its slug', async () => {
+    it('updates an existing record without changing its movie key when its slug changes', async () => {
         fetchMock.mockResolvedValue(tmdbResponse(tmdbMovie(123)));
-        ddbMock.on(QueryCommand).resolves({
-            Items: [
-                {
+        ddbMock.on(GetCommand).resolves({
+            Item: {
                     tmdbId: '123',
                     slug: 'old-movie-title',
                     title: 'Old Movie Title',
@@ -255,35 +252,18 @@ describe('Add movies Lambda handler', () => {
                     synopsis: '',
                     trailer: '',
                     showtimes: {},
-                },
-            ],
+            },
         });
 
-        ddbMock.on(TransactWriteCommand).resolves({});
+        ddbMock.on(UpdateCommand).resolves({});
 
         const result = await invoke(JSON.stringify({ movieIds: [123] }));
-        const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
-
         expect(result.statusCode).toBe(200);
-        expect(transaction.TransactItems).toMatchObject([
-            {
-                Delete: {
-                    Key: { tmdbId: '123', slug: 'old-movie-title' },
-                },
-            },
-            {
-                Put: {
-                    Item: {
-                        tmdbId: '123',
-                        slug: 'movie-123',
-                        isComingSoon: true,
-                        isCarousel: true,
-                    },
-                },
-            },
-        ]);
-
-        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
+            Key: { movieId: '123' },
+            ConditionExpression: 'attribute_exists(movieId)',
+            ExpressionAttributeValues: { ':slug': 'movie-123' },
+        });
     });
 
     it('marks imported movies as coming soon when requested', async () => {

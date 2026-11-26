@@ -1,8 +1,12 @@
 import { readFile } from 'node:fs/promises';
-import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import {
+    DynamoDBDocumentClient,
+    PutCommand,
+    QueryCommand,
+} from '@aws-sdk/lib-dynamodb';
 import type { OfferRecord, PricingTier } from '../src/main/lambda/lib/interfaces';
 import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
-import { isOfferRecord } from '../src/main/lambda/handlers/Shared/pricing-service';
+import { isOfferRecord } from '../src/services/checkout/pricing-service';
 import { isMovieRecord } from '../src/main/lambda/handlers/utils/movie-validation';
 import { pricingRecords } from './pricing-records';
 
@@ -56,19 +60,15 @@ async function ensureFeaturedMovie(
     featuredMovieId: string,
 ): Promise<void> {
     const result = await client.send(
-        new QueryCommand({
+        new GetCommand({
             TableName: moviesTableName,
-            KeyConditionExpression: 'tmdbId = :tmdbId',
-            ExpressionAttributeValues: { ':tmdbId': featuredMovieId },
-            Limit: 2,
+            Key: { movieId: featuredMovieId },
             ConsistentRead: true,
         }),
     );
+    const movie = result.Item;
 
-    const movies = result.Items ?? [];
-    const movie = movies[0];
-
-    if (movies.length !== 1 || !isMovieRecord(movie) || !movie.visible) {
+    if ( !isMovieRecord(movie) || !movie.visible) {
         throw new Error(`featuredMovieId ${featuredMovieId} must reference exactly one visible movie.`);
     }
 }

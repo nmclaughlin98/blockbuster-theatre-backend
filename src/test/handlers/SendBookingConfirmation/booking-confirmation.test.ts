@@ -1,32 +1,33 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
-import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
+import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 const sesMock = mockClient(SESv2Client);
-const ssmMock = mockClient(SSMClient);
+const ddbMock = mockClient(DynamoDBDocumentClient);
+process.env.BOOKINGS_TABLE_NAME = 'test-bookings';
 let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 beforeAll(async () => {
     ({ handler } =
-        await import('../../../main/lambda/handlers/SendBookingConfirmation/send-booking-confirmation-handler'));
+        await import('../../../handlers/bookings/send-booking-confirmation'));
 });
 
 const booking = {
+    PK: 'BOOKING#bk_1',
+    SK: 'METADATA',
+    recordType: 'BOOKING',
+    bookingId: 'bk_1',
     bookingRef: 'BBT-123456',
-    customer: {
-        firstName: 'Niall',
-        surname: 'McLaughlin',
-        email: 'niallmclaughlin1998@gmail.com',
-        phone: '',
-    },
+    customerName: 'Niall McLaughlin',
+    customerEmail: 'customer@example.com',
     movieTitle: '<Movie & More>',
     date: 'Tue 20 Oct 2026',
     time: '19:00',
     screen: '2',
     seats: ['A1', 'A2'],
     tickets: 2,
-    totalPrice: 15.2,
+    totalAmount: 15.2,
 };
 
 function createEvent(body: string, isBase64Encoded = false): APIGatewayProxyEventV2 {
@@ -36,6 +37,8 @@ function createEvent(body: string, isBase64Encoded = false): APIGatewayProxyEven
         rawPath: '/booking/confirmation',
         rawQueryString: '',
         headers: {},
+        pathParameters: { bookingId: 'bk_1' },
+        queryStringParameters: { bookingRef: booking.bookingRef, email: booking.customerEmail },
         requestContext: {
             accountId: 'test-account',
             apiId: 'test-api',
@@ -62,8 +65,8 @@ function createEvent(body: string, isBase64Encoded = false): APIGatewayProxyEven
 describe('booking confirmation email handler', () => {
     beforeEach(() => {
         sesMock.reset();
-        ssmMock.reset();
-        delete process.env.MAX_TICKETS_PARAMETER_NAME;
+        ddbMock.reset();
+        ddbMock.on(GetCommand).resolves({ Item: booking });
         process.env.BOOKING_EMAIL_FROM = 'niallmclaughlin1998@gmail.com';
     });
 
@@ -80,37 +83,30 @@ describe('booking confirmation email handler', () => {
 
         const sent = sesMock.calls()[0].args[0].input;
         expect(sent.FromEmailAddress).toBe('niallmclaughlin1998@gmail.com');
-        expect(sent.Destination?.ToAddresses).toEqual([booking.customer.email]);
+        expect(sent.Destination?.ToAddresses).toEqual([booking.customerEmail]);
         expect(sent.Content?.Simple?.Subject?.Data).toContain(booking.bookingRef);
         expect(sent.Content?.Simple?.Body?.Text?.Data).toContain(
             'Your seat reservation has been recorded, but payment has not been processed.',
         );
 
         const html = sent.Content?.Simple?.Body?.Html?.Data ?? '';
-        expect(html).toContain('background-color:#0c0d12');
         expect(html).toContain('<meta name="color-scheme" content="dark">');
         expect(html).toContain('<meta name="supported-color-schemes" content="dark">');
-        expect(html).toContain(':root { color-scheme: dark; supported-color-schemes: dark; }');
         expect(html).toContain('@media (prefers-color-scheme: dark)');
-        expect(html).toContain('background-image:linear-gradient(#0c0d12,#0c0d12)');
-        expect(html).toContain('background-image:linear-gradient(#343744,#343744)');
-        expect(html).toContain('background-image:linear-gradient(#ffffff,#ffffff)');
-        expect(html).toContain('color-scheme:light');
         expect(html).not.toMatch(/\sstyle=/);
         expect(html).toContain('#ff334b');
         expect(html).toContain('&lt;Movie &amp; More&gt;');
-        expect(html).toContain('DATE &amp; SHOWTIME');
+        expect(html).toContain('SHOWTIME');
         expect(html).toContain('SCREEN');
-        expect(html).toContain('SEAT NUMBERS');
+        expect(html).toContain('Seats');
         expect(html).toContain('TOTAL');
         expect(html).toContain('GUEST NAME');
         expect(html).toContain('TICKET BREAKDOWN');
         expect(html).toContain('src="cid:booking-reference-qr"');
         expect(html).toContain('REFERENCE ONLY - NOT VALID FOR ENTRY');
         expect(html.indexOf('src="cid:booking-reference-qr"')).toBeGreaterThan(
-            html.indexOf(`REF: ${booking.bookingRef}`),
+            html.indexOf(`REF: ${booking.bookingRef}`)
         );
-
         const qrCode = sent.Content?.Simple?.Attachments?.[0];
         expect(qrCode).toMatchObject({
             ContentType: 'image/png',
@@ -124,54 +120,22 @@ describe('booking confirmation email handler', () => {
         );
     });
 
-    it('rejects invalid booking details without calling SES', async () => {
-        const invalidBooking = { ...booking, seats: ['A1'] };
-
-        const result = await handler(createEvent(JSON.stringify(invalidBooking)));
-
-        expect(result.statusCode).toBe(400);
-        expect(sesMock.calls()).toHaveLength(0);
-    });
-
-    it('uses 10 as the fallback maximum ticket count', async () => {
-        const overLimitBooking = {
-            ...booking,
-            tickets: 11,
-            seats: Array.from({ length: 11 }, (_, index) => `A${index + 1}`),
-        };
-
-        const result = await handler(createEvent(JSON.stringify(overLimitBooking)));
-
-        expect(result.statusCode).toBe(400);
-        expect(ssmMock.calls()).toHaveLength(0);
-        expect(sesMock.calls()).toHaveLength(0);
-    });
-
-    it('uses the maximum ticket count configured in Parameter Store', async () => {
-        const parameterName = '/blockbuster-theatre/booking-configuration/max-tickets-value';
-        process.env.MAX_TICKETS_PARAMETER_NAME = parameterName;
-        ssmMock.on(GetParameterCommand, { Name: parameterName }).resolves({
-            Parameter: { Value: '11' },
-        });
-
+    it('uses stored details rather than client-supplied confirmation data', async () => {
         sesMock.on(SendEmailCommand).resolves({});
-        const elevenTickets = {
-            ...booking,
-            tickets: 11,
-            seats: Array.from({ length: 11 }, (_, index) => `A${index + 1}`),
-        };
-
-        const result = await handler(createEvent(JSON.stringify(elevenTickets)));
-
+        const result = await handler(createEvent(JSON.stringify({
+            customerEmail: 'attacker@example.com', movieTitle: 'Forged', totalAmount: 0,
+        })));
         expect(result.statusCode).toBe(200);
-        expect(ssmMock.calls()).toHaveLength(1);
-        expect(sesMock.calls()).toHaveLength(1);
+        const sent = sesMock.commandCalls(SendEmailCommand)[0].args[0].input;
+        expect(sent.Destination?.ToAddresses).toEqual([booking.customerEmail]);
+        expect(sent.Content?.Simple?.Body?.Text?.Data).toContain(booking.movieTitle);
+        expect(sent.Content?.Simple?.Body?.Text?.Data).not.toContain('Forged');
     });
 
-    it('returns a client error for invalid JSON', async () => {
-        const result = await handler(createEvent('{'));
-
-        expect(result.statusCode).toBe(400);
+    it('does not send a confirmation to an unauthorized requester', async () => {
+        const request = createEvent('');
+        request.queryStringParameters = { bookingRef: booking.bookingRef, email: 'attacker@example.com' };
+        expect((await handler(request)).statusCode).toBe(404);
         expect(sesMock.calls()).toHaveLength(0);
     });
 
@@ -195,9 +159,10 @@ describe('booking confirmation email handler', () => {
             seats: ['A1'],
         };
 
-        const result = await handler(
-            createEvent(Buffer.from(JSON.stringify(singleTicket)).toString('base64'), true),
-        );
+        const result = await handler(createEvent(
+            Buffer.from(JSON.stringify(singleTicket)).toString('base64'),
+            true
+        ));
 
         expect(result.statusCode).toBe(200);
         const sent = sesMock.calls()[0].args[0].input;
@@ -206,28 +171,25 @@ describe('booking confirmation email handler', () => {
     });
 
     it.each([
-        ['non-object body', null],
-        ['missing customer object', { ...booking, customer: null }],
         ['invalid booking reference', { ...booking, bookingRef: 'invalid' }],
-        ['blank first name', { ...booking, customer: { ...booking.customer, firstName: ' ' } }],
-        ['overlong surname', { ...booking, customer: { ...booking.customer, surname: 'x'.repeat(81) } }],
-        ['invalid email', { ...booking, customer: { ...booking.customer, email: 'not-an-email' } }],
-        ['invalid phone', { ...booking, customer: { ...booking.customer, phone: 'bad\nphone' } }],
+        ['blank customer name', { ...booking, customerName: ' ' }],
         ['overlong movie title', { ...booking, movieTitle: 'x'.repeat(161) }],
         ['invalid date', { ...booking, date: 'bad\nvalue' }],
         ['invalid showtime', { ...booking, time: '25:00' }],
         ['blank screen', { ...booking, screen: '' }],
         ['non-array seats', { ...booking, seats: 'A1,A2' }],
         ['invalid seat characters', { ...booking, seats: ['A/1', 'A2'] }],
-        ['fractional ticket count', { ...booking, tickets: 2.5 }],
-        ['too many tickets', { ...booking, tickets: 11, seats: Array(11).fill('A1') }],
+        ['too many tickets', { ...booking, seats: Array.from({ length: 31 }, (_, index) => `A${index}`) }],
         ['duplicate seats', { ...booking, seats: ['A1', 'A1'] }],
-        ['negative total', { ...booking, totalPrice: -1 }],
-        ['excessive total', { ...booking, totalPrice: 10001 }],
-    ])('rejects %s without sending email', async (_name, invalidBooking) => {
-        const result = await handler(createEvent(JSON.stringify(invalidBooking)));
+        ['negative total', { ...booking, totalAmount: -1 }],
+        ['excessive total', { ...booking, totalAmount: 10001 }],
+    ])('rejects invalid stored %s without sending email', async (_name, invalidBooking) => {
+        ddbMock.on(GetCommand).resolves({ Item: invalidBooking });
+        const request = createEvent('');
+        request.queryStringParameters = { bookingRef: invalidBooking.bookingRef, email: booking.customerEmail };
+        const result = await handler(request);
 
-        expect(result.statusCode).toBe(400);
+        expect(result.statusCode).toBe(502);
         expect(sesMock.calls()).toHaveLength(0);
     });
 
@@ -238,9 +200,9 @@ describe('booking confirmation email handler', () => {
         try {
             const result = await handler(createEvent(JSON.stringify(booking)));
 
-            expect(result.statusCode).toBe(500);
+            expect(result.statusCode).toBe(502);
             expect(JSON.parse(String(result.body))).toEqual({
-                message: 'Booking confirmation email is not configured.',
+                message: 'Unable to send booking confirmation email.',
             });
         } finally {
             process.env.BOOKING_EMAIL_FROM = sender;

@@ -5,18 +5,12 @@ import { mockClient } from 'aws-sdk-client-mock';
 process.env.TABLE_NAME = 'test-movies-table';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-let exportMovies: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-let listTmdbIds: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-
-beforeAll(async () => {
-    const [exportModule, listModule] = await Promise.all([
-        import('../../../main/lambda/handlers/ExportMovies/export-movies-handler'),
-        import('../../../main/lambda/handlers/ListTmdbIds/list-tmdb-ids-handler'),
-    ]);
-
-    exportMovies = exportModule.handler;
-    listTmdbIds = listModule.handler;
-});
+const { handler: exportMovies } = require('../../../main/lambda/handlers/ExportMovies/export-movies-handler') as {
+    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+};
+const { handler: listTmdbIds } = require('../../../main/lambda/handlers/ListTmdbIds/list-tmdb-ids-handler') as {
+    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+};
 
 function createEvent(): APIGatewayProxyEventV2 {
     return {

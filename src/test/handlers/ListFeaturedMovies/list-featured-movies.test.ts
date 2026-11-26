@@ -9,7 +9,7 @@ let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>
 
 beforeAll(async () => {
     ({ handler } =
-        await import('../../../main/lambda/handlers/ListFeaturedMovies/list-featured-movies-handler'));
+        await import('../../../services/movies/list-featured-movies'));
 });
 
 const movieRecord = {
@@ -35,12 +35,12 @@ const movieRecord = {
 };
 
 function createEvent(
-    routeKey: string,
+    sort: string | undefined,
     queryStringParameters?: Record<string, string>,
 ): APIGatewayProxyEventV2 {
     return {
-        routeKey,
-        queryStringParameters,
+        routeKey: 'GET /api/v1/movies',
+        queryStringParameters: { ...queryStringParameters, ...(sort && { sort }) },
         requestContext: { requestId: 'featured-movies-test-request' },
     } as unknown as APIGatewayProxyEventV2;
 }
@@ -67,8 +67,7 @@ describe('Featured movie endpoints', () => {
 
     it('queries newest movies by release date and excludes coming-soon records', async () => {
         const lastEvaluatedKey = {
-            tmdbId: '456',
-            slug: 'a-movie',
+            movieId: '456',
             GSI1PK: 'MOVIE',
             GSI1SK: '2026-09-25#456',
         };
@@ -78,7 +77,7 @@ describe('Featured movie endpoints', () => {
             LastEvaluatedKey: lastEvaluatedKey,
         });
 
-        const result = await handler(createEvent('GET /movies/newest', { limit: '12' }));
+        const result = await handler(createEvent('newest', { limit: '12' }));
 
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result).movies).toMatchObject([
@@ -95,7 +94,7 @@ describe('Featured movie endpoints', () => {
 
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-movies-table',
-            IndexName: 'GSI1',
+            IndexName: 'MoviesByReleaseDate',
             KeyConditionExpression: 'GSI1PK = :movie',
             FilterExpression: 'attribute_not_exists(isComingSoon) OR isComingSoon = :notComingSoon',
             ExpressionAttributeValues: {
@@ -109,8 +108,7 @@ describe('Featured movie endpoints', () => {
 
     it('uses newest cursor tokens and includes legacy movies without a coming-soon flag', async () => {
         const cursor = {
-            tmdbId: '123',
-            slug: 'legacy-movie',
+            movieId: '123',
             GSI1PK: 'MOVIE',
             GSI1SK: '2025-01-02#123',
         };
@@ -120,7 +118,7 @@ describe('Featured movie endpoints', () => {
         ddbMock.on(QueryCommand).resolves({ Items: [legacyMovie] });
 
         const result = await handler(
-            createEvent('GET /movies/newest', {
+            createEvent('newest', {
                 nextToken: Buffer.from(JSON.stringify(cursor)).toString('base64url'),
             }),
         );
@@ -133,8 +131,7 @@ describe('Featured movie endpoints', () => {
 
     it('queries top picks by descending numeric score', async () => {
         const lastEvaluatedKey = {
-            tmdbId: '456',
-            slug: 'a-movie',
+            movieId: '456',
             GSI1PK: 'MOVIE',
             score: 8.4,
         };
@@ -144,7 +141,7 @@ describe('Featured movie endpoints', () => {
             LastEvaluatedKey: lastEvaluatedKey,
         });
 
-        const result = await handler(createEvent('GET /movies/top-picks'));
+        const result = await handler(createEvent('top-picks'));
 
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result).movies.map((movie: { score: number }) => movie.score)).toEqual([
@@ -152,7 +149,7 @@ describe('Featured movie endpoints', () => {
         ]);
 
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
-            IndexName: 'GSI2',
+            IndexName: 'MoviesByScore',
             KeyConditionExpression: 'GSI1PK = :movie',
             ExpressionAttributeValues: { ':movie': 'MOVIE' },
             Limit: 50,
@@ -164,8 +161,7 @@ describe('Featured movie endpoints', () => {
 
     it('uses top-picks cursor tokens', async () => {
         const cursor = {
-            tmdbId: '123',
-            slug: 'a-movie',
+            movieId: '123',
             GSI1PK: 'MOVIE',
             score: 8.4,
         };
@@ -173,7 +169,7 @@ describe('Featured movie endpoints', () => {
         ddbMock.on(QueryCommand).resolves({});
 
         const result = await handler(
-            createEvent('GET /movies/top-picks', {
+            createEvent('top-picks', {
                 nextToken: Buffer.from(JSON.stringify(cursor)).toString('base64url'),
             }),
         );
@@ -183,17 +179,35 @@ describe('Featured movie endpoints', () => {
         expect(responseBody(result)).toEqual({ movies: [], nextToken: null });
     });
 
+    it.each(['newest', 'top-picks'])(
+        'excludes hidden movies from %s while retaining legacy visible defaults',
+        async (sort) => {
+            const legacyMovie = { ...movieRecord, tmdbId: '789' };
+            Reflect.deleteProperty(legacyMovie, 'visible');
+            ddbMock.on(QueryCommand).resolves({
+                Items: [movieRecord, { ...movieRecord, tmdbId: '123', visible: false }, legacyMovie],
+            });
+
+            const result = await handler(createEvent(sort));
+
+            expect(result).toMatchObject({ statusCode: 200 });
+            expect(responseBody(result).movies).toMatchObject([
+                { movieId: 456, visible: true },
+                { movieId: 789, visible: true },
+            ]);
+        }
+    );
+
     it.each([
-        ['invalid limit', 'GET /movies/newest', { limit: '0' }],
-        ['malformed token', 'GET /movies/newest', { nextToken: 'not-json' }],
+        ['invalid limit', 'newest', { limit: '0' }],
+        ['malformed token', 'newest', { nextToken: 'not-json' }],
         [
             'cursor from another endpoint',
-            'GET /movies/top-picks',
+            'top-picks',
             {
                 nextToken: Buffer.from(
                     JSON.stringify({
-                        tmdbId: '123',
-                        slug: 'a-movie',
+                        movieId: '123',
                         GSI1PK: 'MOVIE',
                         GSI1SK: '2025-01-01#123',
                     }),
@@ -208,7 +222,7 @@ describe('Featured movie endpoints', () => {
     });
 
     it('returns not found for unsupported routes', async () => {
-        const result = await handler(createEvent('GET /movies'));
+        const result = await handler(createEvent(undefined));
 
         expect(result).toMatchObject({ statusCode: 404 });
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
@@ -219,7 +233,7 @@ describe('Featured movie endpoints', () => {
             Items: [{ ...movieRecord, score: 'high' }],
         });
 
-        const result = await handler(createEvent('GET /movies/top-picks'));
+        const result = await handler(createEvent('top-picks'));
 
         expect(result).toMatchObject({ statusCode: 500 });
         expect(responseBody(result)).toEqual({
@@ -230,7 +244,7 @@ describe('Featured movie endpoints', () => {
     it('returns an error when DynamoDB rejects a query', async () => {
         ddbMock.on(QueryCommand).callsFake(() => Promise.reject('database failure'));
 
-        const result = await handler(createEvent('GET /movies/newest'));
+        const result = await handler(createEvent('newest'));
 
         expect(result).toMatchObject({ statusCode: 500 });
         expect(responseBody(result)).toEqual({

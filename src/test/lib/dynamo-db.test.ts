@@ -15,9 +15,15 @@ describe('DatabaseConstruct', () => {
     it('should create a DynamoDB table', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-prod-movie-catalogue',
+            TableName: 'blockbuster-theatre-movie-catalogue-PROD',
             BillingMode: 'PAY_PER_REQUEST',
         });
+    });
+
+    it('uses the explicitly named PascalCase production movie logical ID', () => {
+        const resources = Template.fromStack(stack).toJSON().Resources;
+        expect(resources.BlockbusterTheatreMovieCataloguePROD.Properties.TableName)
+            .toBe('blockbuster-theatre-movies-table-PROD');
     });
 
     it('should have correct billing mode', () => {
@@ -40,7 +46,7 @@ describe('DatabaseConstruct', () => {
     it('should store TMDB list collections without a hierarchy index', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-prod-movie-collections',
+            TableName: 'blockbuster-theatre-movie-collections-PROD',
             KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
             BillingMode: 'PAY_PER_REQUEST',
         });
@@ -48,11 +54,7 @@ describe('DatabaseConstruct', () => {
 
     it('indexes guest email on both booking tables', () => {
         const template = Template.fromStack(stack);
-
-        for (const TableName of [
-            'blockbuster-theatre-prod-bookings',
-            'blockbuster-theatre-prod-bookings-by-showtime',
-        ]) {
+        for (const TableName of ['blockbuster-theatre-bookings-PROD', 'blockbuster-theatre-bookings-by-showtime-PROD']) {
             template.hasResourceProperties('AWS::DynamoDB::Table', {
                 TableName,
                 GlobalSecondaryIndexes: Match.arrayWith([
@@ -68,11 +70,7 @@ describe('DatabaseConstruct', () => {
 
     it('indexes guest email and date for upcoming booking lookups', () => {
         const template = Template.fromStack(stack);
-
-        for (const TableName of [
-            'blockbuster-theatre-prod-bookings',
-            'blockbuster-theatre-prod-bookings-by-showtime',
-        ]) {
+        for (const TableName of ['blockbuster-theatre-bookings-PROD', 'blockbuster-theatre-bookings-by-showtime-PROD']) {
             template.hasResourceProperties('AWS::DynamoDB::Table', {
                 TableName,
                 GlobalSecondaryIndexes: Match.arrayWith([
@@ -92,7 +90,7 @@ describe('DatabaseConstruct', () => {
     it('indexes showtime registry records by date without changing the table key', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-prod-showtime-registry',
+            TableName: 'blockbuster-theatre-showtime-registry-PROD',
             KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
             GlobalSecondaryIndexes: Match.arrayWith([
                 Match.objectLike({
@@ -120,7 +118,7 @@ describe('DatabaseConstruct', () => {
     it('should index movies by their numeric rating for top picks', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            TableName: 'blockbuster-theatre-prod-movie-catalogue',
+            TableName: 'blockbuster-theatre-movie-catalogue-PROD',
             GlobalSecondaryIndexes: Match.arrayWith([
                 {
                     IndexName: 'GSI2',
@@ -153,15 +151,12 @@ describe('DatabaseConstruct', () => {
 
     it('should retain the collection table when the stack is removed or replaced', () => {
         const template = Template.fromStack(stack);
-        template.hasResource(
-            'AWS::DynamoDB::Table',
-            Match.objectLike({
-                Properties: Match.objectLike({
-                    TableName: 'blockbuster-theatre-prod-movie-collections',
-                }),
-                DeletionPolicy: 'Retain',
-                UpdateReplacePolicy: 'Retain',
+        template.hasResource('AWS::DynamoDB::Table', Match.objectLike({
+            Properties: Match.objectLike({
+                TableName: 'blockbuster-theatre-movie-collections-PROD',
             }),
-        );
+            DeletionPolicy: 'Retain',
+            UpdateReplacePolicy: 'Retain',
+        }));
     });
 });

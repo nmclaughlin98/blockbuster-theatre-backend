@@ -11,7 +11,7 @@ import {
     cancelManualShowtime,
     createManualShowtime,
     maintainRollingSchedule,
-} from '../../../main/lambda/handlers/utils/movie-schedule-service';
+} from '../../../services/showtimes/movie-schedule-service';
 import { todayInTheatre } from '../../../main/lambda/handlers/utils/movie-lifecycle';
 import { generateShowtimes } from '../../../main/lambda/handlers/utils/showtime-schedule';
 import type { MovieRecord } from '../../../main/lambda/lib/interfaces';
@@ -81,7 +81,7 @@ describe('movie schedule service', () => {
 
             if (
                 input.TableName === 'test-bookings' &&
-                input.ExpressionAttributeValues?.[':showtimeId'] === bookedShowtimeId
+                input.ExpressionAttributeValues?.[':showtimeId'] === `SHOWTIME#${bookedShowtimeId}`
             ) {
                 return { Items: [{ recordType: 'SEAT' }] };
             }
@@ -90,7 +90,9 @@ describe('movie schedule service', () => {
         });
 
         ddbMock.on(GetCommand).callsFake((input) => ({
-            Item: registry.get(input.Key?.registryKey as string),
+            Item: input.TableName === 'test-movies'
+                ? movie
+                : registry.get(input.Key?.registryKey as string),
         }));
 
         ddbMock.on(TransactWriteCommand).callsFake((input) => {

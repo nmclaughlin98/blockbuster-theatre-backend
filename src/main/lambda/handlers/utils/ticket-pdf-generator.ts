@@ -1,5 +1,5 @@
-import PDFDocument from 'pdfkit';
-import QRCode from 'qrcode';
+import PDFDocument = require('pdfkit');
+import QRCode = require('qrcode');
 
 export interface TicketPdfInput {
     bookingRef: string;

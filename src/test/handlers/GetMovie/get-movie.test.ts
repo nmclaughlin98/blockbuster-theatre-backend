@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import {
     DynamoDBDocumentClient,
+    GetCommand,
     QueryCommand,
     ScanCommand,
     TransactWriteCommand,
@@ -17,7 +18,7 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 beforeAll(async () => {
-    ({ handler } = await import('../../../main/lambda/handlers/GetMovie/get-movie-handler'));
+    ({ handler } = await import('../../../handlers/movies/get-movie-record'));
 });
 
 const movieRecord = {
@@ -71,7 +72,7 @@ function seedShowtime(movieId: string, date: string, screen: string, time: strin
 
 function createEvent(id?: string, date?: string): APIGatewayProxyEventV2 {
     return {
-        pathParameters: id ? { id } : undefined,
+        pathParameters: id ? { movieId: id } : undefined,
         queryStringParameters: date ? { date } : undefined,
         requestContext: { requestId: 'get-movie-test-request' },
     } as unknown as APIGatewayProxyEventV2;
@@ -90,6 +91,7 @@ describe('Get movie Lambda handler', () => {
         ddbMock.reset();
         registry.clear();
         delete process.env.BOOKINGS_TABLE_NAME;
+        ddbMock.on(GetCommand).resolves({ Item: movieRecord });
         ddbMock.on(QueryCommand).callsFake((input) => {
             if (input.IndexName === 'ShowtimesByDate') {
                 return {
@@ -149,10 +151,9 @@ describe('Get movie Lambda handler', () => {
         });
 
         expect(responseBody(result).showtimes).toEqual({ [day]: expectedShowtimes });
-        expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
+        expect(ddbMock.commandCalls(GetCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-movies-table',
-            KeyConditionExpression: 'tmdbId = :tmdbId',
-            ExpressionAttributeValues: { ':tmdbId': '12345' },
+            Key: { movieId: '12345' },
             ConsistentRead: true,
         });
 
@@ -203,6 +204,7 @@ describe('Get movie Lambda handler', () => {
 
         const date = upcomingDate(day);
         const showtimeId = seedShowtime(movie.tmdbId, date, expected[0].screen, expected[0].time);
+        ddbMock.on(GetCommand).resolves({ Item: movie });
         ddbMock.on(QueryCommand).callsFake((input) =>
             input.IndexName === 'ShowtimesByDate'
                 ? {
@@ -225,25 +227,12 @@ describe('Get movie Lambda handler', () => {
     });
 
     it('returns 404 when the movie does not exist', async () => {
-        ddbMock.on(QueryCommand).resolves({ Items: [] });
+        ddbMock.on(GetCommand).resolves({});
 
         const result = await handler(createEvent('12345'));
 
         expect(result).toMatchObject({ statusCode: 404 });
         expect(responseBody(result)).toEqual({ message: 'Movie not found.' });
-    });
-
-    it('returns 409 if an ID unexpectedly has multiple slug keys', async () => {
-        ddbMock.on(QueryCommand).resolves({
-            Items: [movieRecord, { ...movieRecord, slug: 'another-slug' }],
-        });
-
-        const result = await handler(createEvent('12345'));
-
-        expect(result).toMatchObject({ statusCode: 409 });
-        expect(responseBody(result)).toEqual({
-            message: 'Multiple movie records match this ID.',
-        });
     });
 
     it('rejects non-numeric IDs', async () => {
@@ -254,7 +243,7 @@ describe('Get movie Lambda handler', () => {
             message: 'A numeric movie ID is required.',
         });
 
-        expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
     });
 
     it('rejects missing IDs without querying DynamoDB', async () => {
@@ -265,14 +254,14 @@ describe('Get movie Lambda handler', () => {
             message: 'A numeric movie ID is required.',
         });
 
-        expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
     });
 
     it('handles requests without request context and query results without Items', async () => {
-        ddbMock.on(QueryCommand).resolves({});
+        ddbMock.on(GetCommand).resolves({});
 
         const result = await handler({
-            pathParameters: { id: '12345' },
+            pathParameters: { movieId: '12345' },
         } as APIGatewayProxyEventV2);
 
         expect(result).toMatchObject({ statusCode: 404 });
@@ -280,8 +269,8 @@ describe('Get movie Lambda handler', () => {
     });
 
     it('returns an internal error for an invalid stored movie record', async () => {
-        ddbMock.on(QueryCommand).resolves({
-            Items: [{ ...movieRecord, title: 42 }],
+        ddbMock.on(GetCommand).resolves({
+            Item: { ...movieRecord, title: 42 },
         });
 
         const result = await handler(createEvent('12345'));
@@ -295,8 +284,8 @@ describe('Get movie Lambda handler', () => {
     it.each([
         ['an Error', new Error('DynamoDB unavailable')],
         ['a non-Error value', 'DynamoDB unavailable'],
-    ])('handles query failures represented by %s', async (_name, error) => {
-        ddbMock.on(QueryCommand).rejects(error);
+    ])('handles read failures represented by %s', async (_name, error) => {
+        ddbMock.on(GetCommand).rejects(error);
 
         const result = await handler(createEvent('12345'));
 

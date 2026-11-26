@@ -13,14 +13,12 @@ import { pricingRecords } from './pricing-records';
 
 const endpoint = 'http://127.0.0.1:8000';
 const tableNames = {
-    movies: 'blockbuster-theatre-movie-catalogue-local',
+    movies: 'blockbuster-theatre-movies-table-local',
     pricing: 'blockbuster-theatre-ticket-pricing-local',
     offers: 'blockbuster-theatre-booking-offers-local',
     collections: 'blockbuster-theatre-movie-collections-local',
-    bookings: 'blockbuster-theatre-bookings-by-showtime-local',
-    legacyBookings: 'blockbuster-theatre-bookings-local',
+    bookings: 'blockbuster-theatre-bookings-table-local',
     showtimeRegistry: 'blockbuster-theatre-showtime-registry-local',
-    bookingReferences: 'blockbuster-theatre-booking-references-local',
     guestConversionTokens: 'blockbuster-theatre-guest-conversion-tokens-local',
 };
 
@@ -37,21 +35,26 @@ const tableDefinitions: CreateTableCommandInput[] = [
         TableName: tableNames.movies,
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [
-            { AttributeName: 'tmdbId', AttributeType: 'S' },
-            { AttributeName: 'slug', AttributeType: 'S' },
+            { AttributeName: 'movieId', AttributeType: 'S' },
             { AttributeName: 'GSI1PK', AttributeType: 'S' },
             { AttributeName: 'GSI1SK', AttributeType: 'S' },
+            { AttributeName: 'score', AttributeType: 'N' },
         ],
-        KeySchema: [
-            { AttributeName: 'tmdbId', KeyType: 'HASH' },
-            { AttributeName: 'slug', KeyType: 'RANGE' },
-        ],
+        KeySchema: [{ AttributeName: 'movieId', KeyType: 'HASH' }],
         GlobalSecondaryIndexes: [
             {
-                IndexName: 'GSI1',
+                IndexName: 'MoviesByReleaseDate',
                 KeySchema: [
                     { AttributeName: 'GSI1PK', KeyType: 'HASH' },
                     { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+            {
+                IndexName: 'MoviesByScore',
+                KeySchema: [
+                    { AttributeName: 'GSI1PK', KeyType: 'HASH' },
+                    { AttributeName: 'score', KeyType: 'RANGE' },
                 ],
                 Projection: { ProjectionType: 'ALL' },
             },
@@ -79,58 +82,40 @@ const tableDefinitions: CreateTableCommandInput[] = [
         TableName: tableNames.bookings,
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [
+            { AttributeName: 'PK', AttributeType: 'S' },
+            { AttributeName: 'SK', AttributeType: 'S' },
+            { AttributeName: 'userId', AttributeType: 'S' },
+            { AttributeName: 'customerEmail', AttributeType: 'S' },
             { AttributeName: 'showtimeId', AttributeType: 'S' },
-            { AttributeName: 'seatId', AttributeType: 'S' },
-            { AttributeName: 'userId', AttributeType: 'S' },
-            { AttributeName: 'bookedAt', AttributeType: 'S' },
-            { AttributeName: 'customerEmail', AttributeType: 'S' },
+            { AttributeName: 'screeningKey', AttributeType: 'S' },
         ],
         KeySchema: [
-            { AttributeName: 'showtimeId', KeyType: 'HASH' },
-            { AttributeName: 'seatId', KeyType: 'RANGE' },
+            { AttributeName: 'PK', KeyType: 'HASH' },
+            { AttributeName: 'SK', KeyType: 'RANGE' },
         ],
         GlobalSecondaryIndexes: [
             {
                 IndexName: 'UserBookings',
                 KeySchema: [
                     { AttributeName: 'userId', KeyType: 'HASH' },
-                    { AttributeName: 'bookedAt', KeyType: 'RANGE' },
+                    { AttributeName: 'screeningKey', KeyType: 'RANGE' },
                 ],
                 Projection: { ProjectionType: 'ALL' },
             },
             {
                 IndexName: 'CustomerEmailBookings',
-                KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
-                Projection: { ProjectionType: 'ALL' },
-            },
-        ],
-    },
-    {
-        TableName: tableNames.legacyBookings,
-        BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [
-            { AttributeName: 'showingId', AttributeType: 'S' },
-            { AttributeName: 'seatId', AttributeType: 'S' },
-            { AttributeName: 'userId', AttributeType: 'S' },
-            { AttributeName: 'bookedAt', AttributeType: 'S' },
-            { AttributeName: 'customerEmail', AttributeType: 'S' },
-        ],
-        KeySchema: [
-            { AttributeName: 'showingId', KeyType: 'HASH' },
-            { AttributeName: 'seatId', KeyType: 'RANGE' },
-        ],
-        GlobalSecondaryIndexes: [
-            {
-                IndexName: 'UserBookings',
                 KeySchema: [
-                    { AttributeName: 'userId', KeyType: 'HASH' },
-                    { AttributeName: 'bookedAt', KeyType: 'RANGE' },
+                    { AttributeName: 'customerEmail', KeyType: 'HASH' },
+                    { AttributeName: 'screeningKey', KeyType: 'RANGE' },
                 ],
                 Projection: { ProjectionType: 'ALL' },
             },
             {
-                IndexName: 'CustomerEmailBookings',
-                KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
+                IndexName: 'ShowtimeBookings',
+                KeySchema: [
+                    { AttributeName: 'showtimeId', KeyType: 'HASH' },
+                    { AttributeName: 'screeningKey', KeyType: 'RANGE' },
+                ],
                 Projection: { ProjectionType: 'ALL' },
             },
         ],
@@ -154,12 +139,6 @@ const tableDefinitions: CreateTableCommandInput[] = [
                 Projection: { ProjectionType: 'ALL' },
             },
         ],
-    },
-    {
-        TableName: tableNames.bookingReferences,
-        BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [{ AttributeName: 'bookingRef', AttributeType: 'S' }],
-        KeySchema: [{ AttributeName: 'bookingRef', KeyType: 'HASH' }],
     },
     {
         TableName: tableNames.guestConversionTokens,
@@ -206,35 +185,37 @@ async function createTableIfMissing(input: CreateTableCommandInput): Promise<voi
         if (missingIndexes.length === 0) return;
 
         const existingAttributes = new Set(
-            description.Table?.AttributeDefinitions?.map((attribute) => attribute.AttributeName).filter(
-                (name): name is string => typeof name === 'string',
-            ) ?? [],
+            description.Table?.AttributeDefinitions
+                ?.map((attribute) => attribute.AttributeName)
+                .filter((name): name is string => typeof name === 'string') ?? []
         );
-
         for (const index of missingIndexes) {
             const requiredIndexAttributes = new Set(index.KeySchema?.map((key) => key.AttributeName));
             const newAttributeDefinitions = (input.AttributeDefinitions ?? []).filter(
-                (attribute) =>
-                    typeof attribute.AttributeName === 'string' &&
-                    requiredIndexAttributes.has(attribute.AttributeName) &&
-                    !existingAttributes.has(attribute.AttributeName),
+                (attribute) => typeof attribute.AttributeName === 'string'
+                    && requiredIndexAttributes.has(attribute.AttributeName)
+                    && !existingAttributes.has(attribute.AttributeName)
             );
 
             await client.send(
                 new UpdateTableCommand({
                     TableName: tableName,
-                    ...(newAttributeDefinitions.length && {
-                        AttributeDefinitions: newAttributeDefinitions,
-                    }),
+                    AttributeDefinitions: indexAttributeDefinitions,
                     GlobalSecondaryIndexUpdates: [{ Create: index }],
                 }),
             );
 
-            for (const attribute of newAttributeDefinitions) {
-                if (attribute.AttributeName) existingAttributes.add(attribute.AttributeName);
+            let active = false;
+            for (let attempt = 0; attempt < 30; attempt++) {
+                const updated = await client.send(new DescribeTableCommand({ TableName: tableName }));
+                active = updated.Table?.GlobalSecondaryIndexes?.some(
+                    (entry) => entry.IndexName === index.IndexName && entry.IndexStatus === 'ACTIVE'
+                ) ?? false;
+                if (active) break;
+                await new Promise((resolve) => setTimeout(resolve, 1000));
             }
 
-            await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: tableName });
+            if (!active) throw new Error(`Local index ${index.IndexName} did not become active.`);
         }
 
         return;
@@ -255,10 +236,12 @@ async function createTableIfMissing(input: CreateTableCommandInput): Promise<voi
 }
 
 const demoMovie: MovieRecord & {
+    movieId: string;
     entityType: string;
     GSI1PK: string;
     GSI1SK: string;
 } = {
+    movieId: '99999999',
     tmdbId: '99999999',
     slug: 'local-demo-movie',
     title: 'Local Demo Movie',
@@ -317,14 +300,14 @@ async function main(): Promise<void> {
 
     const seededMovie = await putIfMissing(
         tableNames.movies,
-        { tmdbId: demoMovie.tmdbId, slug: demoMovie.slug },
+        { movieId: demoMovie.movieId },
         demoMovie,
     );
 
     console.log(`Local DynamoDB ready at ${endpoint}.`);
     console.log(`Seeded ${seededPricing} missing pricing packages.`);
     console.log(`Demo movie ${demoMovie.tmdbId} ${seededMovie ? 'created' : 'already exists'}.`);
-    console.log('No offers were created. Add local offers with POST /booking-offers.');
+    console.log('No offers were created. Add local offers with POST /api/v1/offers.');
 }
 
 main().catch((error: unknown) => {

@@ -11,7 +11,7 @@ import {
     listFilmSelections as resolveFilmSelections,
     resolvePricing,
     validateCheckout as validateCheckoutService,
-} from '../../../main/lambda/handlers/Shared/pricing-service';
+} from '../../../services/checkout/pricing-service';
 
 process.env.TABLE_NAME = 'test-movies-table';
 process.env.OFFERS_TABLE_NAME = 'test-offers-table';
@@ -26,9 +26,9 @@ let validateCheckout: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxy
 
 beforeAll(async () => {
     const [selections, pricing, checkout] = await Promise.all([
-        import('../../../main/lambda/handlers/ListFilmSelections/list-film-selections-handler'),
-        import('../../../main/lambda/handlers/GetTicketPricing/get-ticket-pricing-handler'),
-        import('../../../main/lambda/handlers/ValidateCheckout/validate-checkout-handler'),
+        import('../../../handlers/checkout/list-checkout-selections'),
+        import('../../../handlers/pricing/get-ticket-pricing'),
+        import('../../../handlers/checkout/validate-checkout'),
     ]);
 
     listSelections = selections.handler;
@@ -234,7 +234,7 @@ describe('Special offers and pricing handlers', () => {
             }),
         ).toEqual(firstIds);
 
-        expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input.IndexName).toBe('GSI1');
+        expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input.IndexName).toBe('MoviesByReleaseDate');
         expect(ddbMock.commandCalls(ScanCommand)[0].args[0].input.TableName).toBe('test-offers-table');
     });
 
@@ -258,6 +258,7 @@ describe('Special offers and pricing handlers', () => {
     it('selects off-peak rates for a weekday show before 17:00', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
         ddbMock.on(GetCommand).resolves({ Item: offPeakPricing });
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
 
         const result = await getTicketPricing(
             createEvent({
@@ -279,6 +280,7 @@ describe('Special offers and pricing handlers', () => {
     it('accepts a numeric movie ID in pricing selection', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
         ddbMock.on(GetCommand).resolves({ Item: offPeakPricing });
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
 
         const result = await resolvePricing({
             movieId: 456,
@@ -287,7 +289,7 @@ describe('Special offers and pricing handlers', () => {
 
         expect(result.movieId).toBe('456');
         expect(result.pricing.pricingId).toBe('OFF_PEAK_RATES');
-        expect(ddbMock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
+        expect(ddbMock.commandCalls(GetCommand, { TableName: 'test-pricing-table' })[0].args[0].input.Key).toEqual({
             pricingId: 'OFF_PEAK_RATES',
         });
     });
@@ -302,6 +304,7 @@ describe('Special offers and pricing handlers', () => {
         });
 
         ddbMock.on(GetCommand).resolves({ Item: offPeakPricing });
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
 
         const result = await getTicketPricing(
             createEvent({
@@ -329,6 +332,7 @@ describe('Special offers and pricing handlers', () => {
         });
 
         ddbMock.on(GetCommand).resolves({ Item: crazyTuesdayPricing });
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
 
         for (const time of ['12:15', '21:00']) {
             const result = await getTicketPricing(
@@ -345,8 +349,8 @@ describe('Special offers and pricing handlers', () => {
             expect(responseBody(result).pricing).toEqual(crazyTuesdayPricing);
         }
 
-        expect(ddbMock.commandCalls(GetCommand)).toHaveLength(2);
-        expect(ddbMock.commandCalls(GetCommand).map(({ args }) => args[0].input.Key)).toEqual([
+        expect(ddbMock.commandCalls(GetCommand, { TableName: 'test-pricing-table' })).toHaveLength(2);
+        expect(ddbMock.commandCalls(GetCommand, { TableName: 'test-pricing-table' }).map(({ args }) => args[0].input.Key)).toEqual([
             { pricingId: 'CRAZY_TUESDAY_RATES' },
             { pricingId: 'CRAZY_TUESDAY_RATES' },
         ]);
@@ -357,7 +361,6 @@ describe('Special offers and pricing handlers', () => {
             if (input.TableName === 'test-offers-table') {
                 return { Item: kidsClubOffer };
             }
-
             return { Item: kidsClubPricing };
         });
 
@@ -398,7 +401,6 @@ describe('Special offers and pricing handlers', () => {
             if (input.TableName === 'test-offers-table') {
                 return { Item: kidsClubOffer };
             }
-
             return { Item: kidsClubPricing };
         });
 
@@ -425,6 +427,7 @@ describe('Special offers and pricing handlers', () => {
 
         expect(ddbMock.commandCalls(GetCommand).map((call) => call.args[0].input.TableName)).toEqual([
             'test-offers-table',
+            'test-movies-table',
             'test-pricing-table',
         ]);
     });
@@ -451,6 +454,7 @@ describe('Special offers and pricing handlers', () => {
 
     it('rejects an unscheduled showtime before reading its price plan', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
 
         const result = await getTicketPricing(
             createEvent({
@@ -467,7 +471,7 @@ describe('Special offers and pricing handlers', () => {
             message: 'The selected showtime is not available.',
         });
 
-        expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
+        expect(ddbMock.commandCalls(GetCommand, { TableName: 'test-pricing-table' })).toHaveLength(0);
     });
 
     it.each([
@@ -610,14 +614,18 @@ describe('Special offers and pricing handlers', () => {
                 ],
             },
         });
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
 
         await expect(
             validateCheckoutService({
                 movieId: '456',
-                showtime: { day: 'Monday', time: '11:00' },
+                showtime: { day: 'Monday', time: '13:00' },
                 tickets: [{ tierId: 'adult', quantity: Number.MAX_SAFE_INTEGER }],
             }),
-        ).rejects.toMatchObject({ statusCode: 400 });
+        ).rejects.toMatchObject({
+            statusCode: 400,
+            message: 'The requested checkout total is too large.',
+        });
 
         ddbMock.reset();
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
@@ -632,30 +640,31 @@ describe('Special offers and pricing handlers', () => {
                 })),
             },
         });
-
-        await expect(
-            validateCheckoutService({
-                movieId: '456',
-                showtime: { day: 'Monday', time: '11:00' },
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
+        await expect(validateCheckoutService({
+            movieId: '456',
+            showtime: { day: 'Monday', time: '13:00' },
                 tickets: [
                     { tierId: 'adult', quantity: Number.MAX_SAFE_INTEGER },
                     { tierId: 'child', quantity: Number.MAX_SAFE_INTEGER },
                 ],
             }),
-        ).rejects.toMatchObject({ statusCode: 400 });
+        ).rejects.toMatchObject({
+            statusCode: 400,
+            message: 'The requested checkout total is too large.',
+        });
     });
 
-    it('rejects missing, ambiguous, invisible, and invalid movie records', async () => {
+    it('rejects missing, invisible, and invalid movie records', async () => {
         const cases = [
-            { Items: [] },
-            { Items: [movie, { ...movie, slug: 'duplicate' }] },
-            { Items: [{ ...movie, visible: false }] },
-            { Items: [{ ...movie, title: 42 }] },
+            {},
+            { Item: { ...movie, visible: false } },
+            { Item: { ...movie, title: 42 } },
         ];
 
         for (const result of cases) {
             ddbMock.reset();
-            ddbMock.on(QueryCommand).resolves(result);
+            ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves(result);
             await expect(
                 resolvePricing({
                     movieId: '456',
@@ -685,6 +694,7 @@ describe('Special offers and pricing handlers', () => {
     it('rejects an invalid pricing record and an unknown ticket tier', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
         ddbMock.on(GetCommand).resolves({ Item: { ...offPeakPricing, currency: 'USD' } });
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
         await expect(
             resolvePricing({
                 movieId: '456',
@@ -695,6 +705,7 @@ describe('Special offers and pricing handlers', () => {
         ddbMock.reset();
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
         ddbMock.on(GetCommand).resolves({ Item: offPeakPricing });
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).resolves({ Item: movie });
         await expect(
             validateCheckoutService({
                 movieId: '456',
@@ -766,7 +777,7 @@ describe('Special offers and pricing handlers', () => {
         ['an Error', new Error('database unavailable')],
         ['a non-Error value', 'database unavailable'],
     ])('returns a generic error for %s pricing failures', async (_name, failure) => {
-        ddbMock.on(QueryCommand).callsFake(() => Promise.reject(failure));
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).callsFake(() => Promise.reject(failure));
 
         const result = await getTicketPricing({
             queryStringParameters: {
@@ -783,7 +794,7 @@ describe('Special offers and pricing handlers', () => {
     });
 
     it('returns a generic checkout error for non-service database failures', async () => {
-        ddbMock.on(QueryCommand).callsFake(() => Promise.reject('database failure'));
+        ddbMock.on(GetCommand, { TableName: 'test-movies-table' }).callsFake(() => Promise.reject('database failure'));
 
         const result = await validateCheckout(
             createEvent({
