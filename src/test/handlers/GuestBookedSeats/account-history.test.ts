@@ -65,14 +65,12 @@ test('requires a verified account', async () => {
 test('queries both user indexes through all pages and returns only booking fields', async () => {
     ddb.on(QueryCommand, { TableName: 'current-bookings' })
         .resolvesOnce({
-            Items: [
-                {
+            Items: [{
                     ...booking,
                     ...storedDetails,
                     customerEmail: 'private@example.com',
                     conversionTokenHash: 'secret',
-                },
-            ],
+                },],
             LastEvaluatedKey: { showtimeId: 'show1', seatId: 'BOOKING#1', userId: 'user-1', bookedAt: 'now' },
         })
         .resolvesOnce({ Items: [{ ...booking, ...storedDetails, bookingId: 'bk_2', totalAmount: 0 }] });
@@ -87,11 +85,7 @@ test('queries both user indexes through all pages and returns only booking field
     expect(typeof result === 'string' ? undefined : result.headers?.['Cache-Control']).toBe('no-store');
     expect(body(result)).toEqual({
         newlyLinkedBookings: [],
-        bookings: [
-            { ...booking, ...returnedDetails },
-            { ...booking, ...returnedDetails, bookingId: 'bk_2', totalAmount: 0 },
-            { ...legacyBooking, bookingId: 'bk_legacy' },
-        ],
+        bookings: [{ ...booking, ...returnedDetails },{ ...booking, ...returnedDetails, bookingId: 'bk_2', totalAmount: 0 },{ ...legacyBooking, bookingId: 'bk_legacy' },],
     });
 
     const calls = ddb.commandCalls(QueryCommand);
@@ -123,13 +117,7 @@ test('rejects a malformed movie ID', async () => {
     expect(typeof result === 'string' ? undefined : result.statusCode).toBe(500);
 });
 
-test.each([
-    ['customer name', { customerName: ' ' }],
-    ['ticket quantities', { tickets: [{ quantity: 2 }] }],
-    ['ticket data', { tickets: [{ quantity: '1' }] }],
-    ['total', { totalAmount: -1 }],
-    ['currency', { currency: 'gbp' }],
-])('rejects invalid %s in account history', async (_label, invalidDetails) => {
+test.each([['customer name', { customerName: ' ' }],['ticket quantities', { tickets: [{ quantity: 2 }] }],['ticket data', { tickets: [{ quantity: '1' }] }],['total', { totalAmount: -1 }],['currency', { currency: 'gbp' }],])('rejects invalid %s in account history', async (_label, invalidDetails) => {
     ddb.on(QueryCommand).resolves({ Items: [{ ...booking, ...storedDetails, ...invalidDetails }] });
     const result = await handler(event('user-1'));
     expect(typeof result === 'string' ? undefined : result.statusCode).toBe(500);
@@ -137,14 +125,12 @@ test.each([
 
 test('sums ticket quantities across tiers', async () => {
     ddb.on(QueryCommand, { TableName: 'current-bookings' }).resolves({
-        Items: [
-            {
+        Items: [{
                 ...booking,
                 ...storedDetails,
                 seats: ['A1', 'A2', 'A3'],
                 tickets: [{ quantity: 2 }, { quantity: 1 }],
-            },
-        ],
+            },],
     });
 
     ddb.on(QueryCommand, { TableName: 'legacy-bookings' }).resolves({ Items: [] });

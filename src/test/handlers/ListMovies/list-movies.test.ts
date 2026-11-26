@@ -75,8 +75,7 @@ describe('List movies Lambda handler', () => {
         const nextToken = body.nextToken;
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(body.movies).toMatchObject([
-            {
+        expect(body.movies).toMatchObject([{
                 slug: 'a-movie',
                 sortTitle: 'A Movie',
                 movieId: 456,
@@ -92,8 +91,7 @@ describe('List movies Lambda handler', () => {
                 startDate: '2030-09-25',
                 preSalesEligible: false,
                 score: 7.4,
-            },
-        ]);
+            },]);
 
         expect(typeof nextToken).toBe('string');
         expect(JSON.parse(Buffer.from(String(nextToken), 'base64url').toString('utf8'))).toEqual(
@@ -274,21 +272,13 @@ describe('List movies Lambda handler', () => {
         const result = await handler(createEvent());
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result).movies).toMatchObject([
-            {
+        expect(responseBody(result).movies).toMatchObject([{
                 isComingSoon: true,
                 lifecycleStatus: 'Coming Soon (No Showtimes Yet)',
-            },
-        ]);
+            },]);
     });
 
-    it.each([
-        [{ limit: '0' }, 'limit must be an integer between 1 and 100.'],
-        [{ limit: '101' }, 'limit must be an integer between 1 and 100.'],
-        [{ limit: '2.5' }, 'limit must be an integer between 1 and 100.'],
-        [{ nextToken: 'not-a-valid-token' }, 'nextToken is invalid.'],
-        [{ nextToken: Buffer.from('{}').toString('base64url') }, 'nextToken is invalid.'],
-    ])('rejects invalid pagination parameters %o', async (query, message) => {
+    it.each([[{ limit: '0' }, 'limit must be an integer between 1 and 100.'],[{ limit: '101' }, 'limit must be an integer between 1 and 100.'],[{ limit: '2.5' }, 'limit must be an integer between 1 and 100.'],[{ nextToken: 'not-a-valid-token' }, 'nextToken is invalid.'],[{ nextToken: Buffer.from('{}').toString('base64url') }, 'nextToken is invalid.'],])('rejects invalid pagination parameters %o', async (query, message) => {
         const result = await handler(createEvent(query));
 
         expect(result).toMatchObject({ statusCode: 400 });

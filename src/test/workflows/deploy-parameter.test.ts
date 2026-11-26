@@ -14,14 +14,10 @@ describe('deploy TMDB parameter', () => {
     function deploy(targetEnv: string, targetStack: string, key: string) {
         return spawnSync(
             'bash',
-            [
-                '-e',
-                '-c',
-                `
+            ['-e','-c',`
             npx() { printf 'ARG:%s\\n' "$@"; }
             ${script}
-        `,
-            ],
+        `,],
             {
                 encoding: 'utf8',
                 env: { ...process.env, TARGET_ENV: targetEnv, TARGET_STACK: targetStack, TMDB_API_KEY: key },

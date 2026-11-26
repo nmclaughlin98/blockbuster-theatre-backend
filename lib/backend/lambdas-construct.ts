@@ -691,12 +691,7 @@ export class LambdaConstruct extends Construct {
         props.guestConversionTokensTable.grantReadWriteData(this.guestConversionFunction);
         this.guestConversionFunction.addToRolePolicy(
             new iam.PolicyStatement({
-                actions: [
-                    'cognito-idp:AdminCreateUser',
-                    'cognito-idp:AdminGetUser',
-                    'cognito-idp:AdminInitiateAuth',
-                    'cognito-idp:AdminSetUserPassword',
-                ],
+                actions: ['cognito-idp:AdminCreateUser','cognito-idp:AdminGetUser','cognito-idp:AdminInitiateAuth','cognito-idp:AdminSetUserPassword',],
                 resources: [props.userPool.userPoolArn],
             }),
         );

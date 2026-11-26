@@ -21,10 +21,7 @@ let listBookings: Handler;
 let createBooking: Handler;
 
 beforeAll(async () => {
-    const [bookings, create] = await Promise.all([
-        import('../../../main/lambda/handlers/ListBookings/list-bookings-handler'),
-        import('../../../main/lambda/handlers/CreateBooking/create-booking-handler'),
-    ]);
+    const [bookings, create] = await Promise.all([import('../../../main/lambda/handlers/ListBookings/list-bookings-handler'),import('../../../main/lambda/handlers/CreateBooking/create-booking-handler'),]);
 
     listBookings = bookings.handler;
     createBooking = create.handler;
@@ -179,8 +176,7 @@ function mockShowingLookups(): void {
             const recordShowtimeId = `559924_${recordDate}_1900`;
 
             return {
-                Items: [
-                    {
+                Items: [{
                         registryKey: `SHOWTIME#${recordShowtimeId}`,
                         recordType: 'SHOWTIME',
                         showtimeId: recordShowtimeId,
@@ -197,8 +193,7 @@ function mockShowingLookups(): void {
                         runtime: 110,
                         GSI1PK: dateKey,
                         GSI1SK: `3#19:00#456#${recordShowtimeId}`,
-                    },
-                ],
+                    },],
             };
         });
 
@@ -285,17 +280,7 @@ describe('booking handlers', () => {
             expect(responseBody(result).bookedSeats).toEqual([]);
         });
 
-        it.each([
-            ['no parameters', undefined],
-            ['a missing movieId', { ...query, movieId: undefined }],
-            ['a non-numeric movieId', { ...query, movieId: 'abc' }],
-            ['a missing date', { ...query, date: undefined }],
-            ['a date in the wrong format', { ...query, date: '01/02/2027' }],
-            ['an impossible calendar date', { ...query, date: '2027-02-30' }],
-            ['a date that is not on the given weekday', { ...query, day: 'Tuesday' }],
-            ['an unknown day', { ...query, day: 'Someday' }],
-            ['a malformed time', { ...query, time: '7pm' }],
-        ])('rejects %s', async (_name, queryStringParameters) => {
+        it.each([['no parameters', undefined],['a missing movieId', { ...query, movieId: undefined }],['a non-numeric movieId', { ...query, movieId: 'abc' }],['a missing date', { ...query, date: undefined }],['a date in the wrong format', { ...query, date: '01/02/2027' }],['an impossible calendar date', { ...query, date: '2027-02-30' }],['a date that is not on the given weekday', { ...query, day: 'Tuesday' }],['an unknown day', { ...query, day: 'Someday' }],['a malformed time', { ...query, time: '7pm' }],])('rejects %s', async (_name, queryStringParameters) => {
             const result = await listBookings(
                 createEvent({
                     queryStringParameters: queryStringParameters as Record<string, string>,
@@ -343,17 +328,14 @@ describe('booking handlers', () => {
 
             const items = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems!;
             expect(items).toHaveLength(5);
-            expect(items.filter((item) => item.Put).map((item) => item.Put?.Item)).toEqual([
-                expect.objectContaining({
+            expect(items.filter((item) => item.Put).map((item) => item.Put?.Item)).toEqual([expect.objectContaining({
                     showtimeId,
                     seatId: 'B4',
                     date,
                     time: '19:00',
                     bookingId: body.bookingId,
                     userId: body.userId,
-                }),
-                expect.objectContaining({ showtimeId, seatId: 'B5', userId: body.userId }),
-            ]);
+                }),expect.objectContaining({ showtimeId, seatId: 'B5', userId: body.userId }),]);
 
             expect(items[0].Put?.TableName).toBe('test-bookings-table');
             expect(items[0].Put?.ConditionExpression).toBe('attribute_not_exists(seatId)');
@@ -479,30 +461,20 @@ describe('booking handlers', () => {
             ['an out-of-range row', { movieId: '456', date, showtime, seats: ['H1'] }],
             ['an out-of-range seat number', { movieId: '456', date, showtime, seats: ['A12'] }],
             ['a repeated seat', { movieId: '456', date, showtime, seats: ['B4', 'b4'] }],
-            [
-                'too many seats',
-                {
+            ['too many seats',{
                     movieId: '456',
                     date,
                     showtime,
                     seats: ['A', 'B', 'C'].flatMap((row) =>
-                        Array.from({ length: 11 }, (_, index) => `${row}${index + 1}`),
-                    ),
-                },
-            ],
+                        Array.from({ length: 11 }, (_, index) => `${row}${index + 1}`),),
+                },],
             ['an invalid movie ID', { movieId: 'x', date, showtime, seats: ['B4'] }],
             ['a missing date', { movieId: '456', showtime, seats: ['B4'] }],
             ['a malformed date', { movieId: '456', date: '25-10-2026', showtime, seats: ['B4'] }],
             ['an impossible date', { movieId: '456', date: '2027-02-30', showtime, seats: ['B4'] }],
-            [
-                'a date on a different weekday to showtime.day',
-                { movieId: '456', date, showtime: { day: 'Tuesday', time: '19:00' }, seats: ['B4'] },
-            ],
+            ['a date on a different weekday to showtime.day',{ movieId: '456', date, showtime: { day: 'Tuesday', time: '19:00' }, seats: ['B4'] },],
             ['a missing showtime', { movieId: '456', date, seats: ['B4'] }],
-            [
-                'an unknown showtime key',
-                { movieId: '456', date, showtime: { ...showtime, venue: '1' }, seats: ['B4'] },
-            ],
+            ['an unknown showtime key',{ movieId: '456', date, showtime: { ...showtime, venue: '1' }, seats: ['B4'] },],
         ])('rejects %s', async (_name, body) => {
             const result = await createBooking(createEvent({ body }));
 

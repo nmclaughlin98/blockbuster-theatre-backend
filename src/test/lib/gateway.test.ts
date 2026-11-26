@@ -263,11 +263,7 @@ describe('ApiGatewayConstruct', () => {
         }
 
         expect(routes.map((route) => route.Properties.RouteKey)).toEqual(
-            expect.arrayContaining([
-                'GET /api/v1/bookings/account',
-                'GET /api/v1/bookings/account/history',
-                'POST /api/v1/bookings/account',
-            ]),
+            expect.arrayContaining(['GET /api/v1/bookings/account','GET /api/v1/bookings/account/history','POST /api/v1/bookings/account',]),
         );
     });
 

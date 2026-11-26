@@ -32,142 +32,80 @@ process.env.AWS_REGION = 'eu-west-2';
 const client = createDynamoDBClient();
 const docClient = DynamoDBDocumentClient.from(client);
 
-const tableDefinitions: CreateTableCommandInput[] = [
-    {
+const tableDefinitions: CreateTableCommandInput[] = [{
         TableName: tableNames.movies,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [
-            { AttributeName: 'tmdbId', AttributeType: 'S' },
-            { AttributeName: 'slug', AttributeType: 'S' },
-            { AttributeName: 'GSI1PK', AttributeType: 'S' },
-            { AttributeName: 'GSI1SK', AttributeType: 'S' },
-        ],
-        KeySchema: [
-            { AttributeName: 'tmdbId', KeyType: 'HASH' },
-            { AttributeName: 'slug', KeyType: 'RANGE' },
-        ],
-        GlobalSecondaryIndexes: [
-            {
+        AttributeDefinitions: [{ AttributeName: 'tmdbId', AttributeType: 'S' },{ AttributeName: 'slug', AttributeType: 'S' },{ AttributeName: 'GSI1PK', AttributeType: 'S' },{ AttributeName: 'GSI1SK', AttributeType: 'S' },],
+        KeySchema: [{ AttributeName: 'tmdbId', KeyType: 'HASH' },{ AttributeName: 'slug', KeyType: 'RANGE' },],
+        GlobalSecondaryIndexes: [{
                 IndexName: 'GSI1',
-                KeySchema: [
-                    { AttributeName: 'GSI1PK', KeyType: 'HASH' },
-                    { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
-                ],
+                KeySchema: [{ AttributeName: 'GSI1PK', KeyType: 'HASH' },{ AttributeName: 'GSI1SK', KeyType: 'RANGE' },],
                 Projection: { ProjectionType: 'ALL' },
-            },
-        ],
-    },
-    {
+            },],
+    },{
         TableName: tableNames.pricing,
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [{ AttributeName: 'pricingId', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'pricingId', KeyType: 'HASH' }],
-    },
-    {
+    },{
         TableName: tableNames.offers,
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [{ AttributeName: 'offerId', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'offerId', KeyType: 'HASH' }],
-    },
-    {
+    },{
         TableName: tableNames.collections,
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [{ AttributeName: 'collectionId', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'collectionId', KeyType: 'HASH' }],
-    },
-    {
+    },{
         TableName: tableNames.bookings,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [
-            { AttributeName: 'showtimeId', AttributeType: 'S' },
-            { AttributeName: 'seatId', AttributeType: 'S' },
-            { AttributeName: 'userId', AttributeType: 'S' },
-            { AttributeName: 'bookedAt', AttributeType: 'S' },
-            { AttributeName: 'customerEmail', AttributeType: 'S' },
-        ],
-        KeySchema: [
-            { AttributeName: 'showtimeId', KeyType: 'HASH' },
-            { AttributeName: 'seatId', KeyType: 'RANGE' },
-        ],
-        GlobalSecondaryIndexes: [
-            {
+        AttributeDefinitions: [{ AttributeName: 'showtimeId', AttributeType: 'S' },{ AttributeName: 'seatId', AttributeType: 'S' },{ AttributeName: 'userId', AttributeType: 'S' },{ AttributeName: 'bookedAt', AttributeType: 'S' },{ AttributeName: 'customerEmail', AttributeType: 'S' },],
+        KeySchema: [{ AttributeName: 'showtimeId', KeyType: 'HASH' },{ AttributeName: 'seatId', KeyType: 'RANGE' },],
+        GlobalSecondaryIndexes: [{
                 IndexName: 'UserBookings',
-                KeySchema: [
-                    { AttributeName: 'userId', KeyType: 'HASH' },
-                    { AttributeName: 'bookedAt', KeyType: 'RANGE' },
-                ],
+                KeySchema: [{ AttributeName: 'userId', KeyType: 'HASH' },{ AttributeName: 'bookedAt', KeyType: 'RANGE' },],
                 Projection: { ProjectionType: 'ALL' },
-            },
-            {
+            },{
                 IndexName: 'CustomerEmailBookings',
                 KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
                 Projection: { ProjectionType: 'ALL' },
-            },
-        ],
-    },
-    {
+            },],
+    },{
         TableName: tableNames.legacyBookings,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [
-            { AttributeName: 'showingId', AttributeType: 'S' },
-            { AttributeName: 'seatId', AttributeType: 'S' },
-            { AttributeName: 'userId', AttributeType: 'S' },
-            { AttributeName: 'bookedAt', AttributeType: 'S' },
-            { AttributeName: 'customerEmail', AttributeType: 'S' },
-        ],
-        KeySchema: [
-            { AttributeName: 'showingId', KeyType: 'HASH' },
-            { AttributeName: 'seatId', KeyType: 'RANGE' },
-        ],
-        GlobalSecondaryIndexes: [
-            {
+        AttributeDefinitions: [{ AttributeName: 'showingId', AttributeType: 'S' },{ AttributeName: 'seatId', AttributeType: 'S' },{ AttributeName: 'userId', AttributeType: 'S' },{ AttributeName: 'bookedAt', AttributeType: 'S' },{ AttributeName: 'customerEmail', AttributeType: 'S' },],
+        KeySchema: [{ AttributeName: 'showingId', KeyType: 'HASH' },{ AttributeName: 'seatId', KeyType: 'RANGE' },],
+        GlobalSecondaryIndexes: [{
                 IndexName: 'UserBookings',
-                KeySchema: [
-                    { AttributeName: 'userId', KeyType: 'HASH' },
-                    { AttributeName: 'bookedAt', KeyType: 'RANGE' },
-                ],
+                KeySchema: [{ AttributeName: 'userId', KeyType: 'HASH' },{ AttributeName: 'bookedAt', KeyType: 'RANGE' },],
                 Projection: { ProjectionType: 'ALL' },
-            },
-            {
+            },{
                 IndexName: 'CustomerEmailBookings',
                 KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
                 Projection: { ProjectionType: 'ALL' },
-            },
-        ],
-    },
-    {
+            },],
+    },{
         TableName: tableNames.showtimeRegistry,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [
-            { AttributeName: 'registryKey', AttributeType: 'S' },
-            { AttributeName: 'GSI1PK', AttributeType: 'S' },
-            { AttributeName: 'GSI1SK', AttributeType: 'S' },
-        ],
+        AttributeDefinitions: [{ AttributeName: 'registryKey', AttributeType: 'S' },{ AttributeName: 'GSI1PK', AttributeType: 'S' },{ AttributeName: 'GSI1SK', AttributeType: 'S' },],
         KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
-        GlobalSecondaryIndexes: [
-            {
+        GlobalSecondaryIndexes: [{
                 IndexName: 'ShowtimesByDate',
-                KeySchema: [
-                    { AttributeName: 'GSI1PK', KeyType: 'HASH' },
-                    { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
-                ],
+                KeySchema: [{ AttributeName: 'GSI1PK', KeyType: 'HASH' },{ AttributeName: 'GSI1SK', KeyType: 'RANGE' },],
                 Projection: { ProjectionType: 'ALL' },
-            },
-        ],
-    },
-    {
+            },],
+    },{
         TableName: tableNames.bookingReferences,
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [{ AttributeName: 'bookingRef', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'bookingRef', KeyType: 'HASH' }],
-    },
-    {
+    },{
         TableName: tableNames.guestConversionTokens,
         BillingMode: 'PAY_PER_REQUEST',
         AttributeDefinitions: [{ AttributeName: 'tokenHash', AttributeType: 'S' }],
         KeySchema: [{ AttributeName: 'tokenHash', KeyType: 'HASH' }],
-    },
-];
+    },];
 
 async function waitForLocalDynamoDB(): Promise<void> {
     let lastError: unknown;
@@ -195,8 +133,7 @@ async function createTableIfMissing(input: CreateTableCommandInput): Promise<voi
         const description = await client.send(new DescribeTableCommand({ TableName: tableName }));
         const existingIndexes = new Set(
             description.Table?.GlobalSecondaryIndexes?.flatMap((index) =>
-                index.IndexName ? [index.IndexName] : [],
-            ) ?? [],
+                index.IndexName ? [index.IndexName] : [],) ?? [],
         );
 
         const missingIndexes = (input.GlobalSecondaryIndexes ?? []).filter(

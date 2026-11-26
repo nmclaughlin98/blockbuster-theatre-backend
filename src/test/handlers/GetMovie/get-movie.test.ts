@@ -210,8 +210,7 @@ describe('Get movie Lambda handler', () => {
                           (item) => item.GSI1PK === input.ExpressionAttributeValues?.[':dateKey'],
                       ),
                   }
-                : { Items: [movie] },
-        );
+                : { Items: [movie] },);
 
         const result = await handler(createEvent('424694', date));
 
@@ -292,10 +291,7 @@ describe('Get movie Lambda handler', () => {
         });
     });
 
-    it.each([
-        ['an Error', new Error('DynamoDB unavailable')],
-        ['a non-Error value', 'DynamoDB unavailable'],
-    ])('handles query failures represented by %s', async (_name, error) => {
+    it.each([['an Error', new Error('DynamoDB unavailable')],['a non-Error value', 'DynamoDB unavailable'],])('handles query failures represented by %s', async (_name, error) => {
         ddbMock.on(QueryCommand).rejects(error);
 
         const result = await handler(createEvent('12345'));

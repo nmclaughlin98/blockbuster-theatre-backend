@@ -118,15 +118,13 @@ async function fetchTmdbList(listId, apiKey) {
         pages.push(await fetchPage(page));
     }
 
-    const movieIds = [
-        ...new Set(
+    const movieIds = [...new Set(
             pages
                 .flatMap((p) => (Array.isArray(p.items) ? p.items : []))
                 .filter((item) => item && (item.media_type === undefined || item.media_type === 'movie'))
                 .map((item) => String(item.id))
                 .filter((id) => /^\d+$/.test(id)),
-        ),
-    ];
+        ),];
 
     return {
         collectionId: String(firstPage.id ?? listId),
@@ -299,14 +297,7 @@ async function main() {
     const docClient = DynamoDBDocumentClient.from(client);
 
     const [moviesSeed, carouselSeed, hiddenSeed, collectionsSeed, pricingSeed, offersSeed] =
-        await Promise.all([
-            readSeedJson('movies.json'),
-            readSeedJson('carousel.json'),
-            readSeedJson('hidden-movies.json'),
-            readSeedJson('collections.json', { collectionIds: [] }),
-            readSeedJson('pricing.json'),
-            readSeedJson('offers.json'),
-        ]);
+        await Promise.all([readSeedJson('movies.json'),readSeedJson('carousel.json'),readSeedJson('hidden-movies.json'),readSeedJson('collections.json', { collectionIds: [] }),readSeedJson('pricing.json'),readSeedJson('offers.json'),]);
 
     if (clearFirst) {
         console.log(`Clearing existing seed tables for ${env}...`);
@@ -333,13 +324,7 @@ async function main() {
     }
 
     // 2. Import all movies from TMDB (movies.json + hidden-movies.json + collection movies)
-    const allMovieIds = [
-        ...new Set([
-            ...(moviesSeed.movieIds ?? []).map(String),
-            ...(hiddenSeed.movieIds ?? []).map(String),
-            ...collections.flatMap((c) => c.movieIds),
-        ]),
-    ];
+    const allMovieIds = [...new Set([...(moviesSeed.movieIds ?? []).map(String),...(hiddenSeed.movieIds ?? []).map(String),...collections.flatMap((c) => c.movieIds),]),];
 
     console.log(`Importing ${allMovieIds.length} movies from TMDB into ${moviesTable}...`);
 
@@ -400,8 +385,7 @@ async function main() {
                               screen: randomScreenForShowtime(`${offer.offerId}:${day}:${index}:${entry}`),
                               time: entry,
                           }
-                        : entry,
-                );
+                        : entry,);
             }
 
             offer.overrideShowtimes = normalized;

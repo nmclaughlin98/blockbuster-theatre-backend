@@ -67,10 +67,7 @@ describe('deploy Cognito parameters', () => {
 
         return spawnSync(
             'bash',
-            [
-                '-e',
-                '-c',
-                `
+            ['-e','-c',`
             aws() {
                 echo "$*" >> "$CALLS"
                 if [ "$1" = sts ]; then
@@ -86,8 +83,7 @@ describe('deploy Cognito parameters', () => {
                 printf '%s\\n' "$@" >> "$ARGS"
             }
             ${script}
-        `,
-            ],
+        `,],
             {
                 cwd: directory,
                 encoding: 'utf8',
@@ -116,14 +112,9 @@ describe('deploy Cognito parameters', () => {
         const result = runStep(
             { ProdUserPoolId: {}, ProdUserPoolClientId: {} },
             {
-                Stacks: [
-                    {
-                        Outputs: [
-                            { OutputKey: 'UserPoolId', OutputValue: 'eu-west-2_pool' },
-                            { OutputKey: 'UserPoolClientId', OutputValue: 'clientid' },
-                        ],
-                    },
-                ],
+                Stacks: [{
+                        Outputs: [{ OutputKey: 'UserPoolId', OutputValue: 'eu-west-2_pool' },{ OutputKey: 'UserPoolClientId', OutputValue: 'clientid' },],
+                    },],
             },
         );
 
@@ -240,17 +231,13 @@ describe('deploy build selection', () => {
     function runStep(buildInfo: string, env: Record<string, string> = {}) {
         return spawnSync(
             'bash',
-            [
-                '-e',
-                '-c',
-                `
+            ['-e','-c',`
             gh() {
                 echo "$*" >> "$CALLS"
                 printf '%s' "$BUILD_INFO"
             }
             ${script}
-        `,
-            ],
+        `,],
             {
                 encoding: 'utf8',
                 env: {
@@ -282,12 +269,7 @@ describe('deploy build selection', () => {
         );
     });
 
-    it.each([
-        ['dev', 'refs/heads/main', 'dev'],
-        ['prod', 'refs/heads/main', 'prod'],
-        ['auto', 'refs/heads/main', 'prod'],
-        ['auto', 'refs/heads/feature', 'dev'],
-    ])('resolves target_env %s on %s to %s', (input, ref, expected) => {
+    it.each([['dev', 'refs/heads/main', 'dev'],['prod', 'refs/heads/main', 'prod'],['auto', 'refs/heads/main', 'prod'],['auto', 'refs/heads/feature', 'dev'],])('resolves target_env %s on %s to %s', (input, ref, expected) => {
         const info =
             expected === 'prod'
                 ? `12345\t42\t${sha}\tmain\tpush\tsuccess\towner/repo`
@@ -337,12 +319,7 @@ describe('deploy build selection', () => {
         expect(result.stdout).toContain('must be triggered from main');
     });
 
-    it.each([
-        ['feature', 'push', 'success', 'owner/repo'],
-        ['main', 'pull_request', 'success', 'owner/repo'],
-        ['main', 'push', 'failure', 'owner/repo'],
-        ['main', 'push', 'success', 'other/repo'],
-    ])('rejects untrusted prod build metadata: %s %s %s %s', (branch, event, conclusion, repository) => {
+    it.each([['feature', 'push', 'success', 'owner/repo'],['main', 'pull_request', 'success', 'owner/repo'],['main', 'push', 'failure', 'owner/repo'],['main', 'push', 'success', 'other/repo'],])('rejects untrusted prod build metadata: %s %s %s %s', (branch, event, conclusion, repository) => {
         const result = runStep(`23456\t17\t${sha}\t${branch}\t${event}\t${conclusion}\t${repository}`, {
             INPUT_TARGET_ENV: 'prod',
         });
@@ -379,11 +356,7 @@ describe('deploy build selection', () => {
         expect(readFileSync(join(directory, 'calls'), 'utf8')).not.toContain('-f branch=');
     });
 
-    it.each([
-        ['feature', 'pull_request', 'success', 'owner/repo'],
-        ['feature', 'push', 'failure', 'owner/repo'],
-        ['feature', 'push', 'success', 'other/repo'],
-    ])('rejects unsafe prod override builds: %s %s %s %s', (branch, event, conclusion, repository) => {
+    it.each([['feature', 'pull_request', 'success', 'owner/repo'],['feature', 'push', 'failure', 'owner/repo'],['feature', 'push', 'success', 'other/repo'],])('rejects unsafe prod override builds: %s %s %s %s', (branch, event, conclusion, repository) => {
         const result = runStep(`23456\t17\t${sha}\t${branch}\t${event}\t${conclusion}\t${repository}`, {
             INPUT_TARGET_ENV: 'prod',
             INPUT_ALLOW_NON_MAIN_PROD: 'true',
@@ -425,10 +398,7 @@ describe('deploy build selection', () => {
         expect(runStep('', { INPUT_TARGET_ENV: 'staging' }).status).toBe(1);
     });
 
-    it.each([
-        ['dev', 'dev'],
-        ['main', 'prod'],
-    ])('uses the triggering %s build', (branch, environment) => {
+    it.each([['dev', 'dev'],['main', 'prod'],])('uses the triggering %s build', (branch, environment) => {
         const result = runStep('', {
             GITHUB_EVENT_NAME: 'workflow_run',
             TRIGGER_RUN_ID: '67890',
@@ -463,14 +433,10 @@ describe('deploy build selection', () => {
 
             return spawnSync(
                 'bash',
-                [
-                    '-e',
-                    '-c',
-                    `
+                ['-e','-c',`
                 npx() { mkdir -p cdk-out; cp manifest.json cdk-out/manifest.json; }
                 ${synth}
-            `,
-                ],
+            `,],
                 {
                     cwd: directory,
                     encoding: 'utf8',
@@ -509,19 +475,13 @@ describe('deploy build selection', () => {
                 JSON.stringify({
                     Parameters: { TmdbApiKey: { Type: 'String', NoEcho: true } },
                     Resources: Object.fromEntries(
-                        [
-                            'blockbuster-theatre-add-movies-handler',
-                            'blockbuster-theatre-refresh-movie-collection-handler',
-                        ].map((name, index) => [
-                            `Function${index}`,
-                            {
+                        ['blockbuster-theatre-add-movies-handler','blockbuster-theatre-refresh-movie-collection-handler',].map((name, index) => [`Function${index}`,{
                                 Type: 'AWS::Lambda::Function',
                                 Properties: {
                                     FunctionName: name.replace('blockbuster-theatre-', prefix),
                                     Environment: { Variables: { TMDB_API_KEY: { Ref: 'TmdbApiKey' } } },
                                 },
-                            },
-                        ]),
+                            },]),
                     ),
                 }),
             );

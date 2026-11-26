@@ -62,10 +62,7 @@ export class AuthStack extends cdk.Stack {
                     authorizationCodeGrant: true,
                 },
                 scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-                callbackUrls: [
-                    'https://oauth.pstmn.io/v1/callback',
-                    'https://oauth.pstmn.io/v1/browser-callback',
-                ],
+                callbackUrls: ['https://oauth.pstmn.io/v1/callback','https://oauth.pstmn.io/v1/browser-callback',],
                 logoutUrls: ['https://oauth.pstmn.io/v1/callback'],
             },
         });
@@ -108,18 +105,8 @@ export class AuthStack extends cdk.Stack {
                 flows: {
                     authorizationCodeGrant: true,
                 },
-                scopes: [
-                    cognito.OAuthScope.OPENID,
-                    cognito.OAuthScope.EMAIL,
-                    cognito.OAuthScope.PROFILE,
-                    cognito.OAuthScope.resourceServer(this.resourceServer, this.readBookingsScope),
-                    cognito.OAuthScope.resourceServer(this.devResourceServer, this.devReadBookingsScope),
-                ],
-                callbackUrls: [
-                    'https://pitangui.amazon.com/api/skill/link',
-                    'https://layla.amazon.com/api/skill/link',
-                    'https://alexa.amazon.co.jp/api/skill/link',
-                ],
+                scopes: [cognito.OAuthScope.OPENID,cognito.OAuthScope.EMAIL,cognito.OAuthScope.PROFILE,cognito.OAuthScope.resourceServer(this.resourceServer, this.readBookingsScope),cognito.OAuthScope.resourceServer(this.devResourceServer, this.devReadBookingsScope),],
+                callbackUrls: ['https://pitangui.amazon.com/api/skill/link','https://layla.amazon.com/api/skill/link','https://alexa.amazon.co.jp/api/skill/link',],
                 logoutUrls: ['https://pitangui.amazon.com/api/skill/link'],
             },
         });

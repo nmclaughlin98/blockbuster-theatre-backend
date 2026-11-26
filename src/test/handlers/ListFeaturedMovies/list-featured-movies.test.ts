@@ -81,13 +81,11 @@ describe('Featured movie endpoints', () => {
         const result = await handler(createEvent('GET /movies/newest', { limit: '12' }));
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result).movies).toMatchObject([
-            {
+        expect(responseBody(result).movies).toMatchObject([{
                 movieId: 456,
                 title: 'A Movie',
                 releaseDate: '2026-09-25',
-            },
-        ]);
+            },]);
 
         expect(responseBody(result).nextToken).toBe(
             Buffer.from(JSON.stringify(lastEvaluatedKey)).toString('base64url'),
@@ -147,9 +145,7 @@ describe('Featured movie endpoints', () => {
         const result = await handler(createEvent('GET /movies/top-picks'));
 
         expect(result).toMatchObject({ statusCode: 200 });
-        expect(responseBody(result).movies.map((movie: { score: number }) => movie.score)).toEqual([
-            8.4, 7.5,
-        ]);
+        expect(responseBody(result).movies.map((movie: { score: number }) => movie.score)).toEqual([8.4, 7.5,]);
 
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             IndexName: 'GSI2',
@@ -183,13 +179,7 @@ describe('Featured movie endpoints', () => {
         expect(responseBody(result)).toEqual({ movies: [], nextToken: null });
     });
 
-    it.each([
-        ['invalid limit', 'GET /movies/newest', { limit: '0' }],
-        ['malformed token', 'GET /movies/newest', { nextToken: 'not-json' }],
-        [
-            'cursor from another endpoint',
-            'GET /movies/top-picks',
-            {
+    it.each([['invalid limit', 'GET /movies/newest', { limit: '0' }],['malformed token', 'GET /movies/newest', { nextToken: 'not-json' }],['cursor from another endpoint','GET /movies/top-picks',{
                 nextToken: Buffer.from(
                     JSON.stringify({
                         tmdbId: '123',
@@ -198,9 +188,7 @@ describe('Featured movie endpoints', () => {
                         GSI1SK: '2025-01-01#123',
                     }),
                 ).toString('base64url'),
-            },
-        ],
-    ])('rejects %s before querying DynamoDB', async (_name, routeKey, query) => {
+            },],])('rejects %s before querying DynamoDB', async (_name, routeKey, query) => {
         const result = await handler(createEvent(routeKey, query));
 
         expect(result).toMatchObject({ statusCode: 400 });

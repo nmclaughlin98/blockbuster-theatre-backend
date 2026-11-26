@@ -68,14 +68,7 @@ function formatScreeningDate(date: string, time: string) {
 }
 
 export function formatBookingConfirmationEmailHtml(booking: BookingConfirmationEmail): string {
-    const details: Array<[string, string]> = [
-        ['SHOWTIME', `${formatScreeningDate(booking.date, booking.time)}`],
-        ['SCREEN', `Screen ${booking.screen}`],
-        [`Seat${booking.seats.length === 1 ? '' : 's'}`, booking.seats.join(', ')],
-        ['GUEST NAME', `${booking.customer.firstName} ${booking.customer.surname}`],
-        ['TICKET BREAKDOWN', `${booking.tickets} ${booking.tickets === 1 ? 'Ticket' : 'Tickets'}`],
-        ['TOTAL', `£${booking.totalPrice.toFixed(2)}`],
-    ];
+    const details: Array<[string, string]> = [['SHOWTIME', `${formatScreeningDate(booking.date, booking.time)}`],['SCREEN', `Screen ${booking.screen}`],[`Seat${booking.seats.length === 1 ? '' : 's'}`, booking.seats.join(', ')],['GUEST NAME', `${booking.customer.firstName} ${booking.customer.surname}`],['TICKET BREAKDOWN', `${booking.tickets} ${booking.tickets === 1 ? 'Ticket' : 'Tickets'}`],['TOTAL', `£${booking.totalPrice.toFixed(2)}`],];
 
     const detailCell = ([label, value]: [string, string]) => `
         <td class="ticket-detail-cell" width="50%" valign="top">

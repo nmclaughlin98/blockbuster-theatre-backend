@@ -68,11 +68,7 @@ export class BackendStack extends cdk.Stack {
             resourceName('blockbuster-theatre-CognitoJwtAuthorizer', envName),
             `https://cognito-idp.${this.region}.amazonaws.com/${this.authParameters.userPoolId}`,
             {
-                jwtAudience: [
-                    this.authParameters.backendClientId,
-                    this.authParameters.postmanClientId,
-                    this.authParameters.alexaClientId,
-                ],
+                jwtAudience: [this.authParameters.backendClientId,this.authParameters.postmanClientId,this.authParameters.alexaClientId,],
             },
         );
 

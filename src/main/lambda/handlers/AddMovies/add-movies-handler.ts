@@ -257,22 +257,19 @@ async function upsertMovie(
         delete movedRecord.showtimes;
         await docClient.send(
             new TransactWriteCommand({
-                TransactItems: [
-                    {
+                TransactItems: [{
                         Delete: {
                             TableName: TABLE_NAME,
                             Key: { tmdbId: id, slug: existing.slug },
                             ConditionExpression: 'attribute_exists(tmdbId)',
                         },
-                    },
-                    {
+                    },{
                         Put: {
                             TableName: TABLE_NAME,
                             Item: movedRecord,
                             ConditionExpression: 'attribute_not_exists(tmdbId)',
                         },
-                    },
-                ],
+                    },],
             }),
         );
 

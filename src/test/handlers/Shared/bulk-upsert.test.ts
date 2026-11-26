@@ -10,10 +10,7 @@ let upsertOffers: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResu
 let upsertPricing: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 beforeAll(async () => {
-    const [offers, pricing] = await Promise.all([
-        import('../../../main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler'),
-        import('../../../main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler'),
-    ]);
+    const [offers, pricing] = await Promise.all([import('../../../main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler'),import('../../../main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler'),]);
 
     upsertOffers = offers.handler;
     upsertPricing = pricing.handler;
@@ -35,14 +32,12 @@ const pricing = {
     pricingId: 'KIDS_CLUB_RATES',
     name: 'Kids Club Rates',
     currency: 'GBP',
-    ticketTiers: [
-        {
+    ticketTiers: [{
             id: 'child',
             label: 'Kids Club Child Ticket',
             description: 'Kids Club admission per child',
             price: 2.5,
-        },
-    ],
+        },],
 };
 
 function createEvent(body?: string): APIGatewayProxyEventV2 {
@@ -79,14 +74,12 @@ describe('Bulk booking data upsert handlers', () => {
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toMatchObject({ count: 1, ids: ['kids-club'] });
         expect(ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input).toEqual({
-            TransactItems: [
-                {
+            TransactItems: [{
                     Put: {
                         TableName: 'test-booking-offers',
                         Item: offer,
                     },
-                },
-            ],
+                },],
         });
     });
 
@@ -96,14 +89,12 @@ describe('Bulk booking data upsert handlers', () => {
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toMatchObject({ count: 1, ids: ['KIDS_CLUB_RATES'] });
         expect(ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input).toEqual({
-            TransactItems: [
-                {
+            TransactItems: [{
                     Put: {
                         TableName: 'test-ticket-pricing',
                         Item: pricing,
                     },
-                },
-            ],
+                },],
         });
     });
 
@@ -129,12 +120,10 @@ describe('Bulk booking data upsert handlers', () => {
         const result = await upsertOffers(
             createEvent(
                 JSON.stringify({
-                    offers: [
-                        {
+                    offers: [{
                             ...offer,
                             overrideShowtimes: { Tuesday: ['11:00'] },
-                        },
-                    ],
+                        },],
                 }),
             ),
         );

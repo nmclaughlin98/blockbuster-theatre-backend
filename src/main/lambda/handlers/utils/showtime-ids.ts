@@ -197,8 +197,7 @@ export async function createShowtimeId(
         try {
             await docClient.send(
                 new TransactWriteCommand({
-                    TransactItems: [
-                        {
+                    TransactItems: [{
                             Put: {
                                 TableName: registryTableName(),
                                 Item: {
@@ -212,8 +211,7 @@ export async function createShowtimeId(
                                 },
                                 ConditionExpression: 'attribute_not_exists(registryKey)',
                             },
-                        },
-                        {
+                        },{
                             Put: {
                                 TableName: registryTableName(),
                                 Item: {
@@ -228,8 +226,7 @@ export async function createShowtimeId(
                                 },
                                 ConditionExpression: 'attribute_not_exists(registryKey)',
                             },
-                        },
-                    ],
+                        },],
                 }),
             );
 

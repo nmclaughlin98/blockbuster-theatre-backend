@@ -7,12 +7,7 @@ const adminToken = process.env.LOCAL_ADMIN_TOKEN ?? 'local-dev-token';
 const port = Number(process.env.LOCAL_API_PORT ?? '3000');
 const cloudDatabaseMode = process.argv.includes('--cloud-db');
 const maxBodyBytes = 1024 * 1024;
-const allowedOrigins = new Set([
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'http://localhost:4173',
-    'http://127.0.0.1:4173',
-]);
+const allowedOrigins = new Set(['http://localhost:5173','http://127.0.0.1:5173','http://localhost:4173','http://127.0.0.1:4173',]);
 
 function requireCloudTestTable(environmentVariable: string): string {
     const tableName = process.env[environmentVariable]?.trim();
@@ -318,8 +313,7 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
 
     const headers = Object.fromEntries(
         Object.entries(request.headers).flatMap(([key, value]) =>
-            typeof value === 'string' ? [[key, value]] : [],
-        ),
+            typeof value === 'string' ? [[key, value]] : [],),
     );
 
     const event = {

@@ -87,10 +87,7 @@ export function generateShowtimes(
 
         for (let index = shuffledTimes.length - 1; index > 0; index--) {
             const swapIndex = Math.floor(random() * (index + 1));
-            [shuffledTimes[index], shuffledTimes[swapIndex]] = [
-                shuffledTimes[swapIndex],
-                shuffledTimes[index],
-            ];
+            [shuffledTimes[index], shuffledTimes[swapIndex]] = [shuffledTimes[swapIndex],shuffledTimes[index],];
         }
 
         const numberOfShowings = lowerPriority

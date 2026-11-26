@@ -133,22 +133,19 @@ async function updateMovie(id: string, updates: MovieUpdates): Promise<void> {
 
         await docClient.send(
             new TransactWriteCommand({
-                TransactItems: [
-                    {
+                TransactItems: [{
                         Delete: {
                             TableName: TABLE_NAME,
                             Key: { tmdbId: id, slug: current.slug },
                             ConditionExpression: 'attribute_exists(tmdbId)',
                         },
-                    },
-                    {
+                    },{
                         Put: {
                             TableName: TABLE_NAME,
                             Item: updated,
                             ConditionExpression: 'attribute_not_exists(tmdbId)',
                         },
-                    },
-                ],
+                    },],
             }),
         );
 

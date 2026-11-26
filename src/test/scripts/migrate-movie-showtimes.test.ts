@@ -18,14 +18,12 @@ describe('legacy movie showtime migration', () => {
 
     it('previews legacy schedules without changing movie records', async () => {
         dynamoMock.on(ScanCommand).resolves({
-            Items: [
-                {
+            Items: [{
                     tmdbId: '123456',
                     slug: 'example-movie',
                     title: 'Example Movie',
                     showtimes: { Monday: [{ screen: '2', time: '19:00' }] },
-                },
-            ],
+                },],
         });
 
         const reportSchedule = jest.fn();
@@ -44,14 +42,12 @@ describe('legacy movie showtime migration', () => {
 
     it('removes only the legacy showtimes attribute using the composite key', async () => {
         dynamoMock.on(ScanCommand).resolves({
-            Items: [
-                {
+            Items: [{
                     tmdbId: '123456',
                     slug: 'example-movie',
                     title: 'Example Movie',
                     showtimes: { Monday: [{ screen: '2', time: '19:00' }] },
-                },
-            ],
+                },],
         });
 
         const report = await removeLegacyMovieShowtimes(client, 'test-movies', true);

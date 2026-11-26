@@ -64,12 +64,7 @@ export async function migrateShowtimeRegistry(
                 new UpdateCommand({
                     TableName: tableName,
                     Key: { registryKey: record.registryKey },
-                    UpdateExpression: [
-                        'SET #gsi1pk = :gsi1pk',
-                        '#gsi1sk = :gsi1sk',
-                        '#status = if_not_exists(#status, :active)',
-                        '#source = if_not_exists(#source, :generated)',
-                    ].join(', '),
+                    UpdateExpression: ['SET #gsi1pk = :gsi1pk','#gsi1sk = :gsi1sk','#status = if_not_exists(#status, :active)','#source = if_not_exists(#source, :generated)',].join(', '),
                     ConditionExpression: '#recordType = :showtime',
                     ExpressionAttributeNames: {
                         '#gsi1pk': 'GSI1PK',

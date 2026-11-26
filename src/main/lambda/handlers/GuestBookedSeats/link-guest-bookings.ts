@@ -96,10 +96,7 @@ function showtimeGroupKey(item: LinkedBooking): string {
 }
 
 export async function linkGuestBookings(userId: string, email: string): Promise<GuestLinkResult> {
-    const tables = [
-        { name: process.env.BOOKINGS_TABLE_NAME, key: 'showtimeId' },
-        { name: process.env.LEGACY_BOOKINGS_TABLE_NAME, key: 'showingId' },
-    ] as const;
+    const tables = [{ name: process.env.BOOKINGS_TABLE_NAME, key: 'showtimeId' },{ name: process.env.LEGACY_BOOKINGS_TABLE_NAME, key: 'showingId' },] as const;
 
     if (tables.some((table) => !table.name)) throw new Error('Booking tables are not configured.');
 
@@ -218,16 +215,7 @@ export async function linkGuestBookings(userId: string, email: string): Promise<
                                 },
                                 Body: {
                                     Text: {
-                                        Data: [
-                                            'Because you checked out using your account email address, these bookings have been automatically added to your account:',
-                                            '',
-                                            ...[...groupedBookings.values()].flatMap((bookings) => [
-                                                `${bookings[0].movieTitle} - ${bookings[0].date} ${bookings[0].time}`,
-                                                ...bookings.map((booking) => booking.bookingRef),
-                                                '',
-                                            ]),
-                                            'Your previous guest conversion link has been disabled for security.',
-                                        ].join('\n'),
+                                        Data: ['Because you checked out using your account email address, these bookings have been automatically added to your account:','',...[...groupedBookings.values()].flatMap((bookings) => [`${bookings[0].movieTitle} - ${bookings[0].date} ${bookings[0].time}`,...bookings.map((booking) => booking.bookingRef),'',]),'Your previous guest conversion link has been disabled for security.',].join('\n'),
                                     },
                                 },
                             },

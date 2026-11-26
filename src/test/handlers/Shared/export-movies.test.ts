@@ -9,10 +9,7 @@ let exportMovies: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResu
 let listTmdbIds: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 beforeAll(async () => {
-    const [exportModule, listModule] = await Promise.all([
-        import('../../../main/lambda/handlers/ExportMovies/export-movies-handler'),
-        import('../../../main/lambda/handlers/ListTmdbIds/list-tmdb-ids-handler'),
-    ]);
+    const [exportModule, listModule] = await Promise.all([import('../../../main/lambda/handlers/ExportMovies/export-movies-handler'),import('../../../main/lambda/handlers/ListTmdbIds/list-tmdb-ids-handler'),]);
 
     exportMovies = exportModule.handler;
     listTmdbIds = listModule.handler;

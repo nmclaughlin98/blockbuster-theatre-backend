@@ -120,20 +120,17 @@ describe('Reschedule booking Lambda handler', () => {
         });
 
         expect(items.slice(2, 4).map((item) => item.Delete?.Key?.seatId)).toEqual(['B4', 'B5']);
-        expect(items.slice(4, 6).map((item) => item.Put?.Item)).toEqual([
-            expect.objectContaining({
+        expect(items.slice(4, 6).map((item) => item.Put?.Item)).toEqual([expect.objectContaining({
                 showtimeId: '456000_2026-11-23_1930',
                 seatId: 'B4',
                 bookingId: booking.bookingId,
                 recordType: 'SEAT',
-            }),
-            expect.objectContaining({
+            }),expect.objectContaining({
                 showtimeId: '456000_2026-11-23_1930',
                 seatId: 'B5',
                 bookingId: booking.bookingId,
                 recordType: 'SEAT',
-            }),
-        ]);
+            }),]);
 
         expect(
             items

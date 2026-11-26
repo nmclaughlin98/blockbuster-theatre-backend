@@ -49,12 +49,10 @@ export function createCognitoResources(
 
     new iam.Policy(scope, 'PreTokenGenerationUserReadPolicy', {
         roles: [preTokenFunction.role!],
-        statements: [
-            new iam.PolicyStatement({
+        statements: [new iam.PolicyStatement({
                 actions: ['cognito-idp:AdminGetUser'],
                 resources: [userPool.userPoolArn],
-            }),
-        ],
+            }),],
     });
 
     const userPoolDomain = userPool.addDomain('CognitoDomain', {

@@ -20,8 +20,7 @@ describe('showtime registry migration', () => {
         dynamoMock
             .on(ScanCommand)
             .resolvesOnce({
-                Items: [
-                    {
+                Items: [{
                         registryKey: 'SHOWTIME#123456_2026-12-01_1900',
                         recordType: 'SHOWTIME',
                         showtimeId: '123456_2026-12-01_1900',
@@ -29,8 +28,7 @@ describe('showtime registry migration', () => {
                         date: '2026-12-01',
                         screen: '2',
                         time: '19:00',
-                    },
-                ],
+                    },],
                 LastEvaluatedKey: { registryKey: 'SHOWTIME#page-1' },
             })
             .resolves({ Items: [] });
@@ -47,8 +45,7 @@ describe('showtime registry migration', () => {
 
     it('adds date-index fields and defaults without changing existing status metadata', async () => {
         dynamoMock.on(ScanCommand).resolves({
-            Items: [
-                {
+            Items: [{
                     registryKey: 'SHOWTIME#123456_2026-12-01_1900',
                     recordType: 'SHOWTIME',
                     showtimeId: '123456_2026-12-01_1900',
@@ -58,8 +55,7 @@ describe('showtime registry migration', () => {
                     time: '19:00',
                     source: 'MANUAL',
                     status: 'CANCELLED',
-                },
-            ],
+                },],
         });
 
         dynamoMock.on(UpdateCommand).resolves({});

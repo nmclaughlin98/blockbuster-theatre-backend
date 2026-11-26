@@ -30,10 +30,7 @@ describe('DatabaseConstruct', () => {
     it('should use tmdbId and slug as the composite primary key', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            KeySchema: [
-                { AttributeName: 'tmdbId', KeyType: 'HASH' },
-                { AttributeName: 'slug', KeyType: 'RANGE' },
-            ],
+            KeySchema: [{ AttributeName: 'tmdbId', KeyType: 'HASH' },{ AttributeName: 'slug', KeyType: 'RANGE' },],
         });
     });
 
@@ -49,19 +46,14 @@ describe('DatabaseConstruct', () => {
     it('indexes guest email on both booking tables', () => {
         const template = Template.fromStack(stack);
 
-        for (const TableName of [
-            'blockbuster-theatre-prod-bookings',
-            'blockbuster-theatre-prod-bookings-by-showtime',
-        ]) {
+        for (const TableName of ['blockbuster-theatre-prod-bookings','blockbuster-theatre-prod-bookings-by-showtime',]) {
             template.hasResourceProperties('AWS::DynamoDB::Table', {
                 TableName,
-                GlobalSecondaryIndexes: Match.arrayWith([
-                    Match.objectLike({
+                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
                         IndexName: 'CustomerEmailBookings',
                         KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
                         Projection: { ProjectionType: 'ALL' },
-                    }),
-                ]),
+                    }),]),
             });
         }
     });
@@ -69,22 +61,14 @@ describe('DatabaseConstruct', () => {
     it('indexes guest email and date for upcoming booking lookups', () => {
         const template = Template.fromStack(stack);
 
-        for (const TableName of [
-            'blockbuster-theatre-prod-bookings',
-            'blockbuster-theatre-prod-bookings-by-showtime',
-        ]) {
+        for (const TableName of ['blockbuster-theatre-prod-bookings','blockbuster-theatre-prod-bookings-by-showtime',]) {
             template.hasResourceProperties('AWS::DynamoDB::Table', {
                 TableName,
-                GlobalSecondaryIndexes: Match.arrayWith([
-                    Match.objectLike({
+                GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
                         IndexName: 'CustomerEmailUpcomingBookings',
-                        KeySchema: [
-                            { AttributeName: 'customerEmail', KeyType: 'HASH' },
-                            { AttributeName: 'date', KeyType: 'RANGE' },
-                        ],
+                        KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' },{ AttributeName: 'date', KeyType: 'RANGE' },],
                         Projection: { ProjectionType: 'ALL' },
-                    }),
-                ]),
+                    }),]),
             });
         }
     });
@@ -94,26 +78,18 @@ describe('DatabaseConstruct', () => {
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-prod-showtime-registry',
             KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
-            GlobalSecondaryIndexes: Match.arrayWith([
-                Match.objectLike({
+            GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({
                     IndexName: 'ShowtimesByDate',
-                    KeySchema: [
-                        { AttributeName: 'GSI1PK', KeyType: 'HASH' },
-                        { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
-                    ],
+                    KeySchema: [{ AttributeName: 'GSI1PK', KeyType: 'HASH' },{ AttributeName: 'GSI1SK', KeyType: 'RANGE' },],
                     Projection: { ProjectionType: 'ALL' },
-                }),
-            ]),
+                }),]),
         });
     });
 
     it('should have string type for id attribute', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
-            AttributeDefinitions: Match.arrayWith([
-                { AttributeName: 'tmdbId', AttributeType: 'S' },
-                { AttributeName: 'slug', AttributeType: 'S' },
-            ]),
+            AttributeDefinitions: Match.arrayWith([{ AttributeName: 'tmdbId', AttributeType: 'S' },{ AttributeName: 'slug', AttributeType: 'S' },]),
         });
     });
 
@@ -121,16 +97,11 @@ describe('DatabaseConstruct', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-prod-movie-catalogue',
-            GlobalSecondaryIndexes: Match.arrayWith([
-                {
+            GlobalSecondaryIndexes: Match.arrayWith([{
                     IndexName: 'GSI2',
-                    KeySchema: [
-                        { AttributeName: 'GSI1PK', KeyType: 'HASH' },
-                        { AttributeName: 'score', KeyType: 'RANGE' },
-                    ],
+                    KeySchema: [{ AttributeName: 'GSI1PK', KeyType: 'HASH' },{ AttributeName: 'score', KeyType: 'RANGE' },],
                     Projection: { ProjectionType: 'ALL' },
-                },
-            ]),
+                },]),
             AttributeDefinitions: Match.arrayWith([{ AttributeName: 'score', AttributeType: 'N' }]),
         });
     });

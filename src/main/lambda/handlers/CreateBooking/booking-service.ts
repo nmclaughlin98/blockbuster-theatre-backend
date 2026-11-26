@@ -182,15 +182,7 @@ export async function listBookedSeats(
 
     const seats: string[] = [];
 
-    for (const [tableName, keyName, keyValue, recordFilter] of [
-        [bookingsTableName(), 'showtimeId', showtimeId, 'recordType = :seat'],
-        [
-            requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME'),
-            'showingId',
-            legacyShowingId(selection.movieId, selection.date, showtime.time),
-            undefined,
-        ],
-    ] as const) {
+    for (const [tableName, keyName, keyValue, recordFilter] of [[bookingsTableName(), 'showtimeId', showtimeId, 'recordType = :seat'],[requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME'),'showingId',legacyShowingId(selection.movieId, selection.date, showtime.time),undefined,],] as const) {
         let exclusiveStartKey: Record<string, unknown> | undefined;
         do {
             const result = await docClient.send(
@@ -378,22 +370,19 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
     try {
         await docClient.send(
             new TransactWriteCommand({
-                TransactItems: [
-                    ...records.map((record) => ({
+                TransactItems: [...records.map((record) => ({
                         Put: {
                             TableName: tableName,
                             Item: record,
                             ConditionExpression: 'attribute_not_exists(seatId)',
                         },
-                    })),
-                    ...request.seats.map((seatId) => ({
+                    })),...request.seats.map((seatId) => ({
                         ConditionCheck: {
                             TableName: legacyTableName,
                             Key: { showingId: legacyId, seatId },
                             ConditionExpression: 'attribute_not_exists(seatId)',
                         },
-                    })),
-                    {
+                    })),{
                         ConditionCheck: {
                             TableName: showtimeRegistryTableName,
                             Key: { registryKey: `SHOWTIME#${showtimeId}` },
@@ -402,8 +391,7 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
                             ExpressionAttributeNames: { '#status': 'status' },
                             ExpressionAttributeValues: { ':active': 'ACTIVE' },
                         },
-                    },
-                ],
+                    },],
             }),
         );
     } catch (error: unknown) {

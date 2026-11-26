@@ -3,11 +3,7 @@ import { json, jsonResponseByteLength } from '../../../main/lambda/handlers/util
 describe('shared JSON responses', () => {
     afterEach(() => jest.restoreAllMocks());
 
-    it.each([
-        { statusCode: 200, level: 'INFO' as const, method: 'log' as const },
-        { statusCode: 400, level: 'WARN' as const, method: 'warn' as const },
-        { statusCode: 500, level: 'ERROR' as const, method: 'error' as const },
-    ])('logs a $level response with its status code', ({ statusCode, level, method }) => {
+    it.each([{ statusCode: 200, level: 'INFO' as const, method: 'log' as const },{ statusCode: 400, level: 'WARN' as const, method: 'warn' as const },{ statusCode: 500, level: 'ERROR' as const, method: 'error' as const },])('logs a $level response with its status code', ({ statusCode, level, method }) => {
         const logger = jest.spyOn(console, method).mockImplementation(() => {});
         const response = json(statusCode, { message: 'do not include response data' });
 
