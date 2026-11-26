@@ -50,6 +50,10 @@ export default tseslint.config(
             // Limit consecutive blank lines to 1 and forbid trailing spaces
             '@stylistic/no-multiple-empty-lines': ['error', { max: 1, maxEOF: 0 }],
             '@stylistic/no-trailing-spaces': 'error',
+            // Controls line breaks inside the opening/closing [ ] brackets
+            '@stylistic/array-bracket-newline': ['error', { minItems: 10 }],
+            // Controls line breaks between the actual array items
+            '@stylistic/array-element-newline': ['error', { minItems: 10 }],
         },
     },
 
