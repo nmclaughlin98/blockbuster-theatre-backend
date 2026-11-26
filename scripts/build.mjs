@@ -6,6 +6,6 @@ try {
     execSync('tsc', { stdio: 'inherit' });
     console.log(formatOutputMessage('✅ Build successful'));
 } catch {
-    console.error(formatOutputGoMessage('❌ Build failed'));
+    console.error(formatOutputMessage('❌ Build failed'));
     process.exit(1);
 }
