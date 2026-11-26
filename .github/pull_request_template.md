@@ -1,10 +1,17 @@
-## Summary
+## Date
 
-<!-- Describe the purpose and impact of this change. -->
+<!-- pr-date:start -->
+<!-- pr-date:end -->
 
-## Changes
+## Commits
 
-<!-- List the important implementation changes. -->
+<!-- pr-commits:start -->
+<!-- pr-commits:end -->
+
+## Summary (optional)
+
+<!-- Add a brief summary if useful. -->
+
 
 ## Testing
 
