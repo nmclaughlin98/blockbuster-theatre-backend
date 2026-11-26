@@ -28,5 +28,4 @@ jobs:
           tag_name: v${{ steps.pkg.outputs.version }}
           name: "v${{ steps.pkg.outputs.version }}"
           body: ${{ github.event.pull_request.body }}
-          draft: true
           generate_release_notes: true
