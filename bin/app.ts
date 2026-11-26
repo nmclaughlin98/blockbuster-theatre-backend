@@ -1,13 +1,9 @@
 import 'dotenv/config';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import { AuthStack } from '../lib/auth';
 import { BackendStack } from '../lib/backend';
 
-const app = new cdk.App({
-    outdir: path.join(os.tmpdir(), `cdk-out-test-${process.env.JEST_WORKER_ID ?? '1'}`),
-});
+const app = new cdk.App();
 
 const awsEnv: cdk.Environment = {
     account: process.env.CDK_DEFAULT_ACCOUNT || '334624057595',
