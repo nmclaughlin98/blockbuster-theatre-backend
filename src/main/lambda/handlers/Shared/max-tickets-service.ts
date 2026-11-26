@@ -15,29 +15,35 @@ function logMaxTickets(maxTickets: number, source: 'parameter' | 'default', para
 }
 
 function isParameterNotFound(error: unknown): boolean {
-    return typeof error === 'object'
-        && error !== null
-        && 'name' in error
-        && error.name === 'ParameterNotFound';
+    return (
+        typeof error === 'object' && error !== null && 'name' in error && error.name === 'ParameterNotFound'
+    );
 }
 
 export async function getMaxTickets(): Promise<number> {
     const parameterName = process.env.MAX_TICKETS_PARAMETER_NAME;
+
     if (!parameterName) {
         logMaxTickets(DEFAULT_MAX_TICKETS, 'default');
+
         return DEFAULT_MAX_TICKETS;
     }
 
     try {
-        const response = await ssmClient.send(new GetParameterCommand({
-            Name: parameterName,
-            WithDecryption: false,
-        }));
+        const response = await ssmClient.send(
+            new GetParameterCommand({
+                Name: parameterName,
+                WithDecryption: false,
+            }),
+        );
+
         const value = response.Parameter?.Value;
         const maxTickets = Number(value);
+
         if (!value || !Number.isSafeInteger(maxTickets) || maxTickets < 1) {
             throw new Error(`SSM parameter ${parameterName} must contain a positive integer.`);
         }
+
         logMaxTickets(maxTickets, 'parameter', parameterName);
 
         return maxTickets;
@@ -48,6 +54,7 @@ export async function getMaxTickets(): Promise<number> {
             parameterName,
             fallback: DEFAULT_MAX_TICKETS,
         });
+
         logMaxTickets(DEFAULT_MAX_TICKETS, 'default', parameterName);
 
         return DEFAULT_MAX_TICKETS;

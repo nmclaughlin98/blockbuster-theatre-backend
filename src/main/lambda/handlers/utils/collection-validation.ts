@@ -1,6 +1,4 @@
-import type {
-    MovieCollectionRecord,
-} from '../../lib/interfaces';
+import type { MovieCollectionRecord } from '../../lib/interfaces';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -9,7 +7,8 @@ function isRecord(value: unknown): value is UnknownRecord {
 }
 
 export function isMovieCollectionRecord(value: unknown): value is MovieCollectionRecord {
-    return isRecord(value) &&
+    return (
+        isRecord(value) &&
         typeof value.collectionId === 'string' &&
         /^\d+$/.test(value.collectionId) &&
         typeof value.name === 'string' &&
@@ -19,5 +18,6 @@ export function isMovieCollectionRecord(value: unknown): value is MovieCollectio
         Array.isArray(value.movieIds) &&
         value.movieIds.every((id) => typeof id === 'string' && /^\d+$/.test(id)) &&
         (value.isActive === undefined || typeof value.isActive === 'boolean') &&
-        (value.lastUpdated === undefined || typeof value.lastUpdated === 'string');
+        (value.lastUpdated === undefined || typeof value.lastUpdated === 'string')
+    );
 }

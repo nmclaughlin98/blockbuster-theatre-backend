@@ -3,12 +3,13 @@ node_modules/
 yarn.lock
 coverage
 /app
-bin
 
 # Build outputs
 dist/
 build/
 *.js
+!.github/scripts/*.js
+!scripts/build.js
 !*.config.js
 !jest.config.ts
 *.d.ts
@@ -48,6 +49,7 @@ lerna-debug.log*
 .tmp/
 
 # AWS CloudFormation/CDK
+/cdk-out
 cdk-outputs.json
 *.template.json
 

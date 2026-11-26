@@ -39,6 +39,7 @@ describe('pre-token generation handler', () => {
             claimsToSuppress: ['other'],
             groupOverrideDetails: { groupsToOverride: ['custom'] },
         };
+
         cognitoMock.on(AdminGetUserCommand).resolves({
             UserCreateDate: new Date('2024-04-03T12:34:56.789Z'),
         });
@@ -49,6 +50,7 @@ describe('pre-token generation handler', () => {
             UserPoolId: 'eu-west-2_pool',
             Username: 'user-name',
         });
+
         expect(result.response.claimsOverrideDetails).toEqual({
             claimsToAddOrOverride: {
                 existing: 'value',
@@ -57,6 +59,7 @@ describe('pre-token generation handler', () => {
             claimsToSuppress: ['other'],
             groupOverrideDetails: { groupsToOverride: ['custom'] },
         });
+
         expect(result.request).toEqual(request.request);
     });
 
@@ -80,7 +83,7 @@ describe('pre-token generation handler', () => {
         async (UserCreateDate) => {
             cognitoMock.on(AdminGetUserCommand).resolves({ UserCreateDate });
             await expect(handler(event())).rejects.toThrow('Unable to generate token claims.');
-        }
+        },
     );
 
     it('fails token generation without exposing a Cognito error', async () => {

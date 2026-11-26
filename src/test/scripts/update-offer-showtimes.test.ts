@@ -1,9 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-    DynamoDBDocumentClient,
-    ScanCommand,
-    UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 import { randomScreenForShowtime } from '../../main/lambda/handlers/utils/showtime-schedule';
 import { updateOfferShowtimes } from '../../../scripts/update-offer-showtimes';
@@ -16,7 +12,7 @@ const client = DynamoDBDocumentClient.from(
             accessKeyId: 'test',
             secretAccessKey: 'test',
         },
-    })
+    }),
 );
 
 describe('offer showtime migration', () => {
@@ -26,7 +22,8 @@ describe('offer showtime migration', () => {
     });
 
     it('previews legacy overrides across all pages without writing', async () => {
-        dynamoMock.on(ScanCommand)
+        dynamoMock
+            .on(ScanCommand)
             .resolvesOnce({
                 Items: [
                     { offerId: 'no-override' },
@@ -38,27 +35,26 @@ describe('offer showtime migration', () => {
                 LastEvaluatedKey: { offerId: 'kids-club' },
             })
             .resolves({
-                Items: [{
-                    offerId: 'already-screened',
-                    overrideShowtimes: {
-                        Saturday: [{ screen: '2', time: '13:00' }],
+                Items: [
+                    {
+                        offerId: 'already-screened',
+                        overrideShowtimes: {
+                            Saturday: [{ screen: '2', time: '13:00' }],
+                        },
                     },
-                }],
+                ],
             });
+
         const reportUpdate = jest.fn();
 
-        const report = await updateOfferShowtimes(
-            client,
-            'test-offers',
-            false,
-            reportUpdate
-        );
+        const report = await updateOfferShowtimes(client, 'test-offers', false, reportUpdate);
 
         expect(report).toEqual({
             recordsScanned: 3,
             offersWithOverrides: 2,
             offersChanged: 1,
         });
+
         expect(reportUpdate).toHaveBeenCalledWith('kids-club', {
             Tuesday: [
                 {
@@ -71,21 +67,26 @@ describe('offer showtime migration', () => {
                 },
             ],
         });
+
         expect(dynamoMock.commandCalls(ScanCommand)).toHaveLength(2);
-        expect(dynamoMock.commandCalls(ScanCommand)[1].args[0].input.ExclusiveStartKey)
-            .toEqual({ offerId: 'kids-club' });
+        expect(dynamoMock.commandCalls(ScanCommand)[1].args[0].input.ExclusiveStartKey).toEqual({
+            offerId: 'kids-club',
+        });
+
         expect(dynamoMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
     it('applies screen assignments without changing override days or times', async () => {
         dynamoMock.on(ScanCommand).resolves({
-            Items: [{
-                offerId: 'kids-club',
-                overrideShowtimes: {
-                    Tuesday: ['11:00'],
-                    Friday: ['19:00'],
+            Items: [
+                {
+                    offerId: 'kids-club',
+                    overrideShowtimes: {
+                        Tuesday: ['11:00'],
+                        Friday: ['19:00'],
+                    },
                 },
-            }],
+            ],
         });
 
         const report = await updateOfferShowtimes(client, 'test-offers', true);
@@ -95,6 +96,7 @@ describe('offer showtime migration', () => {
             offersWithOverrides: 1,
             offersChanged: 1,
         });
+
         expect(dynamoMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-offers',
             Key: { offerId: 'kids-club' },
@@ -102,14 +104,18 @@ describe('offer showtime migration', () => {
             ConditionExpression: 'attribute_exists(#offerId)',
             ExpressionAttributeValues: {
                 ':overrideShowtimes': {
-                    Tuesday: [{
-                        screen: randomScreenForShowtime('kids-club:Tuesday:0:11:00'),
-                        time: '11:00',
-                    }],
-                    Friday: [{
-                        screen: randomScreenForShowtime('kids-club:Friday:0:19:00'),
-                        time: '19:00',
-                    }],
+                    Tuesday: [
+                        {
+                            screen: randomScreenForShowtime('kids-club:Tuesday:0:11:00'),
+                            time: '11:00',
+                        },
+                    ],
+                    Friday: [
+                        {
+                            screen: randomScreenForShowtime('kids-club:Friday:0:19:00'),
+                            time: '19:00',
+                        },
+                    ],
                 },
             },
         });
@@ -123,19 +129,23 @@ describe('offer showtime migration', () => {
             ],
         });
 
-        await expect(updateOfferShowtimes(client, 'test-offers', true))
-            .rejects.toThrow('Offer invalid has an invalid showtime on Monday.');
+        await expect(updateOfferShowtimes(client, 'test-offers', true)).rejects.toThrow(
+            'Offer invalid has an invalid showtime on Monday.',
+        );
+
         expect(dynamoMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
     it('does not rewrite overrides that already have screen assignments', async () => {
         dynamoMock.on(ScanCommand).resolves({
-            Items: [{
-                offerId: 'kids-club',
-                overrideShowtimes: {
-                    Tuesday: [{ screen: '4', time: '11:00' }],
+            Items: [
+                {
+                    offerId: 'kids-club',
+                    overrideShowtimes: {
+                        Tuesday: [{ screen: '4', time: '11:00' }],
+                    },
                 },
-            }],
+            ],
         });
 
         const report = await updateOfferShowtimes(client, 'test-offers', true);

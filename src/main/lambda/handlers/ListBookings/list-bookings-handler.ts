@@ -4,21 +4,18 @@ import { GuestBookingError, listGuestBookedSeats } from '../GuestBooking/guest-b
 import { ShowtimeIdError } from '../utils/showtime-ids';
 import { json, log } from '../utils/common';
 
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
     const query = event.queryStringParameters ?? {};
+
     if (query.showtimeId !== undefined) {
         try {
-            return json(
-                200,
-                await listGuestBookedSeats(query.showtimeId, query.date)
-            );
+            return json(200, await listGuestBookedSeats(query.showtimeId, query.date));
         } catch (error: unknown) {
             if (error instanceof ShowtimeIdError) {
                 return json(error.statusCode, { message: error.message });
             }
+
             if (error instanceof GuestBookingError) {
                 if (error.statusCode >= 500) {
                     log('ERROR', 'Failed to list guest booked seats', {
@@ -26,12 +23,15 @@ export const handler = async (
                         statusCode: error.statusCode,
                     });
                 }
+
                 return json(error.statusCode, { message: error.message });
             }
+
             log('ERROR', 'Failed to list guest booked seats', {
                 requestId,
                 errorName: error instanceof Error ? error.name : 'UnknownError',
             });
+
             return json(500, { message: 'Unable to list booked seats.' });
         }
     }
@@ -39,6 +39,7 @@ export const handler = async (
     try {
         const selection = parseShowingQuery(query);
         const { showtime, bookedSeats } = await listBookedSeats(selection);
+
         return json(200, {
             movieId: selection.movieId,
             date: selection.date,
@@ -49,16 +50,20 @@ export const handler = async (
         if (error instanceof ShowtimeIdError) {
             return json(error.statusCode, { message: error.message });
         }
+
         if (error instanceof BookingServiceError) {
             if (error.statusCode >= 500) {
                 log('ERROR', 'Failed to list bookings', { requestId, error: error.message });
             }
+
             return json(error.statusCode, { message: error.message });
         }
+
         log('ERROR', 'Failed to list bookings', {
             requestId,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
+
         return json(500, { message: 'Unable to list bookings.' });
     }
 };

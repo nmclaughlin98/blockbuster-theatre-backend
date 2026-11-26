@@ -1,21 +1,17 @@
-import type {
-    APIGatewayProxyEventV2,
-    APIGatewayProxyResultV2,
-} from 'aws-lambda';
-import {
-    DynamoDBDocumentClient,
-    QueryCommand,
-    TransactWriteCommand,
-} from '@aws-sdk/lib-dynamodb';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { DynamoDBDocumentClient, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 process.env.BOOKINGS_TABLE_NAME = 'test-bookings-table';
 process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/RescheduleCustomerBooking/reschedule-customer-booking-handler') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
+let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+
+beforeAll(async () => {
+    ({ handler } =
+        await import('../../../main/lambda/handlers/RescheduleCustomerBooking/reschedule-customer-booking-handler'));
+});
 
 const booking = {
     showtimeId: '456000_2026-11-02_1900',
@@ -41,7 +37,7 @@ const booking = {
 
 function createEvent(
     queryStringParameters?: Record<string, string>,
-    body = JSON.stringify({ newShowtimeId: '456000_2026-11-23_1930' })
+    body = JSON.stringify({ newShowtimeId: '456000_2026-11-23_1930' }),
 ): APIGatewayProxyEventV2 {
     return {
         body,
@@ -52,13 +48,13 @@ function createEvent(
 
 async function invoke(event: APIGatewayProxyEventV2): Promise<Exclude<APIGatewayProxyResultV2, string>> {
     const result = await handler(event);
+
     if (typeof result === 'string') throw new Error('Expected a structured response.');
+
     return result;
 }
 
-function responseBody(
-    result: Exclude<APIGatewayProxyResultV2, string>
-): Record<string, unknown> {
+function responseBody(result: Exclude<APIGatewayProxyResultV2, string>): Record<string, unknown> {
     return JSON.parse(result.body as string) as Record<string, unknown>;
 }
 
@@ -78,10 +74,12 @@ describe('Reschedule booking Lambda handler', () => {
     it('moves the booking and each seat lock in one transaction', async () => {
         ddbMock.on(TransactWriteCommand).resolves({});
 
-        const result = await invoke(createEvent({
-            showtimeId: booking.showtimeId,
-            bookingRef: booking.bookingRef,
-        }));
+        const result = await invoke(
+            createEvent({
+                showtimeId: booking.showtimeId,
+                bookingRef: booking.bookingRef,
+            }),
+        );
 
         expect(result.statusCode).toBe(200);
         expect(responseBody(result)).toMatchObject({
@@ -93,18 +91,21 @@ describe('Reschedule booking Lambda handler', () => {
             screen: '2',
             seats: ['B4', 'B5'],
         });
+
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-bookings-table',
             KeyConditionExpression: '#showtimeId = :showtimeId AND begins_with(#seatId, :bookingPrefix)',
             FilterExpression: '#bookingRef = :bookingRef',
             ConsistentRead: true,
         });
+
         const items = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems!;
         expect(items).toHaveLength(7);
         expect(items[0].Delete).toMatchObject({
             Key: { showtimeId: booking.showtimeId, seatId: booking.seatId },
             ConditionExpression: 'attribute_exists(seatId)',
         });
+
         expect(items[1].Put).toMatchObject({
             Item: {
                 showtimeId: '456000_2026-11-23_1930',
@@ -117,6 +118,7 @@ describe('Reschedule booking Lambda handler', () => {
             },
             ConditionExpression: 'attribute_not_exists(seatId)',
         });
+
         expect(items.slice(2, 4).map((item) => item.Delete?.Key?.seatId)).toEqual(['B4', 'B5']);
         expect(items.slice(4, 6).map((item) => item.Put?.Item)).toEqual([
             expect.objectContaining({
@@ -132,9 +134,13 @@ describe('Reschedule booking Lambda handler', () => {
                 recordType: 'SEAT',
             }),
         ]);
-        expect(items.slice(4, 6).every((item) =>
-            item.Put?.ConditionExpression === 'attribute_not_exists(seatId)'
-        )).toBe(true);
+
+        expect(
+            items
+                .slice(4, 6)
+                .every((item) => item.Put?.ConditionExpression === 'attribute_not_exists(seatId)'),
+        ).toBe(true);
+
         expect(items[6].ConditionCheck).toMatchObject({
             TableName: 'test-showtime-registry',
             Key: { registryKey: 'SHOWTIME#456000_2026-11-23_1930' },
@@ -145,10 +151,13 @@ describe('Reschedule booking Lambda handler', () => {
         const missingQuery = await invoke(createEvent());
         expect(missingQuery.statusCode).toBe(400);
 
-        const missingTarget = await invoke(createEvent(
-            { showtimeId: booking.showtimeId, bookingRef: booking.bookingRef },
-            JSON.stringify({})
-        ));
+        const missingTarget = await invoke(
+            createEvent(
+                { showtimeId: booking.showtimeId, bookingRef: booking.bookingRef },
+                JSON.stringify({}),
+            ),
+        );
+
         expect(missingTarget.statusCode).toBe(400);
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
     });
@@ -156,10 +165,12 @@ describe('Reschedule booking Lambda handler', () => {
     it('returns 404 when no matching booking exists', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [] });
 
-        const result = await invoke(createEvent({
-            showtimeId: booking.showtimeId,
-            bookingRef: booking.bookingRef,
-        }));
+        const result = await invoke(
+            createEvent({
+                showtimeId: booking.showtimeId,
+                bookingRef: booking.bookingRef,
+            }),
+        );
 
         expect(result.statusCode).toBe(404);
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
@@ -167,30 +178,36 @@ describe('Reschedule booking Lambda handler', () => {
 
     it('rejects invalid dates and a target equal to the current showtime', async () => {
         const query = { showtimeId: booking.showtimeId, bookingRef: booking.bookingRef };
-        const sameShowtime = await invoke(createEvent(
-            query,
-            JSON.stringify({ newShowtimeId: booking.showtimeId })
-        ));
+        const sameShowtime = await invoke(
+            createEvent(query, JSON.stringify({ newShowtimeId: booking.showtimeId })),
+        );
+
         expect(sameShowtime.statusCode).toBe(400);
 
-        const invalidDate = await invoke(createEvent(
-            query,
-            JSON.stringify({ newShowtimeId: '456000_2026-11-23_1930', date: '2026-02-30' })
-        ));
+        const invalidDate = await invoke(
+            createEvent(
+                query,
+                JSON.stringify({ newShowtimeId: '456000_2026-11-23_1930', date: '2026-02-30' }),
+            ),
+        );
+
         expect(invalidDate.statusCode).toBe(400);
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
 
     it('returns 409 when a seat at the target showtime is unavailable', async () => {
-        ddbMock.on(TransactWriteCommand).rejects(Object.assign(
-            new Error('Transaction cancelled'),
-            { name: 'TransactionCanceledException' }
-        ));
+        ddbMock
+            .on(TransactWriteCommand)
+            .rejects(
+                Object.assign(new Error('Transaction cancelled'), { name: 'TransactionCanceledException' }),
+            );
 
-        const result = await invoke(createEvent({
-            showtimeId: booking.showtimeId,
-            bookingRef: booking.bookingRef,
-        }));
+        const result = await invoke(
+            createEvent({
+                showtimeId: booking.showtimeId,
+                bookingRef: booking.bookingRef,
+            }),
+        );
 
         expect(result.statusCode).toBe(409);
         expect(responseBody(result).message).toContain('seats are unavailable');

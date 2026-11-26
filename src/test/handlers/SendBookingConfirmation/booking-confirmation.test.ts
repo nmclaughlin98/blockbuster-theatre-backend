@@ -5,9 +5,12 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 const sesMock = mockClient(SESv2Client);
 const ssmMock = mockClient(SSMClient);
-const { handler } = require('../../../main/lambda/handlers/SendBookingConfirmation/send-booking-confirmation-handler') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
+let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+
+beforeAll(async () => {
+    ({ handler } =
+        await import('../../../main/lambda/handlers/SendBookingConfirmation/send-booking-confirmation-handler'));
+});
 
 const booking = {
     bookingRef: 'BBT-123456',
@@ -74,13 +77,15 @@ describe('booking confirmation email handler', () => {
             message: 'Booking reservation confirmation email sent.',
             bookingRef: booking.bookingRef,
         });
+
         const sent = sesMock.calls()[0].args[0].input;
         expect(sent.FromEmailAddress).toBe('niallmclaughlin1998@gmail.com');
         expect(sent.Destination?.ToAddresses).toEqual([booking.customer.email]);
         expect(sent.Content?.Simple?.Subject?.Data).toContain(booking.bookingRef);
         expect(sent.Content?.Simple?.Body?.Text?.Data).toContain(
-            'Your seat reservation has been recorded, but payment has not been processed.'
+            'Your seat reservation has been recorded, but payment has not been processed.',
         );
+
         const html = sent.Content?.Simple?.Body?.Html?.Data ?? '';
         expect(html).toContain('background-color:#0c0d12');
         expect(html).toContain('<meta name="color-scheme" content="dark">');
@@ -103,8 +108,9 @@ describe('booking confirmation email handler', () => {
         expect(html).toContain('src="cid:booking-reference-qr"');
         expect(html).toContain('REFERENCE ONLY - NOT VALID FOR ENTRY');
         expect(html.indexOf('src="cid:booking-reference-qr"')).toBeGreaterThan(
-            html.indexOf(`REF: ${booking.bookingRef}`)
+            html.indexOf(`REF: ${booking.bookingRef}`),
         );
+
         const qrCode = sent.Content?.Simple?.Attachments?.[0];
         expect(qrCode).toMatchObject({
             ContentType: 'image/png',
@@ -112,8 +118,9 @@ describe('booking confirmation email handler', () => {
             ContentId: 'booking-reference-qr',
             FileName: 'booking-reference.png',
         });
+
         expect(Buffer.from(qrCode?.RawContent ?? []).subarray(0, 8)).toEqual(
-            Buffer.from('89504e470d0a1a0a', 'hex')
+            Buffer.from('89504e470d0a1a0a', 'hex'),
         );
     });
 
@@ -146,6 +153,7 @@ describe('booking confirmation email handler', () => {
         ssmMock.on(GetParameterCommand, { Name: parameterName }).resolves({
             Parameter: { Value: '11' },
         });
+
         sesMock.on(SendEmailCommand).resolves({});
         const elevenTickets = {
             ...booking,
@@ -187,10 +195,9 @@ describe('booking confirmation email handler', () => {
             seats: ['A1'],
         };
 
-        const result = await handler(createEvent(
-            Buffer.from(JSON.stringify(singleTicket)).toString('base64'),
-            true
-        ));
+        const result = await handler(
+            createEvent(Buffer.from(JSON.stringify(singleTicket)).toString('base64'), true),
+        );
 
         expect(result.statusCode).toBe(200);
         const sent = sesMock.calls()[0].args[0].input;

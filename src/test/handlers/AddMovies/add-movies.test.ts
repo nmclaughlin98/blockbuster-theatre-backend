@@ -1,7 +1,4 @@
-import type {
-    APIGatewayProxyEventV2,
-    APIGatewayProxyResultV2,
-} from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import {
     DynamoDBDocumentClient,
     QueryCommand,
@@ -18,9 +15,11 @@ process.env.TMDB_TIMEOUT_MS = '1000';
 process.env.TMDB_RETRIES = '2';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../main/lambda/handlers/AddMovies/add-movies-handler') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
+let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+
+beforeAll(async () => {
+    ({ handler } = await import('../../../main/lambda/handlers/AddMovies/add-movies-handler'));
+});
 
 const fetchMock: jest.MockedFunction<typeof fetch> = jest.fn();
 global.fetch = fetchMock;
@@ -32,18 +31,15 @@ function createEvent(body: string | undefined): APIGatewayProxyEventV2 {
     } as unknown as APIGatewayProxyEventV2;
 }
 
-function structuredResult(
-    result: APIGatewayProxyResultV2
-): Exclude<APIGatewayProxyResultV2, string> {
+function structuredResult(result: APIGatewayProxyResultV2): Exclude<APIGatewayProxyResultV2, string> {
     if (typeof result === 'string') {
         throw new Error('Expected a structured API Gateway response.');
     }
+
     return result;
 }
 
-async function invoke(
-    body: string | undefined
-): Promise<Exclude<APIGatewayProxyResultV2, string>> {
+async function invoke(body: string | undefined): Promise<Exclude<APIGatewayProxyResultV2, string>> {
     return structuredResult(await handler(createEvent(body)));
 }
 
@@ -68,7 +64,7 @@ function tmdbMovie(id: number) {
 function tmdbResponse(
     body: unknown,
     status = 200,
-    responseHeaders: HeadersInit = { 'Content-Type': 'application/json' }
+    responseHeaders: HeadersInit = { 'Content-Type': 'application/json' },
 ): Response {
     return new Response(JSON.stringify(body), {
         status,
@@ -76,12 +72,14 @@ function tmdbResponse(
     });
 }
 
-function loadHandlerWithEnvironment(
-    overrides: Record<string, string | undefined>
-): typeof handler {
+async function loadHandlerWithEnvironment(
+    overrides: Record<string, string | undefined>,
+): Promise<typeof handler> {
     const environment = new Map<string, string | undefined>();
+
     for (const [name, value] of Object.entries(overrides)) {
         environment.set(name, process.env[name]);
+
         if (value === undefined) {
             delete process.env[name];
         } else {
@@ -91,11 +89,10 @@ function loadHandlerWithEnvironment(
 
     try {
         jest.resetModules();
-        return (
-            require('../../../main/lambda/handlers/AddMovies/add-movies-handler') as {
-                handler: typeof handler;
-            }
-        ).handler;
+
+        const module = await import('../../../main/lambda/handlers/AddMovies/add-movies-handler');
+
+        return module.handler;
     } finally {
         for (const [name, value] of environment) {
             if (value === undefined) {
@@ -107,9 +104,7 @@ function loadHandlerWithEnvironment(
     }
 }
 
-function responseBody(
-    result: Exclude<APIGatewayProxyResultV2, string>
-): Record<string, any> {
+function responseBody(result: Exclude<APIGatewayProxyResultV2, string>): Record<string, any> {
     return JSON.parse(result.body as string);
 }
 
@@ -147,20 +142,17 @@ describe('Add movies Lambda handler', () => {
     it('rejects empty, oversized, and non-numeric movie ID batches', async () => {
         const emptyResult = await invoke(JSON.stringify({ movieIds: [] }));
         expect(emptyResult.statusCode).toBe(400);
-        expect(responseBody(emptyResult).message).toBe(
-            'movieIds must be a non-empty array.'
-        );
+        expect(responseBody(emptyResult).message).toBe('movieIds must be a non-empty array.');
 
         const nullBodyResult = await invoke('null');
         expect(nullBodyResult.statusCode).toBe(400);
 
         const oversizedResult = await invoke(
-            JSON.stringify({ movieIds: Array.from({ length: 26 }, (_, i) => i + 1) })
+            JSON.stringify({ movieIds: Array.from({ length: 26 }, (_, i) => i + 1) }),
         );
+
         expect(oversizedResult.statusCode).toBe(400);
-        expect(responseBody(oversizedResult).message).toBe(
-            'movieIds cannot exceed 25 items per request.'
-        );
+        expect(responseBody(oversizedResult).message).toBe('movieIds cannot exceed 25 items per request.');
 
         const invalidResult = await invoke(JSON.stringify({ movieIds: ['12x'] }));
         expect(invalidResult.statusCode).toBe(400);
@@ -168,14 +160,17 @@ describe('Add movies Lambda handler', () => {
             message: 'All movieIds must be numeric TMDB IDs.',
             invalid: ['12x'],
         });
+
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('fetches and upserts unique movie IDs and reports the batch summary', async () => {
         fetchMock.mockImplementation(async (input) => {
             const id = Number(new URL(String(input)).pathname.split('/').pop());
+
             return tmdbResponse(tmdbMovie(id));
         });
+
         ddbMock.on(UpdateCommand).resolves({});
 
         const result = await invoke(JSON.stringify({ movieIds: [123, '123', 456] }));
@@ -188,27 +183,31 @@ describe('Add movies Lambda handler', () => {
             failedCount: 0,
             dedupedFrom: 3,
         });
+
         expect(body.successful).toEqual([
             { id: '123', status: 'SUCCESS', title: 'Movie 123' },
             { id: '456', status: 'SUCCESS', title: 'Movie 456' },
         ]);
+
         expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(
-            new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')
-        ).toBe('Bearer test-token');
+        expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe(
+            'Bearer test-token',
+        );
+
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(2);
-        expect(
-            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.ExpressionAttributeValues
-        ).toMatchObject({
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.ExpressionAttributeValues).toMatchObject({
             ':isComingSoon': false,
             ':sortTitle': 'Movie 123',
         });
-        expect(
-            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression
-        ).toContain('sortTitle = :sortTitle');
-        expect(
-            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression
-        ).toContain('isComingSoon = if_not_exists(isComingSoon, :isComingSoon)');
+
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression).toContain(
+            'sortTitle = :sortTitle',
+        );
+
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression).toContain(
+            'isComingSoon = if_not_exists(isComingSoon, :isComingSoon)',
+        );
+
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.Key).toEqual({
             tmdbId: '123',
             slug: 'movie-123',
@@ -225,6 +224,7 @@ describe('Add movies Lambda handler', () => {
         expect(responseBody(result).successful).toEqual([
             { id: '123', status: 'SUCCESS', title: 'Movie 123' },
         ]);
+
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
         const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
@@ -258,6 +258,7 @@ describe('Add movies Lambda handler', () => {
                 },
             ],
         });
+
         ddbMock.on(TransactWriteCommand).resolves({});
 
         const result = await invoke(JSON.stringify({ movieIds: [123] }));
@@ -281,34 +282,33 @@ describe('Add movies Lambda handler', () => {
                 },
             },
         ]);
+
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
     it('marks imported movies as coming soon when requested', async () => {
         ddbMock.on(UpdateCommand).resolves({});
 
-        const result = await invoke(
-            JSON.stringify({ movieIds: [123], isComingSoon: true })
-        );
+        const result = await invoke(JSON.stringify({ movieIds: [123], isComingSoon: true }));
 
         expect(result.statusCode).toBe(200);
-        expect(
-            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.ExpressionAttributeValues
-        ).toMatchObject({ ':isComingSoon': true });
-        expect(
-            ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression
-        ).toContain('isComingSoon = :isComingSoon');
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.ExpressionAttributeValues).toMatchObject({
+            ':isComingSoon': true,
+        });
+
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input.UpdateExpression).toContain(
+            'isComingSoon = :isComingSoon',
+        );
     });
 
     it('rejects a non-boolean coming-soon flag', async () => {
-        const result = await invoke(
-            JSON.stringify({ movieIds: [123], isComingSoon: 'yes' })
-        );
+        const result = await invoke(JSON.stringify({ movieIds: [123], isComingSoon: 'yes' }));
 
         expect(result.statusCode).toBe(400);
         expect(responseBody(result)).toEqual({
             message: 'isComingSoon must be a boolean.',
         });
+
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -320,9 +320,7 @@ describe('Add movies Lambda handler', () => {
 
         expect(result.statusCode).toBe(200);
         expect(body.summary).toMatchObject({ total: 1, successCount: 0, failedCount: 1 });
-        expect(body.failed).toEqual([
-            { id: '987', status: 'FAILED', error: 'Movie not found on TMDB' },
-        ]);
+        expect(body.failed).toEqual([{ id: '987', status: 'FAILED', error: 'Movie not found on TMDB' }]);
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
@@ -338,6 +336,7 @@ describe('Add movies Lambda handler', () => {
                 error: 'TMDB returned an invalid movie response',
             },
         ]);
+
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
@@ -347,9 +346,7 @@ describe('Add movies Lambda handler', () => {
         const result = await invoke(JSON.stringify({ movieIds: [123] }));
 
         expect(result.statusCode).toBe(200);
-        expect(responseBody(result).failed).toEqual([
-            { id: '123', status: 'FAILED', error: 'Write failed' },
-        ]);
+        expect(responseBody(result).failed).toEqual([{ id: '123', status: 'FAILED', error: 'Write failed' }]);
     });
 
     it('retries TMDB server failures before succeeding', async () => {
@@ -358,9 +355,10 @@ describe('Add movies Lambda handler', () => {
                 tmdbResponse({}, 503, {
                     'Content-Type': 'application/json',
                     'retry-after': '0',
-                })
+                }),
             )
             .mockResolvedValueOnce(tmdbResponse(tmdbMovie(234)));
+
         ddbMock.on(UpdateCommand).resolves({});
 
         const result = await invoke(JSON.stringify({ movieIds: [234] }));
@@ -369,6 +367,7 @@ describe('Add movies Lambda handler', () => {
         expect(responseBody(result).successful).toEqual([
             { id: '234', status: 'SUCCESS', title: 'Movie 234' },
         ]);
+
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
@@ -377,14 +376,12 @@ describe('Add movies Lambda handler', () => {
             tmdbResponse({}, 429, {
                 'Content-Type': 'application/json',
                 'retry-after': '0',
-            })
+            }),
         );
 
         const result = await invoke(JSON.stringify({ movieIds: [345] }));
 
-        expect(responseBody(result).failed).toEqual([
-            { id: '345', status: 'FAILED', error: 'TMDB 429' },
-        ]);
+        expect(responseBody(result).failed).toEqual([{ id: '345', status: 'FAILED', error: 'TMDB 429' }]);
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
@@ -399,9 +396,7 @@ describe('Add movies Lambda handler', () => {
             },
         ]);
 
-        fetchMock.mockRejectedValue(
-            Object.assign(new Error('request aborted'), { name: 'AbortError' })
-        );
+        fetchMock.mockRejectedValue(Object.assign(new Error('request aborted'), { name: 'AbortError' }));
         const timedOut = await invoke(JSON.stringify({ movieIds: [567] }));
         expect(responseBody(timedOut).failed).toEqual([
             { id: '567', status: 'FAILED', error: 'TMDB request timed out' },
@@ -423,17 +418,16 @@ describe('Add movies Lambda handler', () => {
     });
 
     it('returns configuration errors when required environment values are absent', async () => {
-        const missingTableHandler = loadHandlerWithEnvironment({ TABLE_NAME: undefined });
+        const missingTableHandler = await loadHandlerWithEnvironment({ TABLE_NAME: undefined });
         const missingTable = structuredResult(await missingTableHandler(createEvent('{}')));
         expect(responseBody(missingTable)).toEqual({
             message: 'TABLE_NAME is not configured.',
         });
 
-        const missingTokenHandler = loadHandlerWithEnvironment({ TMDB_API_KEY: undefined });
+        const missingTokenHandler = await loadHandlerWithEnvironment({ TMDB_API_KEY: undefined });
         const missingToken = structuredResult(await missingTokenHandler(createEvent('{}')));
         expect(responseBody(missingToken)).toEqual({
             message: 'TMDB_API_KEY is not configured.',
         });
-
     });
 });
