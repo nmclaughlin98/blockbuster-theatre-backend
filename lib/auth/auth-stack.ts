@@ -1,15 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
-import { AuthSsmHelper } from '../shared';
+import { AuthSsmHelper, type BlockbusterTheatreAuthStackProps } from '../shared';
 import { createCognitoResources } from './cognito-construct';
 import { createBookingsResourceServer } from './resource-servers-construct';
-
-export interface BlockbusterTheatreAuthStackProps extends cdk.StackProps {
-    readonly domainPrefix?: string;
-    readonly resourceServerIdentifier?: string;
-    readonly removalPolicy?: cdk.RemovalPolicy;
-}
 
 export class AuthStack extends cdk.Stack {
     public readonly userPool: cognito.UserPool;

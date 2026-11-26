@@ -1,5 +1,7 @@
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
+import type { AuthParameters } from './interfaces/auth-parameters';
+import type { WriteAuthParametersProps } from './interfaces/write-auth-parameters-props';
 
 export const AUTH_SSM_PARAMETER_NAMES = {
     USER_POOL_ID: '/blockbuster-theatre/auth/user-pool-id',
@@ -8,22 +10,6 @@ export const AUTH_SSM_PARAMETER_NAMES = {
     POSTMAN_CLIENT_ID: '/blockbuster-theatre/auth/clients/postman-id',
     ALEXA_CLIENT_ID: '/blockbuster-theatre/auth/clients/alexa-id',
 } as const;
-
-export interface AuthParameters {
-    readonly userPoolId: string;
-    readonly userPoolArn: string;
-    readonly backendClientId: string;
-    readonly postmanClientId: string;
-    readonly alexaClientId: string;
-}
-
-export interface WriteAuthParametersProps {
-    readonly userPoolId: string;
-    readonly userPoolArn: string;
-    readonly backendClientId: string;
-    readonly postmanClientId: string;
-    readonly alexaClientId: string;
-}
 
 export class AuthSsmHelper {
     public static writeAuthParameters(scope: Construct, props: WriteAuthParametersProps): void {

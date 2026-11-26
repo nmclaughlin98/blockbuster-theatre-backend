@@ -8,17 +8,16 @@
 <!-- pr-commits:start -->
 <!-- pr-commits:end -->
 
-## Summary (optional)
-
+## Summary
+<!-- pr-summary:start -->
 <!-- Add a brief summary if useful. -->
+<!-- pr-summary:end -->
 
 
 ## Testing
-
-<!-- Include commands run and their results. -->
-
-- [ ] Tests pass
-- [ ] Build/type-check passes
+<!-- pr-testing:start -->
+CI results will be updated when the build workflow completes.
+<!-- pr-testing:end -->
 
 ## API, data, or infrastructure impact
 

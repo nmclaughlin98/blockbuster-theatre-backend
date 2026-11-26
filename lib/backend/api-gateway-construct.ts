@@ -5,36 +5,7 @@ import { RemovalPolicy } from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { resourceName, type EnvironmentName } from '../shared';
-
-interface ApiGatewayConstructProps {
-    addMoviesFunction: lambda.IFunction;
-    updateMoviesFunction: lambda.IFunction;
-    listMoviesFunction: lambda.IFunction;
-    listFeaturedMoviesFunction: lambda.IFunction;
-    getMovieFunction: lambda.IFunction;
-    exportMoviesFunction: lambda.IFunction;
-    listTmdbIdsFunction: lambda.IFunction;
-    listFilmSelectionsFunction: lambda.IFunction;
-    getTicketPricingFunction: lambda.IFunction;
-    validateCheckoutFunction: lambda.IFunction;
-    sendBookingConfirmationFunction: lambda.IFunction;
-    upsertBookingOffersFunction: lambda.IFunction;
-    upsertTicketPricingFunction: lambda.IFunction;
-    listMovieCollectionsFunction: lambda.IFunction;
-    getMovieCollectionFunction: lambda.IFunction;
-    refreshMovieCollectionFunction: lambda.IFunction;
-    listBookingsFunction: lambda.IFunction;
-    createBookingFunction: lambda.IFunction;
-    rescheduleBookingFunction: lambda.IFunction;
-    manageShowtimesFunction: lambda.IFunction;
-    guestBookedSeatsFunction: lambda.IFunction;
-    guestBookingFunction: lambda.IFunction;
-    guestConversionFunction: lambda.IFunction;
-    downloadTicketFunction: lambda.IFunction;
-    jwtAuthorizer: authorizers.HttpJwtAuthorizer;
-    envName?: EnvironmentName;
-}
+import { resourceName, type ApiGatewayConstructProps, type EnvironmentName } from '../shared';
 
 export class ApiGatewayConstruct extends Construct {
     public readonly httpApi: apigw2.HttpApi;

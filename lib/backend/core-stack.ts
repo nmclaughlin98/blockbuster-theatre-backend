@@ -6,16 +6,13 @@ import { Construct } from 'constructs';
 import { DatabaseConstruct } from './database-construct';
 import { ApiGatewayConstruct } from './api-gateway-construct';
 import { LambdaConstruct } from './lambdas-construct';
-import { AuthSsmHelper, type AuthParameters, type EnvironmentName, resourceName } from '../shared';
-
-export interface BackendStackProps extends cdk.StackProps {
-    readonly envName?: EnvironmentName;
-    readonly authParameters?: Partial<AuthParameters>;
-    readonly prodUserPoolId?: string;
-    readonly prodUserPoolClientId?: string;
-    readonly prodPostmanClientId?: string;
-    readonly prodAlexaClientId?: string;
-}
+import {
+    AuthSsmHelper,
+    type AuthParameters,
+    type BackendStackProps,
+    type EnvironmentName,
+    resourceName,
+} from '../shared';
 
 export class BackendStack extends cdk.Stack {
     public readonly database: DatabaseConstruct;

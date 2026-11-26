@@ -5,12 +5,12 @@ import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { execFileSync } from 'child_process';
 import * as path from 'path';
+import { LambdaConstruct } from '../../../lib/backend';
 import {
-    LambdaConstruct,
     maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
-} from '../../../lib/backend';
+} from '../../../lib/shared/lambda-config';
 import { maxTicketsParameterForEnvironment } from '../../../lib/shared';
 
 process.env.TMDB_API_KEY = 'test-token';
