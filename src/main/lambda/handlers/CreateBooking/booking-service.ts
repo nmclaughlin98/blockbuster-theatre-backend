@@ -13,7 +13,6 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 const SEAT_ID_PATTERN = /^[A-G](?:[1-9]|1[01])$/;
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const MAX_SEATS_PER_BOOKING = 30;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -234,13 +233,6 @@ function requiredEnvironmentVariable(name: string): string {
 function parseSeats(value: unknown): string[] {
     if (!Array.isArray(value) || value.length === 0) {
         throw new BookingServiceError(400, 'seats must be a non-empty array of seat IDs.');
-    }
-
-    if (value.length > MAX_SEATS_PER_BOOKING) {
-        throw new BookingServiceError(
-            400,
-            `A maximum of ${MAX_SEATS_PER_BOOKING} seats can be booked at once.`,
-        );
     }
 
     const seats = value.map((seat) => (typeof seat === 'string' ? seat.trim().toUpperCase() : ''));

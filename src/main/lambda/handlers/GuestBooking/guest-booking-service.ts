@@ -10,7 +10,6 @@ import { parseShowtimeId, resolveShowtimeId } from '../utils/showtime-ids';
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const SEAT_ID_PATTERN = /^[A-G](?:[1-9]|1[01])$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_SEATS_PER_BOOKING = 30;
 const CONVERSION_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 
 type UnknownRecord = Record<string, unknown>;
@@ -50,13 +49,6 @@ function requiredEnvironmentVariable(name: string): string {
 function parseSeats(value: unknown): string[] {
     if (!Array.isArray(value) || value.length === 0) {
         throw new GuestBookingError(400, 'seats must be a non-empty array of seat IDs.');
-    }
-
-    if (value.length > MAX_SEATS_PER_BOOKING) {
-        throw new GuestBookingError(
-            400,
-            `A maximum of ${MAX_SEATS_PER_BOOKING} seats can be booked at once.`,
-        );
     }
 
     const seats = value.map((seat) => (typeof seat === 'string' ? seat.trim().toUpperCase() : ''));
@@ -130,8 +122,8 @@ function parseRequest(value: unknown): GuestBookingRequest {
 }
 
 function parseTickets(value: unknown): Array<{ tierId: string; quantity: number }> {
-    if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SEATS_PER_BOOKING) {
-        throw new GuestBookingError(400, `tickets must contain 1-${MAX_SEATS_PER_BOOKING} ticket tiers.`);
+    if (!Array.isArray(value) || value.length === 0) {
+        throw new GuestBookingError(400, 'tickets must be a non-empty array.');
     }
 
     const tickets: Array<{ tierId: string; quantity: number }> = [];
@@ -225,11 +217,11 @@ export async function createGuestBooking(value: unknown, userId?: string): Promi
     const bookingOwnership =
         userId === undefined
             ? {
-                  kind: 'guest' as const,
-                  conversionToken: `cnv_tok_${randomBytes(32).toString('base64url')}`,
-                  expiresAt: now + CONVERSION_TOKEN_TTL_SECONDS,
-                  conversionTokenTableName: requiredEnvironmentVariable('GUEST_CONVERSION_TOKENS_TABLE_NAME'),
-              }
+                kind: 'guest' as const,
+                conversionToken: `cnv_tok_${randomBytes(32).toString('base64url')}`,
+                expiresAt: now + CONVERSION_TOKEN_TTL_SECONDS,
+                conversionTokenTableName: requiredEnvironmentVariable('GUEST_CONVERSION_TOKENS_TABLE_NAME'),
+            }
             : { kind: 'account' as const, userId };
 
     const bookedAt = new Date().toISOString();
@@ -299,20 +291,20 @@ export async function createGuestBooking(value: unknown, userId?: string): Promi
             },
             ...(bookingOwnership.kind === 'guest'
                 ? [
-                      {
-                          Put: {
-                              TableName: bookingOwnership.conversionTokenTableName,
-                              Item: {
-                                  tokenHash: tokenHash(bookingOwnership.conversionToken),
-                                  bookingId,
-                                  showtimeId: request.showtimeId,
-                                  customerEmail: request.email,
-                                  expiresAt: bookingOwnership.expiresAt,
-                              },
-                              ConditionExpression: 'attribute_not_exists(tokenHash)',
-                          },
-                      },
-                  ]
+                    {
+                        Put: {
+                            TableName: bookingOwnership.conversionTokenTableName,
+                            Item: {
+                                tokenHash: tokenHash(bookingOwnership.conversionToken),
+                                bookingId,
+                                showtimeId: request.showtimeId,
+                                customerEmail: request.email,
+                                expiresAt: bookingOwnership.expiresAt,
+                            },
+                            ConditionExpression: 'attribute_not_exists(tokenHash)',
+                        },
+                    },
+                ]
                 : []),
             {
                 Put: {
@@ -478,13 +470,13 @@ export async function listGuestBookedSeats(
                             : '#seatId, #recordType, #userId, #seats',
                     ...(userId !== undefined &&
                         keyName === 'showtimeId' && {
-                            ExpressionAttributeNames: {
-                                '#seatId': 'seatId',
-                                '#recordType': 'recordType',
-                                '#userId': 'userId',
-                                '#seats': 'seats',
-                            },
-                        }),
+                        ExpressionAttributeNames: {
+                            '#seatId': 'seatId',
+                            '#recordType': 'recordType',
+                            '#userId': 'userId',
+                            '#seats': 'seats',
+                        },
+                    }),
                     ConsistentRead: true,
                     ExclusiveStartKey: exclusiveStartKey,
                 }),
