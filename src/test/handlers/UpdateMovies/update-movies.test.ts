@@ -56,10 +56,12 @@ describe('Update movies Lambda handler', () => {
     beforeEach(() => {
         ddbMock.reset();
         ddbMock.on(QueryCommand).callsFake((input) => ({
-            Items: [{
+            Items: [
+                {
                     ...movieRecord,
                     tmdbId: String(input.ExpressionAttributeValues?.[':tmdbId']),
-                },],
+                },
+            ],
         }));
 
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -88,7 +90,10 @@ describe('Update movies Lambda handler', () => {
                 failedCount: 0,
                 dedupedFrom: 3,
             },
-            successful: [{ id: '123', status: 'SUCCESS' },{ id: '456', status: 'SUCCESS' },],
+            successful: [
+                { id: '123', status: 'SUCCESS' },
+                { id: '456', status: 'SUCCESS' },
+            ],
         });
 
         expect(commands).toHaveLength(2);
@@ -188,13 +193,16 @@ describe('Update movies Lambda handler', () => {
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
 
         expect(result.statusCode).toBe(200);
-        expect(transaction.TransactItems).toMatchObject([{
+        expect(transaction.TransactItems).toMatchObject([
+            {
                 Delete: { Key: { tmdbId: '123', slug: 'a-movie' } },
-            },{
+            },
+            {
                 Put: {
                     Item: { tmdbId: '123', slug: 'new-slug' },
                 },
-            },]);
+            },
+        ]);
 
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
@@ -220,9 +228,11 @@ describe('Update movies Lambda handler', () => {
 
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input).toMatchObject({
-            TransactItems: [{
+            TransactItems: [
+                {
                     Delete: { Key: { tmdbId: '123', slug: 'a-movie' } },
-                },{
+                },
+                {
                     Put: {
                         Item: {
                             tmdbId: '123',
@@ -230,7 +240,8 @@ describe('Update movies Lambda handler', () => {
                             GSI1SK: '2030-04-05#123',
                         },
                     },
-                },],
+                },
+            ],
         });
     });
 
@@ -253,7 +264,9 @@ describe('Update movies Lambda handler', () => {
 
         const result = await invoke(JSON.stringify({ movieIds: [123], updates: { visible: false } }));
 
-        expect(responseBody(result).failed).toEqual([{ id: '123', status: 'FAILED', error: 'Movie not found.' },]);
+        expect(responseBody(result).failed).toEqual([
+            { id: '123', status: 'FAILED', error: 'Movie not found.' },
+        ]);
 
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
@@ -271,18 +284,27 @@ describe('Update movies Lambda handler', () => {
         ['invalid runtime', { movieIds: [123], updates: { runtime: '100' } }],
         ['invalid genres array', { movieIds: [123], updates: { genres: ['Drama', 42] } }],
         ['invalid starring array', { movieIds: [123], updates: { starring: [null] } }],
-        ['invalid screen number',{
+        [
+            'invalid screen number',
+            {
                 movieIds: [123],
                 updates: { showtimes: { Monday: [{ screen: '6', time: '13:00' }] } },
-            },],
-        ['invalid screened showtime time',{
+            },
+        ],
+        [
+            'invalid screened showtime time',
+            {
                 movieIds: [123],
                 updates: { showtimes: { Monday: [{ screen: '2', time: '25:00' }] } },
-            },],
-        ['legacy string showtimes',{
+            },
+        ],
+        [
+            'legacy string showtimes',
+            {
                 movieIds: [123],
                 updates: { showtimes: { Monday: ['13:00'] } },
-            },],
+            },
+        ],
         ['empty IDs', { movieIds: [], updates: { title: 'New title' } }],
         ['nonnumeric ID', { movieIds: ['12x'], updates: { title: 'New title' } }],
     ])('rejects %s without writing', async (_name, request) => {
@@ -314,7 +336,10 @@ describe('Update movies Lambda handler', () => {
     });
 
     it('reports ambiguous and invalid stored movie records', async () => {
-        for (const items of [[movieRecord, { ...movieRecord, slug: 'another-slug' }],[{ ...movieRecord, title: 42 }],]) {
+        for (const items of [
+            [movieRecord, { ...movieRecord, slug: 'another-slug' }],
+            [{ ...movieRecord, title: 42 }],
+        ]) {
             ddbMock.reset();
             ddbMock.on(QueryCommand).resolves({ Items: items });
 
@@ -362,10 +387,12 @@ describe('Update movies Lambda handler', () => {
             }),
         );
 
-        expect(responseBody(result).failed).toEqual([{
+        expect(responseBody(result).failed).toEqual([
+            {
                 id: '123',
                 status: 'FAILED',
                 error: 'Failed to update movie',
-            },]);
+            },
+        ]);
     });
 });

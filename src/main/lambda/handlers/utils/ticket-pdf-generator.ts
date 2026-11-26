@@ -105,10 +105,17 @@ function buildTicketContent(doc: PDFKit.PDFDocument, input: TicketPdfInput, qrCo
         });
 
     const columnWidth = contentWidth / 2;
-    const details = [{ label: 'SHOWTIME', value: `${formatDate(input.date)} - ${input.time}` },{ label: 'SCREEN', value: `Screen ${input.screen}` },{ label: input.seats.length === 1 ? 'SEAT' : 'SEATS', value: input.seats.join(', ') },{ label: 'GUEST NAME', value: input.guestName },{
+    const details = [
+        { label: 'SHOWTIME', value: `${formatDate(input.date)} - ${input.time}` },
+        { label: 'SCREEN', value: `Screen ${input.screen}` },
+        { label: input.seats.length === 1 ? 'SEAT' : 'SEATS', value: input.seats.join(', ') },
+        { label: 'GUEST NAME', value: input.guestName },
+        {
             label: 'TICKET BREAKDOWN',
             value: `${input.ticketCount} ${input.ticketCount === 1 ? 'Ticket' : 'Tickets'}`,
-        },{ label: 'TOTAL', value: formatCurrency(input.totalAmount, input.currency) },];
+        },
+        { label: 'TOTAL', value: formatCurrency(input.totalAmount, input.currency) },
+    ];
 
     for (let index = 0; index < details.length; index += 2) {
         const rowY = 137 + (index / 2) * 45;

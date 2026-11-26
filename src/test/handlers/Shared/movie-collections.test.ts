@@ -20,7 +20,11 @@ let getCollection: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyRes
 let listCollections: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 beforeAll(async () => {
-    const [refresh, get, list] = await Promise.all([import('../../../main/lambda/handlers/RefreshMovieCollection/refresh-movie-collection-handler'),import('../../../main/lambda/handlers/GetMovieCollection/get-movie-collection-handler'),import('../../../main/lambda/handlers/ListMovieCollections/list-movie-collections-handler'),]);
+    const [refresh, get, list] = await Promise.all([
+        import('../../../main/lambda/handlers/RefreshMovieCollection/refresh-movie-collection-handler'),
+        import('../../../main/lambda/handlers/GetMovieCollection/get-movie-collection-handler'),
+        import('../../../main/lambda/handlers/ListMovieCollections/list-movie-collections-handler'),
+    ]);
 
     refreshCollection = refresh.handler;
     getCollection = get.handler;
@@ -108,7 +112,10 @@ describe('TMDB list-backed movie collections', () => {
                     backdrop_path: null,
                     page: 1,
                     total_pages: 2,
-                    items: [{ id: 1726, media_type: 'movie' },{ id: 1724, media_type: 'movie' },],
+                    items: [
+                        { id: 1726, media_type: 'movie' },
+                        { id: 1724, media_type: 'movie' },
+                    ],
                 });
             }
 
@@ -120,7 +127,10 @@ describe('TMDB list-backed movie collections', () => {
                 backdrop_path: null,
                 page: 2,
                 total_pages: 2,
-                items: [{ id: 999, media_type: 'movie' },{ id: 500, media_type: 'tv' },],
+                items: [
+                    { id: 999, media_type: 'movie' },
+                    { id: 500, media_type: 'tv' },
+                ],
             });
         });
 
@@ -134,12 +144,14 @@ describe('TMDB list-backed movie collections', () => {
         expect(responseBody(result)).toMatchObject({
             refreshedCount: 1,
             failedCount: 0,
-            results: [{
+            results: [
+                {
                     collectionId: '8706524',
                     success: true,
                     name: 'Marvel Cinematic Universe',
                     movieCount: 3,
-                },],
+                },
+            ],
         });
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -241,12 +253,15 @@ describe('TMDB list-backed movie collections', () => {
         expect(responseBody(result)).toMatchObject({
             refreshedCount: 1,
             failedCount: 1,
-            results: [{ collectionId: '8706524', success: true },{
+            results: [
+                { collectionId: '8706524', success: true },
+                {
                     collectionId: '404',
                     success: false,
                     statusCode: 404,
                     message: 'TMDB list not found.',
-                },],
+                },
+            ],
         });
 
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
@@ -263,11 +278,13 @@ describe('TMDB list-backed movie collections', () => {
         expect(missing).toMatchObject({ statusCode: 207 });
         expect(responseBody(missing)).toMatchObject({
             failedCount: 1,
-            results: [{
+            results: [
+                {
                     collectionId: '404',
                     success: false,
                     statusCode: 404,
-                },],
+                },
+            ],
         });
 
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
@@ -316,7 +333,8 @@ describe('TMDB list-backed movie collections', () => {
             .callsFake((input) =>
                 input.ExpressionAttributeValues?.[':tmdbId'] === '1726'
                     ? { Items: [movie('1726')] }
-                    : { Items: [] },);
+                    : { Items: [] },
+            );
 
         const result = await getCollection(createEvent('8706524'));
 
@@ -338,7 +356,8 @@ describe('TMDB list-backed movie collections', () => {
 
     it('lists sorted collection summaries without exposing their movie ID arrays', async () => {
         ddbMock.on(ScanCommand).resolves({
-            Items: [{
+            Items: [
+                {
                     collectionId: '20',
                     name: 'Zeta Collection',
                     description: 'Second collection.',
@@ -347,21 +366,24 @@ describe('TMDB list-backed movie collections', () => {
                     movieIds: ['1', '2'],
                     lastUpdated: '2025-01-01T00:00:00.000Z',
                     isActive: false,
-                },{
+                },
+                {
                     collectionId: '10',
                     name: 'Alpha Collection',
                     description: 'First collection.',
                     posterUrl: '',
                     backdropUrl: 'https://example.com/alpha.jpg',
                     movieIds: ['3'],
-                },],
+                },
+            ],
         });
 
         const result = await listCollections(createEvent());
 
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toEqual({
-            collections: [{
+            collections: [
+                {
                     collectionId: '10',
                     name: 'Alpha Collection',
                     description: 'First collection.',
@@ -369,7 +391,8 @@ describe('TMDB list-backed movie collections', () => {
                     backdropUrl: 'https://example.com/alpha.jpg',
                     movieCount: 1,
                     isActive: true,
-                },{
+                },
+                {
                     collectionId: '20',
                     name: 'Zeta Collection',
                     description: 'Second collection.',
@@ -378,7 +401,8 @@ describe('TMDB list-backed movie collections', () => {
                     movieCount: 2,
                     lastUpdated: '2025-01-01T00:00:00.000Z',
                     isActive: false,
-                },],
+                },
+            ],
         });
 
         expect(ddbMock.commandCalls(ScanCommand)[0].args[0].input.TableName).toBe('test-collections');
@@ -395,7 +419,8 @@ describe('TMDB list-backed movie collections', () => {
         ddbMock
             .on(ScanCommand)
             .resolvesOnce({
-                Items: [{
+                Items: [
+                    {
                         collectionId: '10',
                         name: 'Alpha Collection',
                         description: 'First collection.',
@@ -403,18 +428,21 @@ describe('TMDB list-backed movie collections', () => {
                         backdropUrl: '',
                         movieIds: ['1'],
                         isActive: true,
-                    },],
+                    },
+                ],
                 LastEvaluatedKey: { collectionId: '10' },
             })
             .resolves({
-                Items: [{
+                Items: [
+                    {
                         collectionId: '20',
                         name: 'Beta Collection',
                         description: 'Second collection.',
                         posterUrl: '',
                         backdropUrl: '',
                         movieIds: ['2'],
-                    },],
+                    },
+                ],
             });
 
         const result = await listCollections(createEvent());
@@ -443,26 +471,32 @@ describe('TMDB list-backed movie collections', () => {
 
     it('sorts collections by ID when their names are identical', async () => {
         ddbMock.on(ScanCommand).resolves({
-            Items: [{
+            Items: [
+                {
                     collectionId: '20',
                     name: 'Same Name',
                     description: '',
                     posterUrl: '',
                     backdropUrl: '',
                     movieIds: [],
-                },{
+                },
+                {
                     collectionId: '10',
                     name: 'Same Name',
                     description: '',
                     posterUrl: '',
                     backdropUrl: '',
                     movieIds: [],
-                },],
+                },
+            ],
         });
 
         const result = await listCollections(createEvent());
 
-        expect(responseBody(result).collections).toMatchObject([{ collectionId: '10' },{ collectionId: '20' },]);
+        expect(responseBody(result).collections).toMatchObject([
+            { collectionId: '10' },
+            { collectionId: '20' },
+        ]);
     });
 
     it('handles a non-Error collection-list failure without a request context', async () => {
@@ -637,20 +671,32 @@ describe('TMDB list-backed movie collections', () => {
         ['non-object payload', null],
         ['non-numeric list ID', { id: '8706524', name: 'Collection', page: 1, total_pages: 1, items: [] }],
         ['invalid name', { id: 8706524, name: 42, page: 1, total_pages: 1, items: [] }],
-        ['invalid description',{ id: 8706524, name: 'Collection', description: false, page: 1, total_pages: 1, items: [] },],
-        ['invalid poster path',{ id: 8706524, name: 'Collection', poster_path: false, page: 1, total_pages: 1, items: [] },],
-        ['invalid backdrop path',{ id: 8706524, name: 'Collection', backdrop_path: false, page: 1, total_pages: 1, items: [] },],
+        [
+            'invalid description',
+            { id: 8706524, name: 'Collection', description: false, page: 1, total_pages: 1, items: [] },
+        ],
+        [
+            'invalid poster path',
+            { id: 8706524, name: 'Collection', poster_path: false, page: 1, total_pages: 1, items: [] },
+        ],
+        [
+            'invalid backdrop path',
+            { id: 8706524, name: 'Collection', backdrop_path: false, page: 1, total_pages: 1, items: [] },
+        ],
         ['invalid page number', { id: 8706524, name: 'Collection', page: 0, total_pages: 1, items: [] }],
         ['invalid total pages', { id: 8706524, name: 'Collection', page: 1, total_pages: 0, items: [] }],
         ['non-array items', { id: 8706524, name: 'Collection', page: 1, total_pages: 1, items: {} }],
         ['invalid item ID', { id: 8706524, name: 'Collection', page: 1, total_pages: 1, items: [{ id: 0 }] }],
-        ['invalid item media type',{
+        [
+            'invalid item media type',
+            {
                 id: 8706524,
                 name: 'Collection',
                 page: 1,
                 total_pages: 1,
                 items: [{ id: 1726, media_type: 42 }],
-            },],
+            },
+        ],
         ['wrong list ID', { id: 42, name: 'Collection', page: 1, total_pages: 1, items: [] }],
         ['wrong page number', { id: 8706524, name: 'Collection', page: 2, total_pages: 2, items: [] }],
     ])('returns a gateway error for %s', async (_name, payload) => {
@@ -663,11 +709,13 @@ describe('TMDB list-backed movie collections', () => {
         );
 
         expect(result).toMatchObject({ statusCode: 207 });
-        expect(responseBody(result).results).toMatchObject([{
+        expect(responseBody(result).results).toMatchObject([
+            {
                 success: false,
                 statusCode: 502,
                 message: 'Unable to retrieve the TMDB list.',
-            },]);
+            },
+        ]);
     });
 
     it('retries a transient TMDB response and converts fetch failures to item errors', async () => {
@@ -705,10 +753,12 @@ describe('TMDB list-backed movie collections', () => {
         );
 
         expect(failed).toMatchObject({ statusCode: 207 });
-        expect(responseBody(failed).results).toMatchObject([{
+        expect(responseBody(failed).results).toMatchObject([
+            {
                 success: false,
                 statusCode: 502,
-            },]);
+            },
+        ]);
     });
 
     it('retries rate limits and rejects other unsuccessful or malformed responses', async () => {
@@ -731,7 +781,10 @@ describe('TMDB list-backed movie collections', () => {
         expect(retried).toMatchObject({ statusCode: 200 });
         expect(fetchMock).toHaveBeenCalledTimes(2);
 
-        for (const response of [new Response('', { status: 400 }),new Response('{invalid json', { status: 200 }),]) {
+        for (const response of [
+            new Response('', { status: 400 }),
+            new Response('{invalid json', { status: 200 }),
+        ]) {
             fetchMock.mockResolvedValue(response);
             const failed = await refreshCollection(
                 createEvent(undefined, {
@@ -740,10 +793,12 @@ describe('TMDB list-backed movie collections', () => {
             );
 
             expect(failed).toMatchObject({ statusCode: 207 });
-            expect(responseBody(failed).results).toMatchObject([{
+            expect(responseBody(failed).results).toMatchObject([
+                {
                     success: false,
                     statusCode: 502,
-                },]);
+                },
+            ]);
 
             fetchMock.mockReset();
         }
@@ -764,10 +819,12 @@ describe('TMDB list-backed movie collections', () => {
 
         expect(result).toMatchObject({ statusCode: 207 });
         expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(responseBody(result).results).toMatchObject([{
+        expect(responseBody(result).results).toMatchObject([
+            {
                 success: false,
                 statusCode: 502,
                 message: 'Unable to retrieve the TMDB list.',
-            },]);
+            },
+        ]);
     });
 });

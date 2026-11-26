@@ -60,7 +60,11 @@ describe('add movies utilities', () => {
     });
 
     describe('log', () => {
-        it.each([['INFO', 'log'],['WARN', 'warn'],['ERROR', 'error'],] as const)('writes %s messages to console.%s', (level, method) => {
+        it.each([
+            ['INFO', 'log'],
+            ['WARN', 'warn'],
+            ['ERROR', 'error'],
+        ] as const)('writes %s messages to console.%s', (level, method) => {
             const write = jest.spyOn(console, method).mockImplementation(() => undefined);
 
             log(level, 'test message', { requestId: 'request-1' });
@@ -163,7 +167,12 @@ describe('add movies utilities', () => {
             const movie = projectTmdb({
                 id: 8,
                 credits: {
-                    crew: [{ name: 'Director One', job: 'Director' },{ name: 'Director Two', job: 'Director' },{ name: 'Director Three', job: 'Director' },{ name: 'Director Four', job: 'Director' },],
+                    crew: [
+                        { name: 'Director One', job: 'Director' },
+                        { name: 'Director Two', job: 'Director' },
+                        { name: 'Director Three', job: 'Director' },
+                        { name: 'Director Four', job: 'Director' },
+                    ],
                 },
             });
 
@@ -216,7 +225,8 @@ describe('add movies utilities', () => {
             describe('generateShowtimes validation', () => {
                 it('rejects invalid release dates and non-finite scores', () => {
                     expect(() =>
-                        generateShowtimes('42', 'not-a-date', 7, new Date('2026-01-01T00:00:00.000Z')),).toThrow('Invalid movie release date: not-a-date');
+                        generateShowtimes('42', 'not-a-date', 7, new Date('2026-01-01T00:00:00.000Z')),
+                    ).toThrow('Invalid movie release date: not-a-date');
 
                     expect(() =>
                         generateShowtimes(
@@ -224,7 +234,8 @@ describe('add movies utilities', () => {
                             '2025-01-01',
                             Number.NaN,
                             new Date('2026-01-01T00:00:00.000Z'),
-                        ),).toThrow('Movie 42 has an invalid score.');
+                        ),
+                    ).toThrow('Movie 42 has an invalid score.');
                 });
             });
         });

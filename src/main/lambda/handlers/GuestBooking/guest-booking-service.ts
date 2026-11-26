@@ -275,7 +275,8 @@ export async function createGuestBooking(value: unknown, userId?: string): Promi
     for (let attempt = 0; attempt < 5; attempt += 1) {
         const candidate = `BBT-${randomInt(100000, 1000000)}`;
         const bookingReferenceIndex = request.seats.length + (bookingOwnership.kind === 'guest' ? 2 : 1);
-        const transactionItems = [...request.seats.map((seatId) => ({
+        const transactionItems = [
+            ...request.seats.map((seatId) => ({
                 Put: {
                     TableName: bookingsTableName,
                     Item: {
@@ -288,14 +289,17 @@ export async function createGuestBooking(value: unknown, userId?: string): Promi
                     },
                     ConditionExpression: 'attribute_not_exists(seatId)',
                 },
-            })),{
+            })),
+            {
                 Put: {
                     TableName: bookingsTableName,
                     Item: { ...booking, bookingRef: candidate },
                     ConditionExpression: 'attribute_not_exists(seatId)',
                 },
-            },...(bookingOwnership.kind === 'guest'
-                ? [{
+            },
+            ...(bookingOwnership.kind === 'guest'
+                ? [
+                      {
                           Put: {
                               TableName: bookingOwnership.conversionTokenTableName,
                               Item: {
@@ -307,8 +311,10 @@ export async function createGuestBooking(value: unknown, userId?: string): Promi
                               },
                               ConditionExpression: 'attribute_not_exists(tokenHash)',
                           },
-                      },]
-                : []),{
+                      },
+                  ]
+                : []),
+            {
                 Put: {
                     TableName: bookingReferencesTableName,
                     Item: {
@@ -320,13 +326,15 @@ export async function createGuestBooking(value: unknown, userId?: string): Promi
                     },
                     ConditionExpression: 'attribute_not_exists(bookingRef)',
                 },
-            },...request.seats.map((seatId) => ({
+            },
+            ...request.seats.map((seatId) => ({
                 ConditionCheck: {
                     TableName: legacyBookingsTableName,
                     Key: { showingId: legacyShowingId, seatId },
                     ConditionExpression: 'attribute_not_exists(seatId)',
                 },
-            })),{
+            })),
+            {
                 ConditionCheck: {
                     TableName: showtimeRegistryTableName,
                     Key: { registryKey: `SHOWTIME#${request.showtimeId}` },
@@ -335,7 +343,8 @@ export async function createGuestBooking(value: unknown, userId?: string): Promi
                     ExpressionAttributeNames: { '#status': 'status' },
                     ExpressionAttributeValues: { ':active': 'ACTIVE' },
                 },
-            },];
+            },
+        ];
 
         try {
             await docClient.send(new TransactWriteCommand({ TransactItems: transactionItems }));
@@ -436,7 +445,22 @@ export async function listGuestBookedSeats(
     const seats: string[] = [];
     const mySeats: string[] = [];
 
-    for (const [tableName, keyName, keyValue, filterExpression, filterValue] of [[requiredEnvironmentVariable('BOOKINGS_TABLE_NAME'),'showtimeId',screening.showtimeId,userId === undefined ? 'recordType = :seat' : undefined,userId === undefined ? 'SEAT' : undefined,],[requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME'),'showingId',legacyShowingId,undefined,undefined,],] as const) {
+    for (const [tableName, keyName, keyValue, filterExpression, filterValue] of [
+        [
+            requiredEnvironmentVariable('BOOKINGS_TABLE_NAME'),
+            'showtimeId',
+            screening.showtimeId,
+            userId === undefined ? 'recordType = :seat' : undefined,
+            userId === undefined ? 'SEAT' : undefined,
+        ],
+        [
+            requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME'),
+            'showingId',
+            legacyShowingId,
+            undefined,
+            undefined,
+        ],
+    ] as const) {
         let exclusiveStartKey: Record<string, unknown> | undefined;
         do {
             const result = await docClient.send(

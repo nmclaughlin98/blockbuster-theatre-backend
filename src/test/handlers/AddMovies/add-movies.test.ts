@@ -184,7 +184,10 @@ describe('Add movies Lambda handler', () => {
             dedupedFrom: 3,
         });
 
-        expect(body.successful).toEqual([{ id: '123', status: 'SUCCESS', title: 'Movie 123' },{ id: '456', status: 'SUCCESS', title: 'Movie 456' },]);
+        expect(body.successful).toEqual([
+            { id: '123', status: 'SUCCESS', title: 'Movie 123' },
+            { id: '456', status: 'SUCCESS', title: 'Movie 456' },
+        ]);
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe(
@@ -218,7 +221,9 @@ describe('Add movies Lambda handler', () => {
         const result = await invoke(JSON.stringify({ movieIds: [123] }));
 
         expect(result.statusCode).toBe(200);
-        expect(responseBody(result).successful).toEqual([{ id: '123', status: 'SUCCESS', title: 'Movie 123' },]);
+        expect(responseBody(result).successful).toEqual([
+            { id: '123', status: 'SUCCESS', title: 'Movie 123' },
+        ]);
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
@@ -230,7 +235,8 @@ describe('Add movies Lambda handler', () => {
     it('moves an existing record atomically when an import changes its slug', async () => {
         fetchMock.mockResolvedValue(tmdbResponse(tmdbMovie(123)));
         ddbMock.on(QueryCommand).resolves({
-            Items: [{
+            Items: [
+                {
                     tmdbId: '123',
                     slug: 'old-movie-title',
                     title: 'Old Movie Title',
@@ -249,7 +255,8 @@ describe('Add movies Lambda handler', () => {
                     synopsis: '',
                     trailer: '',
                     showtimes: {},
-                },],
+                },
+            ],
         });
 
         ddbMock.on(TransactWriteCommand).resolves({});
@@ -258,11 +265,13 @@ describe('Add movies Lambda handler', () => {
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
 
         expect(result.statusCode).toBe(200);
-        expect(transaction.TransactItems).toMatchObject([{
+        expect(transaction.TransactItems).toMatchObject([
+            {
                 Delete: {
                     Key: { tmdbId: '123', slug: 'old-movie-title' },
                 },
-            },{
+            },
+            {
                 Put: {
                     Item: {
                         tmdbId: '123',
@@ -271,7 +280,8 @@ describe('Add movies Lambda handler', () => {
                         isCarousel: true,
                     },
                 },
-            },]);
+            },
+        ]);
 
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
@@ -319,11 +329,13 @@ describe('Add movies Lambda handler', () => {
 
         const result = await invoke(JSON.stringify({ movieIds: [987] }));
 
-        expect(responseBody(result).failed).toEqual([{
+        expect(responseBody(result).failed).toEqual([
+            {
                 id: '987',
                 status: 'FAILED',
                 error: 'TMDB returned an invalid movie response',
-            },]);
+            },
+        ]);
 
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
@@ -352,7 +364,9 @@ describe('Add movies Lambda handler', () => {
         const result = await invoke(JSON.stringify({ movieIds: [234] }));
 
         expect(result.statusCode).toBe(200);
-        expect(responseBody(result).successful).toEqual([{ id: '234', status: 'SUCCESS', title: 'Movie 234' },]);
+        expect(responseBody(result).successful).toEqual([
+            { id: '234', status: 'SUCCESS', title: 'Movie 234' },
+        ]);
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
@@ -374,15 +388,19 @@ describe('Add movies Lambda handler', () => {
     it('reports unexpected TMDB statuses and timeouts as movie failures', async () => {
         fetchMock.mockResolvedValueOnce(tmdbResponse({}, 401));
         const unauthorized = await invoke(JSON.stringify({ movieIds: [456] }));
-        expect(responseBody(unauthorized).failed).toEqual([{
+        expect(responseBody(unauthorized).failed).toEqual([
+            {
                 id: '456',
                 status: 'FAILED',
                 error: 'TMDB responded with status 401',
-            },]);
+            },
+        ]);
 
         fetchMock.mockRejectedValue(Object.assign(new Error('request aborted'), { name: 'AbortError' }));
         const timedOut = await invoke(JSON.stringify({ movieIds: [567] }));
-        expect(responseBody(timedOut).failed).toEqual([{ id: '567', status: 'FAILED', error: 'TMDB request timed out' },]);
+        expect(responseBody(timedOut).failed).toEqual([
+            { id: '567', status: 'FAILED', error: 'TMDB request timed out' },
+        ]);
     });
 
     it('returns a 500 when an unexpected handler error occurs', async () => {

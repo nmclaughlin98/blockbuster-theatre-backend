@@ -48,11 +48,33 @@ export class ApiGatewayConstruct extends Construct {
             apiName: resourceName('blockbuster-theatre-api-gateway', envName),
             corsPreflight: {
                 allowOrigins: !isDev
-                    ? ['https://blockbuster-theatre.nml-applications.com','https://*','http://localhost:3000','http://localhost:4173','http://localhost:5173','http://127.0.0.1:3000','http://127.0.0.1:4173','http://127.0.0.1:5173',]
+                    ? [
+                          'https://blockbuster-theatre.nml-applications.com',
+                          'https://*',
+                          'http://localhost:3000',
+                          'http://localhost:4173',
+                          'http://localhost:5173',
+                          'http://127.0.0.1:3000',
+                          'http://127.0.0.1:4173',
+                          'http://127.0.0.1:5173',
+                      ]
                     : ['*'],
                 allowMethods: !isDev
-                    ? [apigw2.CorsHttpMethod.GET,apigw2.CorsHttpMethod.POST,apigw2.CorsHttpMethod.PUT,apigw2.CorsHttpMethod.PATCH,apigw2.CorsHttpMethod.OPTIONS,]
-                    : [apigw2.CorsHttpMethod.GET,apigw2.CorsHttpMethod.POST,apigw2.CorsHttpMethod.PUT,apigw2.CorsHttpMethod.PATCH,apigw2.CorsHttpMethod.DELETE,apigw2.CorsHttpMethod.OPTIONS,],
+                    ? [
+                          apigw2.CorsHttpMethod.GET,
+                          apigw2.CorsHttpMethod.POST,
+                          apigw2.CorsHttpMethod.PUT,
+                          apigw2.CorsHttpMethod.PATCH,
+                          apigw2.CorsHttpMethod.OPTIONS,
+                      ]
+                    : [
+                          apigw2.CorsHttpMethod.GET,
+                          apigw2.CorsHttpMethod.POST,
+                          apigw2.CorsHttpMethod.PUT,
+                          apigw2.CorsHttpMethod.PATCH,
+                          apigw2.CorsHttpMethod.DELETE,
+                          apigw2.CorsHttpMethod.OPTIONS,
+                      ],
                 allowHeaders: ['Content-Type', 'Authorization'],
             },
         });

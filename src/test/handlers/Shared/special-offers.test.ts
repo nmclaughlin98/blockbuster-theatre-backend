@@ -25,7 +25,11 @@ let getTicketPricing: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxy
 let validateCheckout: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 beforeAll(async () => {
-    const [selections, pricing, checkout] = await Promise.all([import('../../../main/lambda/handlers/ListFilmSelections/list-film-selections-handler'),import('../../../main/lambda/handlers/GetTicketPricing/get-ticket-pricing-handler'),import('../../../main/lambda/handlers/ValidateCheckout/validate-checkout-handler'),]);
+    const [selections, pricing, checkout] = await Promise.all([
+        import('../../../main/lambda/handlers/ListFilmSelections/list-film-selections-handler'),
+        import('../../../main/lambda/handlers/GetTicketPricing/get-ticket-pricing-handler'),
+        import('../../../main/lambda/handlers/ValidateCheckout/validate-checkout-handler'),
+    ]);
 
     listSelections = selections.handler;
     getTicketPricing = pricing.handler;
@@ -74,10 +78,12 @@ const kidsClubOffer = {
     pricingId: 'KIDS_CLUB_RATES',
     isActive: true,
     overrideShowtimes: {
-        Tuesday: [{
+        Tuesday: [
+            {
                 screen: '1',
                 time: '11:00',
-            },],
+            },
+        ],
     },
     displayLabel: 'OFFER - A Movie - Matinee',
 };
@@ -88,10 +94,12 @@ const secondOfferForSameMovie = {
     title: 'Kids Club Evening',
     pricingId: 'CRAZY_TUESDAY_RATES',
     overrideShowtimes: {
-        Tuesday: [{
+        Tuesday: [
+            {
                 screen: '3',
                 time: '19:00',
-            },],
+            },
+        ],
     },
 };
 
@@ -99,26 +107,33 @@ const offPeakPricing = {
     pricingId: 'OFF_PEAK_RATES',
     name: 'Off-Peak Rates',
     currency: 'GBP',
-    ticketTiers: [{ id: 'adult', label: 'Standard Adult', description: 'Adult admission', price: 7.6 },{ id: 'child', label: 'Child Ticket', description: 'Child admission', price: 4.8 },],
+    ticketTiers: [
+        { id: 'adult', label: 'Standard Adult', description: 'Adult admission', price: 7.6 },
+        { id: 'child', label: 'Child Ticket', description: 'Child admission', price: 4.8 },
+    ],
 };
 
 const kidsClubPricing = {
     pricingId: 'KIDS_CLUB_RATES',
     name: 'Kids Club Rates',
     currency: 'GBP',
-    ticketTiers: [{ id: 'child', label: 'Kids Club Ticket', description: 'Kids Club child admission', price: 2.5 },],
+    ticketTiers: [
+        { id: 'child', label: 'Kids Club Ticket', description: 'Kids Club child admission', price: 2.5 },
+    ],
 };
 
 const crazyTuesdayPricing = {
     pricingId: 'CRAZY_TUESDAY_RATES',
     name: 'Crazy Tuesday Rates',
     currency: 'GBP',
-    ticketTiers: [{
+    ticketTiers: [
+        {
             id: 'crazy-tuesday',
             label: 'Crazy Tuesday Ticket',
             description: 'Admission for any Tuesday movie showing',
             price: 4,
-        },],
+        },
+    ],
 };
 
 function createEvent(
@@ -181,7 +196,11 @@ describe('Special offers and pricing handlers', () => {
 
         expect(result).toMatchObject({ statusCode: 200 });
         const selections = responseBody(result).selections as Array<Record<string, unknown>>;
-        expect(selections.map((selection) => selection.id)).toEqual(['456','kids-club','kids-club-evening',]);
+        expect(selections.map((selection) => selection.id)).toEqual([
+            '456',
+            'kids-club',
+            'kids-club-evening',
+        ]);
 
         const offers = selections.filter((selection) => selection.type === 'offer');
 
@@ -275,9 +294,11 @@ describe('Special offers and pricing handlers', () => {
 
     it('resolves pricing for a screened movie showtime', async () => {
         ddbMock.on(QueryCommand).resolves({
-            Items: [{
+            Items: [
+                {
                     ...movie,
-                },],
+                },
+            ],
         });
 
         ddbMock.on(GetCommand).resolves({ Item: offPeakPricing });
@@ -300,9 +321,11 @@ describe('Special offers and pricing handlers', () => {
 
     it('uses the single Crazy Tuesday tier for Tuesday movie showings at any time', async () => {
         ddbMock.on(QueryCommand).resolves({
-            Items: [{
+            Items: [
+                {
                     ...movie,
-                },],
+                },
+            ],
         });
 
         ddbMock.on(GetCommand).resolves({ Item: crazyTuesdayPricing });
@@ -323,7 +346,10 @@ describe('Special offers and pricing handlers', () => {
         }
 
         expect(ddbMock.commandCalls(GetCommand)).toHaveLength(2);
-        expect(ddbMock.commandCalls(GetCommand).map(({ args }) => args[0].input.Key)).toEqual([{ pricingId: 'CRAZY_TUESDAY_RATES' },{ pricingId: 'CRAZY_TUESDAY_RATES' },]);
+        expect(ddbMock.commandCalls(GetCommand).map(({ args }) => args[0].input.Key)).toEqual([
+            { pricingId: 'CRAZY_TUESDAY_RATES' },
+            { pricingId: 'CRAZY_TUESDAY_RATES' },
+        ]);
     });
 
     it('keeps offer-specific showtimes and pricing on Tuesday', async () => {
@@ -397,7 +423,10 @@ describe('Special offers and pricing handlers', () => {
             total: 5,
         });
 
-        expect(ddbMock.commandCalls(GetCommand).map((call) => call.args[0].input.TableName)).toEqual(['test-offers-table','test-pricing-table',]);
+        expect(ddbMock.commandCalls(GetCommand).map((call) => call.args[0].input.TableName)).toEqual([
+            'test-offers-table',
+            'test-pricing-table',
+        ]);
     });
 
     it('rejects client-supplied prices without reading DynamoDB', async () => {
@@ -443,73 +472,126 @@ describe('Special offers and pricing handlers', () => {
 
     it.each([
         ['non-object request', null],
-        ['unexpected request property',{
+        [
+            'unexpected request property',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '13:00' },
                 price: 1,
-            },],
+            },
+        ],
         ['missing movie or offer', { showtime: { day: 'Monday', time: '11:00' } }],
-        ['both movie and offer',{
+        [
+            'both movie and offer',
+            {
                 movieId: '456',
                 offerId: 'kids-club',
                 showtime: { day: 'Monday', time: '13:00' },
-            },],
-        ['non-numeric movie ID',{
+            },
+        ],
+        [
+            'non-numeric movie ID',
+            {
                 movieId: 'a-movie',
                 showtime: { day: 'Monday', time: '11:00' },
-            },],
-        ['blank offer ID',{
+            },
+        ],
+        [
+            'blank offer ID',
+            {
                 offerId: ' ',
                 showtime: { day: 'Monday', time: '11:00' },
-            },],
+            },
+        ],
         ['missing showtime', { movieId: '456' }],
-        ['unexpected showtime property',{
+        [
+            'unexpected showtime property',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00', unexpected: true },
-            },],
-        ['invalid day',{
+            },
+        ],
+        [
+            'invalid day',
+            {
                 movieId: '456',
                 showtime: { day: 'Funday', time: '11:00' },
-            },],
-        ['invalid time',{
+            },
+        ],
+        [
+            'invalid time',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '25:00' },
-            },],
+            },
+        ],
     ])('rejects %s before accessing DynamoDB', async (_name, selection) => {
         await expect(resolvePricing(selection)).rejects.toMatchObject({ statusCode: 400 });
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
         expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
     });
 
-    it.each([['empty ticket list',{
+    it.each([
+        [
+            'empty ticket list',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00' },
                 tickets: [],
-            },],['non-array ticket list',{
+            },
+        ],
+        [
+            'non-array ticket list',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00' },
                 tickets: {},
-            },],['non-object ticket',{
+            },
+        ],
+        [
+            'non-object ticket',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00' },
                 tickets: [null],
-            },],['extra ticket field',{
+            },
+        ],
+        [
+            'extra ticket field',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00' },
                 tickets: [{ tierId: 'adult', quantity: 1, price: 0 }],
-            },],['invalid ticket quantity',{
+            },
+        ],
+        [
+            'invalid ticket quantity',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00' },
                 tickets: [{ tierId: 'adult', quantity: 0 }],
-            },],['blank ticket tier',{
+            },
+        ],
+        [
+            'blank ticket tier',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00' },
                 tickets: [{ tierId: ' ', quantity: 1 }],
-            },],['duplicate ticket tiers',{
+            },
+        ],
+        [
+            'duplicate ticket tiers',
+            {
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00' },
-                tickets: [{ tierId: 'adult', quantity: 1 },{ tierId: 'adult', quantity: 2 },],
-            },],])('rejects checkout with %s', async (_name, checkout) => {
+                tickets: [
+                    { tierId: 'adult', quantity: 1 },
+                    { tierId: 'adult', quantity: 2 },
+                ],
+            },
+        ],
+    ])('rejects checkout with %s', async (_name, checkout) => {
         await expect(validateCheckoutService(checkout)).rejects.toMatchObject({ statusCode: 400 });
     });
 
@@ -518,12 +600,14 @@ describe('Special offers and pricing handlers', () => {
         ddbMock.on(GetCommand).resolves({
             Item: {
                 ...offPeakPricing,
-                ticketTiers: [{
+                ticketTiers: [
+                    {
                         id: 'adult',
                         label: 'Adult',
                         description: 'Adult admission',
                         price: 10000,
-                    },],
+                    },
+                ],
             },
         });
 
@@ -553,13 +637,21 @@ describe('Special offers and pricing handlers', () => {
             validateCheckoutService({
                 movieId: '456',
                 showtime: { day: 'Monday', time: '11:00' },
-                tickets: [{ tierId: 'adult', quantity: Number.MAX_SAFE_INTEGER },{ tierId: 'child', quantity: Number.MAX_SAFE_INTEGER },],
+                tickets: [
+                    { tierId: 'adult', quantity: Number.MAX_SAFE_INTEGER },
+                    { tierId: 'child', quantity: Number.MAX_SAFE_INTEGER },
+                ],
             }),
         ).rejects.toMatchObject({ statusCode: 400 });
     });
 
     it('rejects missing, ambiguous, invisible, and invalid movie records', async () => {
-        const cases = [{ Items: [] },{ Items: [movie, { ...movie, slug: 'duplicate' }] },{ Items: [{ ...movie, visible: false }] },{ Items: [{ ...movie, title: 42 }] },];
+        const cases = [
+            { Items: [] },
+            { Items: [movie, { ...movie, slug: 'duplicate' }] },
+            { Items: [{ ...movie, visible: false }] },
+            { Items: [{ ...movie, title: 42 }] },
+        ];
 
         for (const result of cases) {
             ddbMock.reset();
@@ -574,7 +666,11 @@ describe('Special offers and pricing handlers', () => {
     });
 
     it('rejects missing, inactive, and invalid offer records', async () => {
-        for (const result of [{},{ Item: { ...kidsClubOffer, isActive: false } },{ Item: { ...kidsClubOffer, featuredMovieId: 'invalid' } },]) {
+        for (const result of [
+            {},
+            { Item: { ...kidsClubOffer, isActive: false } },
+            { Item: { ...kidsClubOffer, featuredMovieId: 'invalid' } },
+        ]) {
             ddbMock.reset();
             ddbMock.on(GetCommand).resolves(result);
             await expect(
@@ -666,7 +762,10 @@ describe('Special offers and pricing handlers', () => {
         }
     });
 
-    it.each([['an Error', new Error('database unavailable')],['a non-Error value', 'database unavailable'],])('returns a generic error for %s pricing failures', async (_name, failure) => {
+    it.each([
+        ['an Error', new Error('database unavailable')],
+        ['a non-Error value', 'database unavailable'],
+    ])('returns a generic error for %s pricing failures', async (_name, failure) => {
         ddbMock.on(QueryCommand).callsFake(() => Promise.reject(failure));
 
         const result = await getTicketPricing({
@@ -721,11 +820,13 @@ describe('Special offers and pricing handlers', () => {
     it('uses fallback labels and showtimes for offers without optional display fields', async () => {
         ddbMock.on(QueryCommand).resolves({ Items: [movie] });
         ddbMock.on(ScanCommand).resolves({
-            Items: [{
+            Items: [
+                {
                     ...kidsClubOffer,
                     displayLabel: undefined,
                     overrideShowtimes: undefined,
-                },],
+                },
+            ],
         });
 
         const selections = await resolveFilmSelections();

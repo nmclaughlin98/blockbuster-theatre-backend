@@ -34,7 +34,8 @@ describe('sync production data to dev', () => {
             const sourceTable = PROD_TABLE_NAMES[0];
             await expect(
                 syncProdToDev({} as DynamoDBClient, {} as DynamoDBDocumentClient, {
-                    mappings: [{
+                    mappings: [
+                        {
                             sourceTable,
                             targetTable:
                                 kind === 'production'
@@ -45,7 +46,8 @@ describe('sync production data to dev', () => {
                                             'blockbuster-theatre-DEV-',
                                         )
                                       : PROD_TO_DEV_TABLES[1].targetTable,
-                        },],
+                        },
+                    ],
                     clear: true,
                 }),
             ).rejects.toThrow('Unsafe sync target');
@@ -129,9 +131,13 @@ describe('sync production data to dev', () => {
 
         const writes = documentMock.commandCalls(BatchWriteCommand);
         expect(writes).toHaveLength(2);
-        expect(writes[0].args[0].input.RequestItems?.[targetTable]).toEqual([{ DeleteRequest: { Key: { id: 'existing-dev' } } },]);
+        expect(writes[0].args[0].input.RequestItems?.[targetTable]).toEqual([
+            { DeleteRequest: { Key: { id: 'existing-dev' } } },
+        ]);
 
-        expect(writes[1].args[0].input.RequestItems?.[targetTable]).toEqual([{ PutRequest: { Item: { id: 'source' } } },]);
+        expect(writes[1].args[0].input.RequestItems?.[targetTable]).toEqual([
+            { PutRequest: { Item: { id: 'source' } } },
+        ]);
     });
 
     it.each(['sourceTable', 'targetTable'] as const)(

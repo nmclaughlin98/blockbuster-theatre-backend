@@ -157,7 +157,11 @@ test('finds an owned converted booking in the legacy table', async () => {
     });
 });
 
-test.each([['missing customer name', { customerName: undefined }],['invalid amount', { totalAmount: -1 }],['mismatched ticket count', { tickets: [{ quantity: 1 }] }],])('reports %s in stored booking details', async (_label, invalid) => {
+test.each([
+    ['missing customer name', { customerName: undefined }],
+    ['invalid amount', { totalAmount: -1 }],
+    ['mismatched ticket count', { tickets: [{ quantity: 1 }] }],
+])('reports %s in stored booking details', async (_label, invalid) => {
     ddb.on(QueryCommand).resolves({ Items: [{ showtimeId: 'show-1', seatId: 'BOOKING#bk_1' }] });
     ddb.on(GetCommand).resolves({ Item: { ...booking, ...invalid } });
     const generate = jest.mocked(pdfGenerator.generateTicketPdf);

@@ -64,7 +64,10 @@ describe('BlockbusterTheatreAuthStack', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::Cognito::UserPoolResourceServer', 2);
 
-        for (const identifier of ['https://api.blockbuster-theatre.nml-applications.com','https://api-dev.blockbuster-theatre.nml-applications.com',]) {
+        for (const identifier of [
+            'https://api.blockbuster-theatre.nml-applications.com',
+            'https://api-dev.blockbuster-theatre.nml-applications.com',
+        ]) {
             template.hasResourceProperties('AWS::Cognito::UserPoolResourceServer', {
                 Identifier: identifier,
                 Name: 'blockbuster-theatre-bookings-resource-server',
@@ -92,7 +95,10 @@ describe('BlockbusterTheatreAuthStack', () => {
             ClientName: 'postman-test-client',
             GenerateSecret: false,
             AllowedOAuthFlows: ['code'],
-            CallbackURLs: ['https://oauth.pstmn.io/v1/callback','https://oauth.pstmn.io/v1/browser-callback',],
+            CallbackURLs: [
+                'https://oauth.pstmn.io/v1/callback',
+                'https://oauth.pstmn.io/v1/browser-callback',
+            ],
         });
     });
 
@@ -102,7 +108,11 @@ describe('BlockbusterTheatreAuthStack', () => {
             ClientName: 'alexa-skill-client',
             GenerateSecret: false,
             AllowedOAuthFlows: ['code'],
-            CallbackURLs: Match.arrayWith(['https://pitangui.amazon.com/api/skill/link','https://layla.amazon.com/api/skill/link','https://alexa.amazon.co.jp/api/skill/link',]),
+            CallbackURLs: Match.arrayWith([
+                'https://pitangui.amazon.com/api/skill/link',
+                'https://layla.amazon.com/api/skill/link',
+                'https://alexa.amazon.co.jp/api/skill/link',
+            ]),
         });
 
         const clients = template.findResources('AWS::Cognito::UserPoolClient');
@@ -117,7 +127,10 @@ describe('BlockbusterTheatreAuthStack', () => {
         expect(scopes).toContain('profile');
         const servers = template.findResources('AWS::Cognito::UserPoolResourceServer');
 
-        for (const identifier of ['https://api.blockbuster-theatre.nml-applications.com','https://api-dev.blockbuster-theatre.nml-applications.com',]) {
+        for (const identifier of [
+            'https://api.blockbuster-theatre.nml-applications.com',
+            'https://api-dev.blockbuster-theatre.nml-applications.com',
+        ]) {
             const serverId = Object.keys(servers).find(
                 (id) => servers[id].Properties.Identifier === identifier,
             );

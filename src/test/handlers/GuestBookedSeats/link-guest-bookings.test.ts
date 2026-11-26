@@ -84,7 +84,11 @@ test('claims all pages once, returns current records, and sends one consolidated
         .resolvesOnce({ Attributes: { ...differentShowtime, userId: 'user-1' } });
 
     const result = await linkGuestBookings('user-1', 'customer@example.com');
-    expect(result.bookings.map((item) => item.bookingRef)).toEqual(['BBT-123456','BBT-234567','BBT-345678',]);
+    expect(result.bookings.map((item) => item.bookingRef)).toEqual([
+        'BBT-123456',
+        'BBT-234567',
+        'BBT-345678',
+    ]);
 
     expect(result.notificationSent).toBe(true);
     expect(ddb.commandCalls(QueryCommand)[1].args[0].input.ExclusiveStartKey).toBeDefined();
@@ -119,19 +123,22 @@ test('claims all pages once, returns current records, and sends one consolidated
     }
 
     expect(updateCalls.map((call) => call.args[0].input.ExpressionAttributeValues)).toEqual(
-        expect.arrayContaining([expect.objectContaining({
+        expect.arrayContaining([
+            expect.objectContaining({
                 ':bookingId': 'bk_1',
                 ':movieId': 'movie-1',
                 ':date': '2030-01-01',
                 ':time': '12:15',
                 ':screen': '1',
-            }),expect.objectContaining({
+            }),
+            expect.objectContaining({
                 ':bookingId': 'bk_3',
                 ':movieId': 'movie-2',
                 ':date': '2030-01-02',
                 ':time': '14:30',
                 ':screen': '2',
-            }),]),
+            }),
+        ]),
     );
 
     const emails = ses.commandCalls(SendEmailCommand);
@@ -341,7 +348,10 @@ test('email failure is reported after successful claims', async () => {
     expect(result.bookings).toHaveLength(1);
 });
 
-test.each([{ token_use: 'id', email: 'customer@example.com', email_verified: 'false' },{ token_use: 'id', email: 'customer@example.com' },])('does not link without a verified ID-token email: %p', async (claims) => {
+test.each([
+    { token_use: 'id', email: 'customer@example.com', email_verified: 'false' },
+    { token_use: 'id', email: 'customer@example.com' },
+])('does not link without a verified ID-token email: %p', async (claims) => {
     ddb.on(QueryCommand).resolves({ Items: [] });
     const result = await handler({
         routeKey: 'GET /api/v1/bookings/account/history',
@@ -365,7 +375,10 @@ test.each([{ token_use: 'access', username: 'login-name' }, { token_use: 'id' }]
     async (claims) => {
         ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
         cognito.on(AdminGetUserCommand).resolves({
-            UserAttributes: [{ Name: 'email', Value: ' Customer@Example.com ' },{ Name: 'email_verified', Value: 'true' },],
+            UserAttributes: [
+                { Name: 'email', Value: ' Customer@Example.com ' },
+                { Name: 'email_verified', Value: 'true' },
+            ],
         });
 
         ddb.on(QueryCommand, {
@@ -409,7 +422,10 @@ test.each([{ token_use: 'access', username: 'login-name' }, { token_use: 'id' }]
 test.each(['false', undefined])('does not link a Cognito email with verification %p', async (verified) => {
     ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
     cognito.on(AdminGetUserCommand).resolves({
-        UserAttributes: [{ Name: 'email', Value: 'customer@example.com' },...(verified ? [{ Name: 'email_verified', Value: verified }] : []),],
+        UserAttributes: [
+            { Name: 'email', Value: 'customer@example.com' },
+            ...(verified ? [{ Name: 'email_verified', Value: verified }] : []),
+        ],
     });
 
     ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });

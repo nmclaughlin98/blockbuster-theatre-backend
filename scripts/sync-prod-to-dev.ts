@@ -9,7 +9,17 @@ import {
 import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
 import { resourceName } from '../lib/shared';
 
-const TABLE_BASE_NAMES = ['blockbuster-theatre-movie-catalogue','blockbuster-theatre-ticket-pricing','blockbuster-theatre-booking-offers','blockbuster-theatre-movie-collections','blockbuster-theatre-bookings','blockbuster-theatre-bookings-by-showtime','blockbuster-theatre-showtime-registry','blockbuster-theatre-booking-references','blockbuster-theatre-guest-conversion-tokens',] as const;
+const TABLE_BASE_NAMES = [
+    'blockbuster-theatre-movie-catalogue',
+    'blockbuster-theatre-ticket-pricing',
+    'blockbuster-theatre-booking-offers',
+    'blockbuster-theatre-movie-collections',
+    'blockbuster-theatre-bookings',
+    'blockbuster-theatre-bookings-by-showtime',
+    'blockbuster-theatre-showtime-registry',
+    'blockbuster-theatre-booking-references',
+    'blockbuster-theatre-guest-conversion-tokens',
+] as const;
 
 export const PROD_TABLE_NAMES = TABLE_BASE_NAMES.map((name) => resourceName(name, 'prod'));
 
@@ -250,7 +260,10 @@ export async function syncProdToDev(
     const keyNamesByTarget = new Map<string, string[]>();
 
     for (const { sourceTable, targetTable } of mappings) {
-        const [sourceSchema, targetSchema] = await Promise.all([getTableKeySchema(dynamoClient, sourceTable),getTableKeySchema(dynamoClient, targetTable),]);
+        const [sourceSchema, targetSchema] = await Promise.all([
+            getTableKeySchema(dynamoClient, sourceTable),
+            getTableKeySchema(dynamoClient, targetTable),
+        ]);
 
         keyNamesByTarget.set(
             targetTable,

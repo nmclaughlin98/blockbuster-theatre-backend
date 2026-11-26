@@ -226,24 +226,28 @@ async function rescheduleBooking(
         updatedAt,
     };
 
-    const transactItems = [{
+    const transactItems = [
+        {
             Delete: {
                 TableName: tableName,
                 Key: { showtimeId: oldShowtimeId, seatId: `BOOKING#${bookingId}` },
                 ConditionExpression: 'attribute_exists(seatId)',
             },
-        },{
+        },
+        {
             Put: {
                 TableName: tableName,
                 Item: updatedBooking,
                 ConditionExpression: 'attribute_not_exists(seatId)',
             },
-        },...seats.map((seatId) => ({
+        },
+        ...seats.map((seatId) => ({
             Delete: {
                 TableName: tableName,
                 Key: { showtimeId: oldShowtimeId, seatId },
             },
-        })),...seats.map((seatId) => ({
+        })),
+        ...seats.map((seatId) => ({
             Put: {
                 TableName: tableName,
                 Item: {
@@ -260,7 +264,8 @@ async function rescheduleBooking(
                 },
                 ConditionExpression: 'attribute_not_exists(seatId)',
             },
-        })),{
+        })),
+        {
             ConditionCheck: {
                 TableName: registryTableName,
                 Key: { registryKey: `SHOWTIME#${request.newShowtimeId}` },
@@ -269,7 +274,8 @@ async function rescheduleBooking(
                 ExpressionAttributeNames: { '#status': 'status' },
                 ExpressionAttributeValues: { ':active': 'ACTIVE' },
             },
-        },];
+        },
+    ];
 
     await docClient.send(
         new TransactWriteCommand({

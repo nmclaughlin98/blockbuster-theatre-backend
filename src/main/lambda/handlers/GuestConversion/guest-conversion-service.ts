@@ -265,7 +265,11 @@ export async function convertGuestAccount(value: unknown): Promise<{
                 UserPoolId: userPoolId,
                 Username: tokenRecord.customerEmail,
                 MessageAction: 'SUPPRESS',
-                UserAttributes: [{ Name: 'email', Value: tokenRecord.customerEmail },{ Name: 'given_name', Value: firstName },{ Name: 'family_name', Value: surname },],
+                UserAttributes: [
+                    { Name: 'email', Value: tokenRecord.customerEmail },
+                    { Name: 'given_name', Value: firstName },
+                    { Name: 'family_name', Value: surname },
+                ],
             }),
         );
 
@@ -318,7 +322,8 @@ export async function convertGuestAccount(value: unknown): Promise<{
     try {
         await docClient.send(
             new TransactWriteCommand({
-                TransactItems: [{
+                TransactItems: [
+                    {
                         Update: {
                             TableName: tokensTableName,
                             Key: { tokenHash },
@@ -330,7 +335,8 @@ export async function convertGuestAccount(value: unknown): Promise<{
                                 ':now': now,
                             },
                         },
-                    },{
+                    },
+                    {
                         Update: {
                             TableName: bookingTableName,
                             Key: bookingKey,
@@ -345,7 +351,8 @@ export async function convertGuestAccount(value: unknown): Promise<{
                                 ':null': null,
                             },
                         },
-                    },],
+                    },
+                ],
             }),
         );
     } catch (error: unknown) {

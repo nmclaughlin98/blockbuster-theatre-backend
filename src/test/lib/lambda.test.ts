@@ -133,7 +133,10 @@ describe('LambdaConstruct', () => {
         const json = template.toJSON();
         expect(json.Parameters.TmdbApiKey).toMatchObject({ Type: 'String', NoEcho: true });
 
-        for (const name of ['blockbuster-theatre-prod-add-movies-handler','blockbuster-theatre-prod-refresh-movie-collection-handler',]) {
+        for (const name of [
+            'blockbuster-theatre-prod-add-movies-handler',
+            'blockbuster-theatre-prod-refresh-movie-collection-handler',
+        ]) {
             template.hasResourceProperties('AWS::Lambda::Function', {
                 FunctionName: name,
                 Environment: { Variables: Match.objectLike({ TMDB_API_KEY: { Ref: 'TmdbApiKey' } }) },
@@ -193,11 +196,17 @@ describe('LambdaConstruct', () => {
         template.hasResourceProperties('AWS::IAM::Policy', {
             Roles: [{ Ref: Match.stringLikeRegexp('RescheduleCustomerBookingHandlerServiceRole') }],
             PolicyDocument: Match.objectLike({
-                Statement: Match.arrayWith([Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
                         Effect: 'Allow',
-                        Action: Match.arrayWith(['dynamodb:Query','dynamodb:DeleteItem','dynamodb:PutItem',]),
+                        Action: Match.arrayWith([
+                            'dynamodb:Query',
+                            'dynamodb:DeleteItem',
+                            'dynamodb:PutItem',
+                        ]),
                         Resource: Match.arrayWith([{ 'Fn::GetAtt': [table, 'Arn'] }]),
-                    }),]),
+                    }),
+                ]),
             }),
         });
     });
@@ -214,7 +223,8 @@ describe('LambdaConstruct', () => {
         const template = Template.fromStack(stack);
         const roles = Object.values(template.findResources('AWS::IAM::Role'));
         const loggingRoles = roles.filter((role) =>
-            JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole'),);
+            JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole'),
+        );
 
         expect(loggingRoles).toHaveLength(26);
     });
@@ -505,11 +515,17 @@ describe('LambdaConstruct', () => {
         const actions = getMoviePolicies.flatMap((policy) =>
             (policy.Properties?.PolicyDocument?.Statement ?? [])
                 .flatMap(({ Action }) => (Array.isArray(Action) ? Action : [Action]))
-                .filter((action): action is string => typeof action === 'string'),);
+                .filter((action): action is string => typeof action === 'string'),
+        );
 
         expect(actions).toContain('dynamodb:Query');
         expect(actions).not.toEqual(
-            expect.arrayContaining(['dynamodb:PutItem','dynamodb:UpdateItem','dynamodb:DeleteItem','dynamodb:TransactWriteItems',]),
+            expect.arrayContaining([
+                'dynamodb:PutItem',
+                'dynamodb:UpdateItem',
+                'dynamodb:DeleteItem',
+                'dynamodb:TransactWriteItems',
+            ]),
         );
 
         expect(JSON.stringify(getMoviePolicies)).not.toContain('TestBookingsTable');
@@ -552,7 +568,12 @@ describe('LambdaConstruct', () => {
             }
         >;
 
-        const functionNames = ['blockbuster-theatre-prod-booking-confirmation-handler','blockbuster-theatre-prod-guest-booked-seats-handler','blockbuster-theatre-prod-guest-booking-handler','blockbuster-theatre-prod-download-ticket-handler',];
+        const functionNames = [
+            'blockbuster-theatre-prod-booking-confirmation-handler',
+            'blockbuster-theatre-prod-guest-booked-seats-handler',
+            'blockbuster-theatre-prod-guest-booking-handler',
+            'blockbuster-theatre-prod-download-ticket-handler',
+        ];
 
         const assetPaths = functionNames.map((name) => {
             const resource = Object.values(resources).find(
@@ -570,7 +591,9 @@ describe('LambdaConstruct', () => {
 
         execFileSync(
             process.execPath,
-            ['-e',`
+            [
+                '-e',
+                `
             const path = require('path');
             Promise.all(process.argv.slice(1).map(async (asset, index) => {
                 const { handler } = require(path.join(asset, 'index.js'));
@@ -607,7 +630,9 @@ describe('LambdaConstruct', () => {
                 console.error(error);
                 process.exitCode = 1;
             });
-        `,...assetPaths,],
+        `,
+                ...assetPaths,
+            ],
             { stdio: 'pipe', timeout: 30000 },
         );
     });
@@ -641,9 +666,11 @@ describe('LambdaConstruct', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::IAM::Policy', {
             PolicyDocument: Match.objectLike({
-                Statement: Match.arrayWith([Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
                         Action: Match.arrayWith(['dynamodb:BatchGetItem', 'dynamodb:BatchWriteItem']),
-                    }),]),
+                    }),
+                ]),
             }),
         });
 
@@ -676,10 +703,12 @@ describe('LambdaConstruct', () => {
 
         template.hasResourceProperties('AWS::IAM::Policy', {
             PolicyDocument: Match.objectLike({
-                Statement: Match.arrayWith([Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
                         Action: Match.arrayWith(['ssm:GetParameter']),
                         Resource: Match.anyValue(),
-                    }),]),
+                    }),
+                ]),
             }),
         });
     });

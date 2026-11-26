@@ -38,7 +38,11 @@ let bookedSeatsHandler: Handler;
 let guestConversionHandler: Handler;
 
 beforeAll(async () => {
-    const [guestBooking, bookedSeats, guestConversion] = await Promise.all([import('../../../main/lambda/handlers/GuestBooking/guest-booking-handler'),import('../../../main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler'),import('../../../main/lambda/handlers/GuestConversion/guest-conversion-handler'),]);
+    const [guestBooking, bookedSeats, guestConversion] = await Promise.all([
+        import('../../../main/lambda/handlers/GuestBooking/guest-booking-handler'),
+        import('../../../main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler'),
+        import('../../../main/lambda/handlers/GuestConversion/guest-conversion-handler'),
+    ]);
 
     guestBookingHandler = guestBooking.handler;
     bookedSeatsHandler = bookedSeats.handler;
@@ -106,7 +110,10 @@ const pricing = {
     pricingId: 'STANDARD_RATES',
     name: 'Standard Rates',
     currency: 'GBP',
-    ticketTiers: [{ id: 'adult', label: 'Standard Adult', description: 'Adult admission', price: 9.5 },{ id: 'child', label: 'Child Ticket', description: 'Child admission', price: 6 },],
+    ticketTiers: [
+        { id: 'adult', label: 'Standard Adult', description: 'Adult admission', price: 9.5 },
+        { id: 'child', label: 'Child Ticket', description: 'Child admission', price: 6 },
+    ],
 };
 
 function event(body?: unknown, query?: Record<string, string>): APIGatewayProxyEventV2 {
@@ -167,7 +174,10 @@ function validGuestPayload(): Record<string, unknown> {
         seats: ['F10', 'F11'],
         email: ' CUSTOMER@example.com ',
         customerName: ' Niall McLaughlin ',
-        tickets: [{ tierId: 'adult', quantity: 1 },{ tierId: 'child', quantity: 1 },],
+        tickets: [
+            { tierId: 'adult', quantity: 1 },
+            { tierId: 'child', quantity: 1 },
+        ],
     };
 }
 
@@ -231,7 +241,10 @@ describe('unpaid guest bookings', () => {
             totalAmount: 15.5,
             currency: 'GBP',
             customerEmail: 'customer@example.com',
-            tickets: [{ tierId: 'adult', quantity: 1, unitPrice: 9.5, subtotal: 9.5 },{ tierId: 'child', quantity: 1, unitPrice: 6, subtotal: 6 },],
+            tickets: [
+                { tierId: 'adult', quantity: 1, unitPrice: 9.5, subtotal: 9.5 },
+                { tierId: 'child', quantity: 1, unitPrice: 6, subtotal: 6 },
+            ],
         });
 
         expect(response.bookingId).toEqual(expect.stringMatching(/^bk_/));
@@ -240,44 +253,54 @@ describe('unpaid guest bookings', () => {
         expect(response.confirmationEmailSent).toBe(true);
         const logEntries = info.mock.calls.map(([entry]) => JSON.parse(String(entry)));
         expect(logEntries).toEqual(
-            expect.arrayContaining([expect.objectContaining({
+            expect.arrayContaining([
+                expect.objectContaining({
                     message: 'Guest booking request received.',
                     requestId: 'guest-booking-test',
-                }),expect.objectContaining({
+                }),
+                expect.objectContaining({
                     message: 'Maximum ticket limit resolved.',
                     maxTickets: 10,
                     source: 'default',
-                }),expect.objectContaining({
+                }),
+                expect.objectContaining({
                     message: 'Guest booking created.',
                     requestId: 'guest-booking-test',
                     bookingId: response.bookingId,
-                }),]),
+                }),
+            ]),
         );
 
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
         expect(transaction.TransactItems).toHaveLength(8);
         const writes = transaction.TransactItems?.map((item) => item.Put?.Item).filter(Boolean);
         expect(writes).toEqual(
-            expect.arrayContaining([expect.objectContaining({
+            expect.arrayContaining([
+                expect.objectContaining({
                     recordType: 'SEAT',
                     showtimeId,
                     seatId: 'F10',
-                }),expect.objectContaining({
+                }),
+                expect.objectContaining({
                     recordType: 'SEAT',
                     showtimeId,
                     seatId: 'F11',
-                }),expect.objectContaining({
+                }),
+                expect.objectContaining({
                     recordType: 'BOOKING',
                     showtimeId,
                     seats: ['F10', 'F11'],
                     customerEmail: 'customer@example.com',
                     customerName: 'Niall McLaughlin',
                     totalAmount: 15.5,
-                }),expect.objectContaining({
+                }),
+                expect.objectContaining({
                     tokenHash: createHash('sha256')
                         .update(response.conversionToken as string)
                         .digest('hex'),
-                }),expect.objectContaining({ bookingRef: response.bookingRef }),]),
+                }),
+                expect.objectContaining({ bookingRef: response.bookingRef }),
+            ]),
         );
 
         expect(transaction.TransactItems?.[0].Put?.Item?.showingId).toBeUndefined();
@@ -398,17 +421,22 @@ describe('unpaid guest bookings', () => {
 
     it('returns all unavailable seats and only the authenticated user seats', async () => {
         ddbMock.on(QueryCommand, { TableName: 'test-bookings' }).resolves({
-            Items: [{ seatId: 'F10', recordType: 'SEAT' },{ seatId: 'F11', recordType: 'SEAT' },{
+            Items: [
+                { seatId: 'F10', recordType: 'SEAT' },
+                { seatId: 'F11', recordType: 'SEAT' },
+                {
                     seatId: 'BOOKING#account',
                     recordType: 'BOOKING',
                     userId: 'cognito-sub-123',
                     seats: ['F10'],
-                },{
+                },
+                {
                     seatId: 'BOOKING#other-account',
                     recordType: 'BOOKING',
                     userId: 'another-sub',
                     seats: ['F11'],
-                },],
+                },
+            ],
         });
 
         ddbMock.on(QueryCommand, { TableName: 'test-legacy-bookings' }).resolves({ Items: [] });
@@ -489,7 +517,15 @@ describe('unpaid guest bookings', () => {
         ddbMock.on(TransactWriteCommand).rejects(
             Object.assign(new Error('Transaction cancelled'), {
                 name: 'TransactionCanceledException',
-                CancellationReasons: [{ Code: 'None' },{ Code: 'ConditionalCheckFailed' },{ Code: 'None' },{ Code: 'None' },{ Code: 'None' },{ Code: 'None' },{ Code: 'None' },],
+                CancellationReasons: [
+                    { Code: 'None' },
+                    { Code: 'ConditionalCheckFailed' },
+                    { Code: 'None' },
+                    { Code: 'None' },
+                    { Code: 'None' },
+                    { Code: 'None' },
+                    { Code: 'None' },
+                ],
             }),
         );
 

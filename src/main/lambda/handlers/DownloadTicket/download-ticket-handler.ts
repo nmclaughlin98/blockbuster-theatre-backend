@@ -12,7 +12,10 @@ async function findOwnedBooking(
     userId: string,
     bookingId: string,
 ): Promise<Record<string, unknown> | undefined> {
-    const tables = [{ name: process.env.BOOKINGS_TABLE_NAME, partitionKey: 'showtimeId' },{ name: process.env.LEGACY_BOOKINGS_TABLE_NAME, partitionKey: 'showingId' },] as const;
+    const tables = [
+        { name: process.env.BOOKINGS_TABLE_NAME, partitionKey: 'showtimeId' },
+        { name: process.env.LEGACY_BOOKINGS_TABLE_NAME, partitionKey: 'showingId' },
+    ] as const;
 
     if (tables.some((table) => !table.name)) {
         throw new Error('Booking tables are not configured.');

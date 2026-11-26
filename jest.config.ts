@@ -15,7 +15,13 @@ const config: Config = {
     coverageDirectory: 'coverage',
     globalTeardown: '<rootDir>/src/test/teardown-env.ts',
 
-    collectCoverageFrom: ['src/main/**/*.ts','lib/backend/api-gateway-construct.ts','lib/backend/lambdas-construct.ts','!**/*.d.ts','!**/node_modules/**',],
+    collectCoverageFrom: [
+        'src/main/**/*.ts',
+        'lib/backend/api-gateway-construct.ts',
+        'lib/backend/lambdas-construct.ts',
+        '!**/*.d.ts',
+        '!**/node_modules/**',
+    ],
     coverageThreshold: {
         global: {
             branches: 90,
@@ -30,7 +36,9 @@ const config: Config = {
     },
 
     transform: {
-        '^.+\\.ts$': ['@swc/jest',{
+        '^.+\\.ts$': [
+            '@swc/jest',
+            {
                 jsc: {
                     target: 'es2022',
                     parser: {
@@ -46,7 +54,8 @@ const config: Config = {
                 module: {
                     type: 'commonjs',
                 },
-            },],
+            },
+        ],
     },
 };
 

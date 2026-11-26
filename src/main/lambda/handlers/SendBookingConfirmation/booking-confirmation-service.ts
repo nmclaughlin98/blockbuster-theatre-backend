@@ -32,14 +32,16 @@ export async function sendBookingConfirmationEmail(
         },
     });
 
-    const attachments: Attachment[] = [{
+    const attachments: Attachment[] = [
+        {
             RawContent: qrCode,
             ContentType: 'image/png',
             ContentDisposition: 'INLINE',
             ContentId: 'booking-reference-qr',
             ContentTransferEncoding: 'BASE64',
             FileName: 'booking-reference.png',
-        },];
+        },
+    ];
 
     // Optionally include the PDF ticket attachment
     if (includeTicketPdf && 'currency' in confirmation) {

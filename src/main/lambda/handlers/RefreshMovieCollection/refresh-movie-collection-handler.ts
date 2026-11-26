@@ -250,12 +250,14 @@ async function refreshList(listId: string, requestId: string | undefined): Promi
             itemPages.push(await fetchTmdbListPage(listId, page));
         }
 
-        const movieIds = [...new Set(
+        const movieIds = [
+            ...new Set(
                 itemPages
                     .flatMap((listPage) => listPage.items)
                     .filter((item) => item.media_type === undefined || item.media_type === 'movie')
                     .map((item) => String(item.id)),
-            ),];
+            ),
+        ];
 
         const collection: MovieCollectionRecord = {
             collectionId: listId,
@@ -362,7 +364,8 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
     }
 
     const results = await mapWithConcurrency(parsedIds.ids, REFRESH_CONCURRENCY, (listId) =>
-        refreshList(listId, requestId),);
+        refreshList(listId, requestId),
+    );
 
     const failedCount = results.filter((result) => !result.success).length;
 

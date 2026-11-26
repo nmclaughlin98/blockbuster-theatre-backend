@@ -24,24 +24,28 @@ describe('movie image URL migration', () => {
         dynamoMock
             .on(ScanCommand)
             .resolvesOnce({
-                Items: [{
+                Items: [
+                    {
                         tmdbId: '1',
                         slug: 'first-movie',
                         poster: 'https://image.tmdb.org/t/p/w500/poster.jpg',
                         still: 'https://images.example.com/backdrop.jpg',
-                    },],
+                    },
+                ],
                 LastEvaluatedKey: {
                     tmdbId: '1',
                     slug: 'first-movie',
                 },
             })
             .resolves({
-                Items: [{
+                Items: [
+                    {
                         tmdbId: '2',
                         slug: 'second-movie',
                         poster: 'https://image.tmdb.org/t/p/original/already-original.jpg',
                         still: 'https://image.tmdb.org/t/p/h632/backdrop.jpg',
-                    },],
+                    },
+                ],
             });
 
         const reportChange = jest.fn();
@@ -62,13 +66,15 @@ describe('movie image URL migration', () => {
 
     it('updates only changed image attributes and preserves each filename', async () => {
         dynamoMock.on(ScanCommand).resolves({
-            Items: [{
+            Items: [
+                {
                     tmdbId: '42',
                     slug: 'a-movie',
                     title: 'A Movie',
                     poster: 'https://image.tmdb.org/t/p/w500/lHu1wtNaczFPGFDTrjCSzeLPTKN.jpg',
                     still: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
-                },],
+                },
+            ],
         });
 
         const report = await migrateMovieImageUrls(client, 'test-movies', true);

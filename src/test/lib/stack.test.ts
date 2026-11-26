@@ -16,7 +16,8 @@ describe('BackendStack', () => {
         expect(fn.Properties.Environment.Variables.ALLOW_LINK_BOOKINGS_PARAMETER_NAME).toBe(parameterName);
         const roleId = fn.Properties.Role['Fn::GetAtt'][0];
         const policies = Object.values(template.findResources('AWS::IAM::Policy')).filter((policy) =>
-            policy.Properties.Roles.some((role: { Ref?: string }) => role.Ref === roleId),);
+            policy.Properties.Roles.some((role: { Ref?: string }) => role.Ref === roleId),
+        );
 
         const statements = policies.flatMap((policy) => policy.Properties.PolicyDocument.Statement);
         const ssmStatement = statements.find((statement) => statement.Action === 'ssm:GetParameter');
@@ -63,7 +64,8 @@ describe('BackendStack', () => {
         expect(tables).toHaveLength(9);
         expect(
             tables.every((table) =>
-                String(table.Properties?.TableName).startsWith('blockbuster-theatre-prod-'),),
+                String(table.Properties?.TableName).startsWith('blockbuster-theatre-prod-'),
+            ),
         ).toBe(true);
 
         expect(tables.map((table) => table.Properties?.TableName).sort()).toEqual(
@@ -85,7 +87,18 @@ describe('BackendStack', () => {
         });
     });
 
-    it.each([['prod','blockbuster-theatre-prod-guest-booked-seats-handler','/blockbuster-theatre-prod/parameter-configurations/ALLOW_LINK_BOOKINGS',],['dev','blockbuster-theatre-dev-guest-booked-seats-handler','/blockbuster-theatre-dev/parameter-configurations/ALLOW_LINK_BOOKINGS',],] as const)('configures guest booking linking for %s', (envName, functionName, parameterName) => {
+    it.each([
+        [
+            'prod',
+            'blockbuster-theatre-prod-guest-booked-seats-handler',
+            '/blockbuster-theatre-prod/parameter-configurations/ALLOW_LINK_BOOKINGS',
+        ],
+        [
+            'dev',
+            'blockbuster-theatre-dev-guest-booked-seats-handler',
+            '/blockbuster-theatre-dev/parameter-configurations/ALLOW_LINK_BOOKINGS',
+        ],
+    ] as const)('configures guest booking linking for %s', (envName, functionName, parameterName) => {
         const app = new cdk.App();
         const configuredStack = new BlockbusterTheatreBackendStack(app, 'FlagStack', {
             envName,
@@ -115,7 +128,8 @@ describe('BackendStack', () => {
         expect(tables).toHaveLength(9);
         expect(
             tables.every((table) =>
-                String(table.Properties?.TableName).startsWith('blockbuster-theatre-dev-'),),
+                String(table.Properties?.TableName).startsWith('blockbuster-theatre-dev-'),
+            ),
         ).toBe(true);
 
         expect(tables.map((table) => table.Properties?.TableName).sort()).toEqual(
@@ -136,7 +150,10 @@ describe('BackendStack', () => {
         expect(functions.length).toBeGreaterThan(0);
         expect(functions.every((name) => name.startsWith('blockbuster-theatre-dev-'))).toBe(true);
 
-        for (const name of ['blockbuster-theatre-dev-booking-confirmation-handler','blockbuster-theatre-dev-guest-booking-handler',]) {
+        for (const name of [
+            'blockbuster-theatre-dev-booking-confirmation-handler',
+            'blockbuster-theatre-dev-guest-booking-handler',
+        ]) {
             template.hasResourceProperties('AWS::Lambda::Function', {
                 FunctionName: name,
                 Environment: {
@@ -189,17 +206,21 @@ describe('BackendStack', () => {
             Name: 'blockbuster-theatre-dev-CognitoJwtAuthorizer',
             AuthorizerType: 'JWT',
             JwtConfiguration: Match.objectLike({
-                Audience: Match.arrayWith([Match.objectLike({
+                Audience: Match.arrayWith([
+                    Match.objectLike({
                         Ref: Match.stringLikeRegexp(
                             'SsmParameterValueblockbustertheatreauthclientsbackendid',
                         ),
-                    }),Match.objectLike({
+                    }),
+                    Match.objectLike({
                         Ref: Match.stringLikeRegexp(
                             'SsmParameterValueblockbustertheatreauthclientspostmanid',
                         ),
-                    }),Match.objectLike({
+                    }),
+                    Match.objectLike({
                         Ref: Match.stringLikeRegexp('SsmParameterValueblockbustertheatreauthclientsalexaid'),
-                    }),]),
+                    }),
+                ]),
             }),
         });
     });
@@ -222,7 +243,10 @@ describe('BackendStack', () => {
 
             for (const resource of resources) {
                 expect(resource.Properties?.Tags).toEqual(
-                    expect.arrayContaining([{ Key: 'Project', Value: 'blockbuster-theatre' },{ Key: 'Environment', Value: envName },]),
+                    expect.arrayContaining([
+                        { Key: 'Project', Value: 'blockbuster-theatre' },
+                        { Key: 'Environment', Value: envName },
+                    ]),
                 );
             }
         }
@@ -293,14 +317,20 @@ describe('BackendStack', () => {
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-prod-bookings',
             BillingMode: 'PAY_PER_REQUEST',
-            KeySchema: [{ AttributeName: 'showingId', KeyType: 'HASH' },{ AttributeName: 'seatId', KeyType: 'RANGE' },],
+            KeySchema: [
+                { AttributeName: 'showingId', KeyType: 'HASH' },
+                { AttributeName: 'seatId', KeyType: 'RANGE' },
+            ],
             GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
         });
 
         template.hasResourceProperties('AWS::DynamoDB::Table', {
             TableName: 'blockbuster-theatre-prod-bookings-by-showtime',
             BillingMode: 'PAY_PER_REQUEST',
-            KeySchema: [{ AttributeName: 'showtimeId', KeyType: 'HASH' },{ AttributeName: 'seatId', KeyType: 'RANGE' },],
+            KeySchema: [
+                { AttributeName: 'showtimeId', KeyType: 'HASH' },
+                { AttributeName: 'seatId', KeyType: 'RANGE' },
+            ],
             GlobalSecondaryIndexes: Match.arrayWith([Match.objectLike({ IndexName: 'UserBookings' })]),
         });
 
@@ -345,11 +375,16 @@ describe('BackendStack', () => {
             template.hasResourceProperties('AWS::IAM::Policy', {
                 Roles: [{ Ref: Match.stringLikeRegexp('DownloadTicketHandlerServiceRole') }],
                 PolicyDocument: Match.objectLike({
-                    Statement: Match.arrayWith([Match.objectLike({
+                    Statement: Match.arrayWith([
+                        Match.objectLike({
                             Effect: 'Allow',
                             Action: Match.arrayWith(['dynamodb:Query', 'dynamodb:GetItem']),
-                            Resource: Match.arrayWith([{ 'Fn::GetAtt': [table, 'Arn'] },{ 'Fn::Join': ['', [{ 'Fn::GetAtt': [table, 'Arn'] }, '/index/*']] },]),
-                        }),]),
+                            Resource: Match.arrayWith([
+                                { 'Fn::GetAtt': [table, 'Arn'] },
+                                { 'Fn::Join': ['', [{ 'Fn::GetAtt': [table, 'Arn'] }, '/index/*']] },
+                            ]),
+                        }),
+                    ]),
                 }),
             });
         }
@@ -508,10 +543,12 @@ describe('BackendStack', () => {
 
         template.hasResourceProperties('AWS::IAM::Policy', {
             PolicyDocument: Match.objectLike({
-                Statement: Match.arrayWith([Match.objectLike({
+                Statement: Match.arrayWith([
+                    Match.objectLike({
                         Action: Match.arrayWith(['ses:SendEmail']),
                         Resource: Match.anyValue(),
-                    }),]),
+                    }),
+                ]),
             }),
         });
     });
