@@ -1,4 +1,4 @@
-import type { PricingRecord } from '../src/main/lambda/handlers/interfaces';
+import type { PricingRecord } from '../src/main/lambda/lib/interfaces';
 
 export const pricingRecords: PricingRecord[] = [
     {
@@ -28,8 +28,18 @@ export const pricingRecords: PricingRecord[] = [
         name: 'Kids Club Rates',
         currency: 'GBP',
         ticketTiers: [
-            { id: 'child', label: 'Kids Club Child Ticket', description: 'Kids Club admission per child', price: 2.5 },
-            { id: 'adult', label: 'Adult Companion', description: 'Adult admission with a Kids Club child ticket', price: 0 },
+            {
+                id: 'child',
+                label: 'Kids Club Child Ticket',
+                description: 'Kids Club admission per child',
+                price: 2.5,
+            },
+            {
+                id: 'adult',
+                label: 'Adult Companion',
+                description: 'Adult admission with a Kids Club child ticket',
+                price: 0,
+            },
         ],
     },
     {

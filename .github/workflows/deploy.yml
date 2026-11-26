@@ -1,157 +1,142 @@
-name: 2. Deploy Stack
-run-name: 'Deploy Stack (${{ github.event.workflow_run.head_branch || github.ref_name }} Build #${{ github.event.workflow_run.run_number || inputs.build_number }})'
+name: 2. Deploy Stack 🚀
+
+run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env || (github.event_name == 'workflow_run' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
-  workflow_run:
-    workflows:
-      - 1. Build and Package
-    types:
-      - completed
-    branches:
-      - main
-  workflow_dispatch:
-    inputs:
-      build_number:
-        description: 'Build number to deploy (leave as "latest" or empty for most recent successful main build)'
-        required: false
-        default: 'latest'
-        type: string
+    workflow_run:
+        workflows:
+            - '1. Build and Package 🔨'
+        types:
+            - completed
+        branches:
+            - main
+    workflow_dispatch:
+        inputs:
+            target_stack:
+                description: 'Target stack to deploy'
+                required: true
+                default: 'backend'
+                type: choice
+                options:
+                    - backend
+                    - auth
+                    - both
+            target_env:
+                description: 'Target environment'
+                required: true
+                default: 'dev'
+                type: choice
+                options:
+                    - dev
+                    - prod
+            build_number:
+                description: 'Build run number (or "latest")'
+                required: true
+                default: 'latest'
+                type: string
+
+permissions:
+    id-token: write
+    contents: read
+    actions: write
 
 jobs:
-  deploy:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      id-token: write
-      contents: read
+    # Fast-path: if manually triggered with "latest", hand off to resolver so the real deploy gets the resolved #number in its title
+    handoff-latest:
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build_number == 'latest' || inputs.build_number == '') }}
+        runs-on: ubuntu-latest
+        steps:
+            - name: Hand off to latest build resolver
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh workflow run deploy-resolver.yml \
+                    --repo "${{ github.repository }}" \
+                    --ref "${{ github.ref_name }}" \
+                    -f target_stack="${{ inputs.target_stack || 'backend' }}" \
+                    -f target_env="${{ inputs.target_env || 'dev' }}" \
+                    -f source_branch="${{ github.ref_name }}" \
+                    -f handoff_run_id="${{ github.run_id }}"
 
-    steps:
-      - name: Checkout Repository
-        id: checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+    # Main deploy job: runs whenever a concrete build number is known (workflow_run OR resolved manual run)
+    deploy:
+        if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.build_number != 'latest' && inputs.build_number != '') }}
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        id: setup_node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: 'npm'
+            - name: Resolve build run ID
+              id: resolve
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+                  WORKFLOW_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+                  INPUT_BUILD: ${{ inputs.build_number }}
+              run: |
+                  if [ -n "$WORKFLOW_RUN_ID" ]; then
+                    RUN_ID="$WORKFLOW_RUN_ID"
+                    BUILD_NUM="$WORKFLOW_RUN_NUMBER"
+                  else
+                    BUILD_NUM="$INPUT_BUILD"
+                    BUILD_WORKFLOW_ID=$(gh api "repos/${{ github.repository }}/actions/workflows" \
+                      --jq '.workflows[] | select(.name | startswith("1. Build and Package")) | .id' | head -n 1)
 
-      - name: Install Dependencies
-        id: install_dependencies
-        run: npm ci
+                    RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/${BUILD_WORKFLOW_ID}/runs?per_page=50" \
+                      --jq ".workflow_runs[] | select(.run_number == ${BUILD_NUM}) | .id" | head -n 1)
+                  fi
 
-      - name: Download Build Artifact
-        id: download_artifact
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
-          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
-          TRIGGER_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            BUILD_RUN_ID="$TRIGGER_RUN_ID"
-            TARGET_BUILD="$TRIGGER_RUN_NUMBER"
-          else
-            TARGET_BUILD="${INPUT_BUILD_NUMBER:-latest}"
+                  if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+                    echo "Could not resolve build run ID for Build #${BUILD_NUM}."
+                    exit 1
+                  fi
 
-            if [ "$TARGET_BUILD" = "latest" ]; then
-              BUILD_INFO=$(gh run list --workflow build.yml --branch main --status success --limit 1 --json databaseId,number --jq '.[0] | [.databaseId, .number] | @tsv')
-            else
-              if ! [[ "$TARGET_BUILD" =~ ^[0-9]+$ ]]; then
-                echo "Error: Build number must be numeric or 'latest'."
-                exit 1
-              fi
-              BUILD_INFO=$(gh run list --workflow build.yml --branch main --status success --limit 100 --json databaseId,number --jq ".[] | select(.number == ${TARGET_BUILD}) | [.databaseId, .number] | @tsv" | head -n 1)
-            fi
+                  echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+                  echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
 
-            if [ -z "$BUILD_INFO" ] || [ "$BUILD_INFO" = "null" ]; then
-              echo "Error: No successful build found for the requested main-branch build."
-              exit 1
-            fi
+            - name: Download build artifact
+              uses: actions/download-artifact@v7
+              with:
+                  name: build-artifact-${{ steps.resolve.outputs.build_number }}
+                  path: cdk-out
+                  run-id: ${{ steps.resolve.outputs.run_id }}
+                  github-token: ${{ github.token }}
 
-            read -r BUILD_RUN_ID TARGET_BUILD <<< "$BUILD_INFO"
-          fi
+            - name: Setup Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+                  cache: npm
 
-          echo "build_number=${TARGET_BUILD}" >> "$GITHUB_OUTPUT"
-          echo "build_run_id=${BUILD_RUN_ID}" >> "$GITHUB_OUTPUT"
-          echo "Downloading build artifact for run ${BUILD_RUN_ID}..."
-          gh run download "$BUILD_RUN_ID" --name "build-artifact-${TARGET_BUILD}" --dir cdk-out
+            - name: Install dependencies
+              run: npm ci
 
-          echo "## 🚀 Deploying Build #${TARGET_BUILD}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Build Number:** \`${TARGET_BUILD}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Build Run ID:** \`${BUILD_RUN_ID}\`" >> "$GITHUB_STEP_SUMMARY"
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
+                  role-session-name: github-actions-deploy
+                  aws-region: eu-west-2
 
-      - name: Configure AWS Credentials
-        id: configure_aws
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          aws-region: eu-west-2
-          role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
-          role-session-name: github-actions-deploy
-
-      - name: Deploy CDK Stack
-        id: deploy_cdk
-        env:
-          CDK_DEFAULT_ACCOUNT: '334624057595'
-          CDK_DEFAULT_REGION: 'eu-west-2'
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: |
-          npx cdk synth --output cdk-out-deploy
-          npx cdk deploy --app cdk-out-deploy --require-approval never
-
-      - name: Write Deploy Summary
-        if: always()
-        env:
-          DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
-          DEPLOY_BUILD_NUMBER: ${{ steps.download_artifact.outputs.build_number || github.event.workflow_run.run_number || inputs.build_number }}
-          DEPLOY_BUILD_RUN_ID: ${{ steps.download_artifact.outputs.build_run_id || github.event.workflow_run.id }}
-          JOB_STATUS: ${{ job.status }}
-          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
-          SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
-          INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
-          DOWNLOAD_ARTIFACT_OUTCOME: ${{ steps.download_artifact.outcome }}
-          CONFIGURE_AWS_OUTCOME: ${{ steps.configure_aws.outcome }}
-          DEPLOY_CDK_OUTCOME: ${{ steps.deploy_cdk.outcome }}
-        run: |
-          COMPLETED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          {
-            echo "### 🚀 Deploy Summary"
-            echo "**Completed at:** \`${COMPLETED_AT}\`"
-            echo "**Status:** \`${JOB_STATUS}\`"
-            echo "**Branch:** \`${DEPLOY_BRANCH}\`"
-            echo "**Build Number:** \`${DEPLOY_BUILD_NUMBER}\`"
-            if [ -n "$DEPLOY_BUILD_RUN_ID" ]; then
-              echo "**Build Run ID:** \`${DEPLOY_BUILD_RUN_ID}\`"
-            fi
-
-            if [ "$JOB_STATUS" = "failure" ]; then
-              echo
-              echo "#### Failure Summary"
-              FAILED_STEP_FOUND=false
-              for step in \
-                "Checkout Repository:${CHECKOUT_OUTCOME}" \
-                "Setup Node.js:${SETUP_NODE_OUTCOME}" \
-                "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
-                "Download Build Artifact:${DOWNLOAD_ARTIFACT_OUTCOME}" \
-                "Configure AWS Credentials:${CONFIGURE_AWS_OUTCOME}" \
-                "Deploy CDK Stack:${DEPLOY_CDK_OUTCOME}"; do
-                STEP_NAME="${step%%:*}"
-                STEP_OUTCOME="${step#*:}"
-                if [ "$STEP_OUTCOME" = "failure" ]; then
-                  echo "- ${STEP_NAME} failed."
-                  FAILED_STEP_FOUND=true
-                fi
-              done
-              if [ "$FAILED_STEP_FOUND" = false ]; then
-                echo "- The job failed, but no individual step reported a failure."
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "Deploy of build #${DEPLOY_BUILD_NUMBER} on ${DEPLOY_BRANCH}: ${JOB_STATUS} at ${COMPLETED_AT}"
+            - name: Deploy CDK stack
+              env:
+                  TARGET_ENV: ${{ inputs.target_env || (github.event_name == 'workflow_run' && 'prod' || 'dev') }}
+                  TARGET_STACK: ${{ inputs.target_stack || 'backend' }}
+                  TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+              run: |
+                  PARAMETERS=()
+                  if [ "$TARGET_STACK" != "auth" ]; then
+                    if [[ ! "$TMDB_API_KEY" =~ [^[:space:]] ]]; then
+                      echo "TMDB_API_KEY must be configured as a non-empty repository secret."
+                      exit 1
+                    fi
+                    PARAMETERS=(--parameters "BlockbusterTheatreBackendStack-${TARGET_ENV}:TmdbApiKey=$TMDB_API_KEY")
+                  fi
+                  if [ "$TARGET_STACK" = "both" ] || [ "$TARGET_STACK" = "all" ]; then
+                    npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" --all --context env="$TARGET_ENV" --require-approval never "${PARAMETERS[@]}"
+                  elif [ "$TARGET_STACK" = "auth" ]; then
+                    npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreAuthStack" --context env="$TARGET_ENV" --require-approval never
+                  else
+                    npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreBackendStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never "${PARAMETERS[@]}"
+                  fi
+                  echo "Deployment of $TARGET_STACK stack for $TARGET_ENV environment completed."

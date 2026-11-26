@@ -1,0 +1,78 @@
+name: Seed DynamoDB Data
+
+on:
+    workflow_dispatch:
+        inputs:
+            target_env:
+                description: 'Target environment'
+                required: true
+                default: 'dev'
+                type: choice
+                options:
+                    - dev
+                    - prod
+            action:
+                description: 'Operation to run'
+                required: true
+                default: 'all'
+                type: choice
+                options:
+                    - all
+                    - showtimes-only
+                    - pricing-only
+            dry_run:
+                description: 'Dry run (preview showtimes without writing)'
+                required: true
+                default: false
+                type: boolean
+
+permissions:
+    id-token: write
+    contents: read
+
+jobs:
+    seed:
+        name: Seed ${{ inputs.target_env }} DynamoDB
+        runs-on: ubuntu-latest
+        environment: ${{ inputs.target_env }}
+        env:
+            AWS_REGION: eu-west-2
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v7
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+
+            - name: Install dependencies
+              run: npm ci --include=dev
+
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v6
+              with:
+                  aws-region: eu-west-2
+                  role-to-assume: arn:aws:iam::334624057595:role/github-actions-deploy-role
+                  role-session-name: github-actions-seed
+
+            - name: Update movie showtimes
+              if: inputs.action == 'all' || inputs.action == 'showtimes-only'
+              env:
+                  MOVIE_TABLE_NAME: blockbuster-theatre-${{ inputs.target_env }}-movie-catalogue
+              run: |
+                  APPLY_FLAG="--apply"
+                  if [ "${{ inputs.dry_run }}" = "true" ]; then
+                    APPLY_FLAG=""
+                  fi
+                  npx ts-node scripts/update-movie-showtimes.ts $APPLY_FLAG
+
+            - name: Seed ticket pricing packages
+              if: (inputs.action == 'all' || inputs.action == 'pricing-only') && inputs.dry_run == false
+              env:
+                  PRICING_TABLE_NAME: blockbuster-theatre-${{ inputs.target_env }}-ticket-pricing
+                  OFFERS_TABLE_NAME: blockbuster-theatre-${{ inputs.target_env }}-booking-offers
+                  MOVIES_TABLE_NAME: blockbuster-theatre-${{ inputs.target_env }}-movie-catalogue
+              run: |
+                  npx ts-node scripts/seed-pricing-offers.ts

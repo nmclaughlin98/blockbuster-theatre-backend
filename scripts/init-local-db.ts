@@ -6,13 +6,9 @@ import {
     waitUntilTableExists,
     type CreateTableCommandInput,
 } from '@aws-sdk/client-dynamodb';
-import {
-    DynamoDBDocumentClient,
-    GetCommand,
-    PutCommand,
-} from '@aws-sdk/lib-dynamodb';
-import { createDynamoDBClient } from '../src/main/lambda/handlers/dynamodb-client';
-import type { MovieRecord } from '../src/main/lambda/handlers/interfaces';
+import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { createDynamoDBClient } from '../src/main/lambda/handlers/Shared/dynamodb-client';
+import type { MovieRecord } from '../src/main/lambda/lib/interfaces';
 import { pricingRecords } from './pricing-records';
 
 const endpoint = 'http://127.0.0.1:8000';
@@ -87,6 +83,7 @@ const tableDefinitions: CreateTableCommandInput[] = [
             { AttributeName: 'seatId', AttributeType: 'S' },
             { AttributeName: 'userId', AttributeType: 'S' },
             { AttributeName: 'bookedAt', AttributeType: 'S' },
+            { AttributeName: 'customerEmail', AttributeType: 'S' },
         ],
         KeySchema: [
             { AttributeName: 'showtimeId', KeyType: 'HASH' },
@@ -101,6 +98,11 @@ const tableDefinitions: CreateTableCommandInput[] = [
                 ],
                 Projection: { ProjectionType: 'ALL' },
             },
+            {
+                IndexName: 'CustomerEmailBookings',
+                KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
+                Projection: { ProjectionType: 'ALL' },
+            },
         ],
     },
     {
@@ -109,17 +111,49 @@ const tableDefinitions: CreateTableCommandInput[] = [
         AttributeDefinitions: [
             { AttributeName: 'showingId', AttributeType: 'S' },
             { AttributeName: 'seatId', AttributeType: 'S' },
+            { AttributeName: 'userId', AttributeType: 'S' },
+            { AttributeName: 'bookedAt', AttributeType: 'S' },
+            { AttributeName: 'customerEmail', AttributeType: 'S' },
         ],
         KeySchema: [
             { AttributeName: 'showingId', KeyType: 'HASH' },
             { AttributeName: 'seatId', KeyType: 'RANGE' },
         ],
+        GlobalSecondaryIndexes: [
+            {
+                IndexName: 'UserBookings',
+                KeySchema: [
+                    { AttributeName: 'userId', KeyType: 'HASH' },
+                    { AttributeName: 'bookedAt', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+            {
+                IndexName: 'CustomerEmailBookings',
+                KeySchema: [{ AttributeName: 'customerEmail', KeyType: 'HASH' }],
+                Projection: { ProjectionType: 'ALL' },
+            },
+        ],
     },
     {
         TableName: tableNames.showtimeRegistry,
         BillingMode: 'PAY_PER_REQUEST',
-        AttributeDefinitions: [{ AttributeName: 'registryKey', AttributeType: 'S' }],
+        AttributeDefinitions: [
+            { AttributeName: 'registryKey', AttributeType: 'S' },
+            { AttributeName: 'GSI1PK', AttributeType: 'S' },
+            { AttributeName: 'GSI1SK', AttributeType: 'S' },
+        ],
         KeySchema: [{ AttributeName: 'registryKey', KeyType: 'HASH' }],
+        GlobalSecondaryIndexes: [
+            {
+                IndexName: 'ShowtimesByDate',
+                KeySchema: [
+                    { AttributeName: 'GSI1PK', KeyType: 'HASH' },
+                    { AttributeName: 'GSI1SK', KeyType: 'RANGE' },
+                ],
+                Projection: { ProjectionType: 'ALL' },
+            },
+        ],
     },
     {
         TableName: tableNames.bookingReferences,
@@ -137,9 +171,11 @@ const tableDefinitions: CreateTableCommandInput[] = [
 
 async function waitForLocalDynamoDB(): Promise<void> {
     let lastError: unknown;
+
     for (let attempt = 0; attempt < 30; attempt++) {
         try {
             await client.send(new ListTablesCommand({}));
+
             return;
         } catch (error: unknown) {
             lastError = error;
@@ -147,61 +183,60 @@ async function waitForLocalDynamoDB(): Promise<void> {
         }
     }
 
-    throw new Error(
-        `DynamoDB Local did not become ready at ${endpoint}.`,
-        { cause: lastError }
-    );
+    throw new Error(`DynamoDB Local did not become ready at ${endpoint}.`, { cause: lastError });
 }
 
 async function createTableIfMissing(input: CreateTableCommandInput): Promise<void> {
     const tableName = input.TableName;
+
     if (!tableName) throw new Error('Local table definition is missing TableName.');
 
     try {
-        const description = await client.send(
-            new DescribeTableCommand({ TableName: tableName })
-        );
+        const description = await client.send(new DescribeTableCommand({ TableName: tableName }));
         const existingIndexes = new Set(
             description.Table?.GlobalSecondaryIndexes?.flatMap((index) =>
-                index.IndexName ? [index.IndexName] : []
-            ) ?? []
+                index.IndexName ? [index.IndexName] : [],
+            ) ?? [],
         );
+
         const missingIndexes = (input.GlobalSecondaryIndexes ?? []).filter(
-            (index) => index.IndexName !== undefined && !existingIndexes.has(index.IndexName)
+            (index) => index.IndexName !== undefined && !existingIndexes.has(index.IndexName),
         );
+
         if (missingIndexes.length === 0) return;
 
         const existingAttributes = new Set(
-            description.Table?.AttributeDefinitions
-                ?.map((attribute) => attribute.AttributeName)
-                .filter((name): name is string => typeof name === 'string') ?? []
-        );
-        const requiredIndexAttributes = new Set(
-            missingIndexes.flatMap((index) =>
-                index.KeySchema?.flatMap((key) =>
-                    key.AttributeName ? [key.AttributeName] : []
-                ) ?? []
-            )
-        );
-        const newAttributeDefinitions = (input.AttributeDefinitions ?? []).filter(
-            (attribute) =>
-                typeof attribute.AttributeName === 'string' &&
-                requiredIndexAttributes.has(attribute.AttributeName) &&
-                !existingAttributes.has(attribute.AttributeName)
+            description.Table?.AttributeDefinitions?.map((attribute) => attribute.AttributeName).filter(
+                (name): name is string => typeof name === 'string',
+            ) ?? [],
         );
 
-        await client.send(
-            new UpdateTableCommand({
-                TableName: tableName,
-                ...(newAttributeDefinitions.length && {
-                    AttributeDefinitions: newAttributeDefinitions,
+        for (const index of missingIndexes) {
+            const requiredIndexAttributes = new Set(index.KeySchema?.map((key) => key.AttributeName));
+            const newAttributeDefinitions = (input.AttributeDefinitions ?? []).filter(
+                (attribute) =>
+                    typeof attribute.AttributeName === 'string' &&
+                    requiredIndexAttributes.has(attribute.AttributeName) &&
+                    !existingAttributes.has(attribute.AttributeName),
+            );
+
+            await client.send(
+                new UpdateTableCommand({
+                    TableName: tableName,
+                    ...(newAttributeDefinitions.length && {
+                        AttributeDefinitions: newAttributeDefinitions,
+                    }),
+                    GlobalSecondaryIndexUpdates: [{ Create: index }],
                 }),
-                GlobalSecondaryIndexUpdates: missingIndexes.map((index) => ({
-                    Create: index,
-                })),
-            })
-        );
-        await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: tableName });
+            );
+
+            for (const attribute of newAttributeDefinitions) {
+                if (attribute.AttributeName) existingAttributes.add(attribute.AttributeName);
+            }
+
+            await waitUntilTableExists({ client, maxWaitTime: 30 }, { TableName: tableName });
+        }
+
         return;
     } catch (error: unknown) {
         if (
@@ -243,68 +278,47 @@ const demoMovie: MovieRecord & {
     synopsis: 'A sample movie record for local API testing.',
     tagline: 'Local development fixture.',
     trailer: '',
-    showtimes: {
-        Monday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Tuesday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Wednesday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Thursday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Friday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Saturday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-        Sunday: [
-            { screen: '1', time: '11:00' },
-            { screen: '3', time: '19:00' },
-        ],
-    },
+    startDate: '2026-01-01',
+    preSalesEligible: false,
     entityType: 'Movie',
     GSI1PK: 'MOVIE',
     GSI1SK: '2026-01-01#99999999',
 };
 
 async function putIfMissing(tableName: string, key: Record<string, string>, item: object) {
-    const existing = await docClient.send(new GetCommand({
-        TableName: tableName,
-        Key: key,
-    }));
+    const existing = await docClient.send(
+        new GetCommand({
+            TableName: tableName,
+            Key: key,
+        }),
+    );
+
     if (existing.Item) return false;
 
     await docClient.send(new PutCommand({ TableName: tableName, Item: item }));
+
     return true;
 }
 
 async function main(): Promise<void> {
     await waitForLocalDynamoDB();
+
     for (const tableDefinition of tableDefinitions) {
         await createTableIfMissing(tableDefinition);
     }
 
     let seededPricing = 0;
+
     for (const pricing of pricingRecords) {
         if (await putIfMissing(tableNames.pricing, { pricingId: pricing.pricingId }, pricing)) {
             seededPricing++;
         }
     }
+
     const seededMovie = await putIfMissing(
         tableNames.movies,
         { tmdbId: demoMovie.tmdbId, slug: demoMovie.slug },
-        demoMovie
+        demoMovie,
     );
 
     console.log(`Local DynamoDB ready at ${endpoint}.`);

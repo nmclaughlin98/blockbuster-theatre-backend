@@ -1,101 +1,75 @@
-name: 1. Build and Package
-run-name: 'Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
+name: 1. Build and Package 🔨
+run-name: '🔨 Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
 
 on:
-  push:
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+    push:
+    workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    env:
-      BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
-    outputs:
-      build_number: ${{ github.run_number }}
-
-    steps:
-      - name: Checkout Code
-        id: checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        id: setup_node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: 'npm'
-
-      - name: Install Dependencies
-        id: install_dependencies
-        run: npm ci --include=dev
-
-      - name: Check TypeScript Compilation
-        id: compile
-        run: npm run build
-
-      - name: Synthesize CDK App
-        id: synthesize
+    build:
+        runs-on: ubuntu-latest
         env:
-          CDK_DEFAULT_ACCOUNT: '334624057595'
-          CDK_DEFAULT_REGION: 'eu-west-2'
-        run: npx cdk synth --output cdk-out
+            BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
+        outputs:
+            build_number: ${{ github.run_number }}
 
-      - name: Upload Build Artifact
-        id: upload_artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-artifact-${{ github.run_number }}
-          path: cdk-out
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 7
+        steps:
+            - name: Checkout Code
+              id: checkout
+              uses: actions/checkout@v7
 
-      - name: Write Build Summary
-        if: always()
-        env:
-          BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
-          BUILD_NUMBER: ${{ github.run_number }}
-          JOB_STATUS: ${{ job.status }}
-          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
-          SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
-          INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
-          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
-          SYNTHESIZE_OUTCOME: ${{ steps.synthesize.outcome }}
-          UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
-        run: |
-          COMPLETED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          {
-            echo "### 🚀 Build Summary"
-            echo "**Completed at:** \`${COMPLETED_AT}\`"
-            echo "**Status:** \`${JOB_STATUS}\`"
-            echo "**Branch:** \`${BUILD_BRANCH}\`"
-            echo "**Build Number:** \`${BUILD_NUMBER}\`"
-            echo "**Artifact Name:** \`build-artifact-${BUILD_NUMBER}\`"
+            - name: Setup Node.js
+              id: setup_node
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+                  cache: 'npm'
 
-            if [ "$JOB_STATUS" = "failure" ]; then
-              echo
-              echo "#### Failure Summary"
-              FAILED_STEP_FOUND=false
-              for step in \
-                "Checkout Code:${CHECKOUT_OUTCOME}" \
-                "Setup Node.js:${SETUP_NODE_OUTCOME}" \
-                "Install Dependencies:${INSTALL_DEPENDENCIES_OUTCOME}" \
-                "Check TypeScript Compilation:${COMPILE_OUTCOME}" \
-                "Synthesize CDK App:${SYNTHESIZE_OUTCOME}" \
-                "Upload Build Artifact:${UPLOAD_ARTIFACT_OUTCOME}"; do
-                STEP_NAME="${step%%:*}"
-                STEP_OUTCOME="${step#*:}"
-                if [ "$STEP_OUTCOME" = "failure" ]; then
-                  echo "- ${STEP_NAME} failed."
-                  FAILED_STEP_FOUND=true
-                fi
-              done
-              if [ "$FAILED_STEP_FOUND" = false ]; then
-                echo "- The job failed, but no individual step reported a failure."
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "Build #${BUILD_NUMBER} on ${BUILD_BRANCH}: ${JOB_STATUS} at ${COMPLETED_AT}"
+            - name: Install Dependencies
+              id: install_dependencies
+              run: npm ci --include=dev
+
+            - name: Check TypeScript Compilation
+              id: compile
+              run: npm run build
+
+            - name: Synthesize CDK App (dev)
+              id: synthesize_dev
+              env:
+                  CDK_DEFAULT_ACCOUNT: '334624057595'
+                  CDK_DEFAULT_REGION: 'eu-west-2'
+                  TMDB_API_KEY: 'ci-synth-placeholder'
+              run: npx cdk synth -c env=dev --output cdk-out/dev
+
+            - name: Synthesize CDK App (prod)
+              id: synthesize_prod
+              env:
+                  CDK_DEFAULT_ACCOUNT: '334624057595'
+                  CDK_DEFAULT_REGION: 'eu-west-2'
+                  TMDB_API_KEY: 'ci-synth-placeholder'
+              run: npx cdk synth -c env=prod --output cdk-out/prod
+
+            - name: Upload Build Artifact
+              id: upload_artifact
+              uses: actions/upload-artifact@v7
+              with:
+                  name: build-artifact-${{ github.run_number }}
+                  path: cdk-out
+                  if-no-files-found: error
+                  include-hidden-files: true
+                  retention-days: 7
+
+            - name: Write Build Summary
+              if: always()
+              env:
+                  BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
+                  BUILD_NUMBER: ${{ github.run_number }}
+                  JOB_STATUS: ${{ job.status }}
+                  CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+                  SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+                  INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
+                  COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+                  SYNTHESIZE_DEV_OUTCOME: ${{ steps.synthesize_dev.outcome }}
+                  SYNTHESIZE_PROD_OUTCOME: ${{ steps.synthesize_prod.outcome }}
+                  UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
+              run: node .github/scripts/write-summary.js build

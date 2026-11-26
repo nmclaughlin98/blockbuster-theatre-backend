@@ -1,17 +1,23 @@
+## Date
+
+<!-- pr-date:start -->
+<!-- pr-date:end -->
+
+## Commits
+
+<!-- pr-commits:start -->
+<!-- pr-commits:end -->
+
 ## Summary
+<!-- pr-summary:start -->
+<!-- Add a brief summary if useful. -->
+<!-- pr-summary:end -->
 
-<!-- Describe the purpose and impact of this change. -->
-
-## Changes
-
-<!-- List the important implementation changes. -->
 
 ## Testing
-
-<!-- Include commands run and their results. -->
-
-- [ ] Tests pass
-- [ ] Build/type-check passes
+<!-- pr-testing:start -->
+CI results will be updated when the build workflow completes.
+<!-- pr-testing:end -->
 
 ## API, data, or infrastructure impact
 

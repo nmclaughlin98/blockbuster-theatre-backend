@@ -12,7 +12,7 @@ import type {
     TmdbReleaseDates,
     TmdbVideo,
     TmdbVideos,
-} from '../interfaces';
+} from '../../lib/interfaces';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -36,10 +36,7 @@ function isOptionalNumber(value: unknown): value is number | undefined {
     return value === undefined || typeof value === 'number';
 }
 
-function isOptionalArray<T>(
-    value: unknown,
-    isItem: (item: unknown) => item is T
-): value is T[] | undefined {
+function isOptionalArray<T>(value: unknown, isItem: (item: unknown) => item is T): value is T[] | undefined {
     return value === undefined || (Array.isArray(value) && value.every(isItem));
 }
 
@@ -52,16 +49,16 @@ function isTmdbCastMember(value: unknown): value is TmdbCastMember {
 }
 
 function isTmdbCrewMember(value: unknown): value is TmdbCrewMember {
-    return isRecord(value) &&
-        isOptionalNullableString(value.name) &&
-        isOptionalNullableString(value.job);
+    return isRecord(value) && isOptionalNullableString(value.name) && isOptionalNullableString(value.job);
 }
 
 function isTmdbVideo(value: unknown): value is TmdbVideo {
-    return isRecord(value) &&
+    return (
+        isRecord(value) &&
         isOptionalString(value.site) &&
         isOptionalString(value.type) &&
-        isOptionalString(value.key);
+        isOptionalString(value.key)
+    );
 }
 
 function isTmdbReleaseCertification(value: unknown): value is TmdbReleaseCertification {
@@ -69,15 +66,19 @@ function isTmdbReleaseCertification(value: unknown): value is TmdbReleaseCertifi
 }
 
 function isTmdbCountryRelease(value: unknown): value is TmdbCountryRelease {
-    return isRecord(value) &&
+    return (
+        isRecord(value) &&
         isOptionalString(value.iso_3166_1) &&
-        isOptionalArray(value.release_dates, isTmdbReleaseCertification);
+        isOptionalArray(value.release_dates, isTmdbReleaseCertification)
+    );
 }
 
 function isTmdbCredits(value: unknown): value is TmdbCredits {
-    return isRecord(value) &&
+    return (
+        isRecord(value) &&
         isOptionalArray(value.cast, isTmdbCastMember) &&
-        isOptionalArray(value.crew, isTmdbCrewMember);
+        isOptionalArray(value.crew, isTmdbCrewMember)
+    );
 }
 
 function isTmdbVideos(value: unknown): value is TmdbVideos {
@@ -94,7 +95,8 @@ function isTmdbReleaseDates(value: unknown): value is TmdbReleaseDates {
  * @returns True when the payload can safely be treated as a TMDB movie response.
  */
 export function isTmdbMovieResponse(value: unknown): value is TmdbMovieResponse {
-    return isRecord(value) &&
+    return (
+        isRecord(value) &&
         typeof value.id === 'number' &&
         isOptionalString(value.title) &&
         isOptionalArray(value.genres, isTmdbGenre) &&
@@ -107,7 +109,8 @@ export function isTmdbMovieResponse(value: unknown): value is TmdbMovieResponse 
         isOptionalNullableString(value.poster_path) &&
         (value.credits === undefined || isTmdbCredits(value.credits)) &&
         (value.videos === undefined || isTmdbVideos(value.videos)) &&
-        (value.release_dates === undefined || isTmdbReleaseDates(value.release_dates));
+        (value.release_dates === undefined || isTmdbReleaseDates(value.release_dates))
+    );
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -135,8 +138,7 @@ export function isMovieShowtimes(value: unknown): value is MovieShowtimes {
     return (
         isRecord(value) &&
         Object.values(value).every(
-            (showings) =>
-                Array.isArray(showings) && showings.every(isScreenedShowtime)
+            (showings) => Array.isArray(showings) && showings.every(isScreenedShowtime),
         )
     );
 }
@@ -152,14 +154,10 @@ export function isMovieRecord(value: unknown): value is MovieRecord {
         typeof value.tmdbId === 'string' &&
         /^\d+$/.test(value.tmdbId) &&
         typeof value.slug === 'string' &&
-        (
-            value.collectionId === undefined ||
-            (typeof value.collectionId === 'string' && /^\d+$/.test(value.collectionId))
-        ) &&
-        (
-            value.sortTitle === undefined ||
-            (typeof value.sortTitle === 'string' && Boolean(value.sortTitle.trim()))
-        ) &&
+        (value.collectionId === undefined ||
+            (typeof value.collectionId === 'string' && /^\d+$/.test(value.collectionId))) &&
+        (value.sortTitle === undefined ||
+            (typeof value.sortTitle === 'string' && Boolean(value.sortTitle.trim()))) &&
         typeof value.title === 'string' &&
         typeof value.visible === 'boolean' &&
         isOptionalBoolean(value.isComingSoon) &&
@@ -168,12 +166,16 @@ export function isMovieRecord(value: unknown): value is MovieRecord {
         typeof value.score === 'number' &&
         typeof value.runtime === 'number' &&
         typeof value.releaseDate === 'string' &&
+        (value.startDate === undefined ||
+            (typeof value.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.startDate))) &&
+        (value.runEndDate === undefined ||
+            (typeof value.runEndDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.runEndDate))) &&
+        (value.preSalesEligible === undefined || typeof value.preSalesEligible === 'boolean') &&
         typeof value.poster === 'string' &&
         typeof value.still === 'string' &&
         isStringArray(value.starring) &&
         typeof value.director === 'string' &&
         typeof value.synopsis === 'string' &&
-        typeof value.trailer === 'string' &&
-        isMovieShowtimes(value.showtimes)
+        typeof value.trailer === 'string'
     );
 }

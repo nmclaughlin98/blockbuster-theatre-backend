@@ -1,4 +1,13 @@
-import type { APIGatewayProxyResultV2 } from 'aws-lambda';
+import type {
+    APIGatewayEventRequestContextJWTAuthorizer,
+    APIGatewayEventRequestContextV2,
+    APIGatewayProxyEventV2WithRequestContext,
+    APIGatewayProxyResultV2,
+} from 'aws-lambda';
+
+export type OptionalJwtEvent = APIGatewayProxyEventV2WithRequestContext<
+    APIGatewayEventRequestContextV2 & { authorizer?: APIGatewayEventRequestContextJWTAuthorizer }
+>;
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR';
 
@@ -18,11 +27,15 @@ const headers = {
  */
 export function intEnv(name: string, fallback: number): number {
     const raw = process.env[name];
+
     if (!raw) return fallback;
+
     const value = Number(raw);
+
     if (!Number.isInteger(value) || value <= 0) {
         throw new Error(`Invalid env var ${name}=${raw}`);
     }
+
     return value;
 }
 
@@ -32,8 +45,19 @@ export function intEnv(name: string, fallback: number): number {
  * @param body Value to serialize as JSON.
  * @returns The API Gateway response.
  */
-export function json(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
+function jsonResponse(statusCode: number, body: unknown) {
     return { statusCode, headers, body: JSON.stringify(body) };
+}
+
+export function json(statusCode: number, body: unknown): APIGatewayProxyResultV2 {
+    const level: LogLevel = statusCode >= 500 ? 'ERROR' : statusCode >= 400 ? 'WARN' : 'INFO';
+    log(level, 'API response completed.', { statusCode });
+
+    return jsonResponse(statusCode, body);
+}
+
+export function jsonResponseByteLength(statusCode: number, body: unknown): number {
+    return Buffer.byteLength(JSON.stringify(jsonResponse(statusCode, body)), 'utf8');
 }
 
 /**
@@ -58,7 +82,9 @@ export function log(level: LogLevel, message: string, meta?: Record<string, unkn
         timestamp: new Date().toISOString(),
         ...meta,
     };
+
     const line = JSON.stringify(entry);
+
     if (level === 'ERROR') {
         console.error(line);
     } else if (level === 'WARN') {
@@ -78,7 +104,7 @@ export function log(level: LogLevel, message: string, meta?: Record<string, unkn
 export async function mapWithConcurrency<T, R>(
     items: T[],
     limit: number,
-    fn: (item: T) => Promise<R>
+    fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
     const results = new Array<R>(items.length);
     let next = 0;
@@ -86,12 +112,15 @@ export async function mapWithConcurrency<T, R>(
     async function worker(): Promise<void> {
         while (true) {
             const index = next++;
+
             if (index >= items.length) return;
+
             results[index] = await fn(items[index]);
         }
     }
 
     await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+
     return results;
 }
 
@@ -102,6 +131,7 @@ export async function mapWithConcurrency<T, R>(
  */
 export function normalizeMovieIds(movieIds: unknown[]): { ids: string[]; invalid: string[] } {
     const ids = [...new Set(movieIds.map((raw) => String(raw).trim()).filter(Boolean))];
+
     return {
         ids,
         invalid: ids.filter((id) => !/^\d+$/.test(id)),
