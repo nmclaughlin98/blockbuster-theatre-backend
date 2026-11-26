@@ -1,6 +1,6 @@
 name: 2. Deploy Stack 🚀
 
-run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env || 'dev' }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
+run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env || (github.event_name == 'workflow_run' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
     workflow_run:
@@ -120,7 +120,7 @@ jobs:
 
             - name: Deploy CDK stack
               env:
-                  TARGET_ENV: ${{ inputs.target_env || 'dev' }}
+                  TARGET_ENV: ${{ inputs.target_env || (github.event_name == 'workflow_run' && 'prod' || 'dev') }}
                   TARGET_STACK: ${{ inputs.target_stack || 'backend' }}
                   TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
               run: |
