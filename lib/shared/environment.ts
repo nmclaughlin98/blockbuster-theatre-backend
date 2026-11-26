@@ -31,12 +31,3 @@ export function resourceName(baseName: string, envName: EnvironmentName): string
     )}`;
 }
 
-/**
- *
- * @param baseName The base name of the parameter.
- * @param envName The environment name (e.g., 'prod' or 'dev').
- * @returns The fully qualified parameter name including the environment suffix.
- */
-export function maxTicketsParameterForEnvironment(baseName: string, envName: EnvironmentName): string {
-    return resourceName(baseName, envName);
-}

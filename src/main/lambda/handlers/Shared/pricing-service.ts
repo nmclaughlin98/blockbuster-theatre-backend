@@ -22,6 +22,7 @@ import type {
     ScreenedShowtime,
 } from '../../lib/interfaces';
 import { isMovieRecord, isMovieShowtimes } from '../utils/movie-validation';
+import { getMaxTickets } from './max-tickets-service';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -444,6 +445,13 @@ export async function validateCheckout(value: unknown): Promise<{
     }
 
     const tickets = parseTicketRequest(value.tickets);
+    const ticketCount = tickets.reduce((total, ticket) => total + ticket.quantity, 0);
+    const maxTickets = await getMaxTickets();
+
+    if (!Number.isSafeInteger(ticketCount) || ticketCount > maxTickets) {
+        throw new PricingServiceError(400, `A maximum of ${maxTickets} tickets can be booked at once.`);
+    }
+
     const selected = await resolvePricing(value);
     const tiers = new Map(selected.pricing.ticketTiers.map((tier) => [tier.id, tier]));
     let totalPence = 0;

@@ -42,7 +42,13 @@ jobs:
                   CDK_DEFAULT_ACCOUNT: '334624057595'
                   CDK_DEFAULT_REGION: 'eu-west-2'
                   TMDB_API_KEY: 'ci-synth-placeholder'
+                  CONFIG_BUCKET_NAME: ${{ vars.CONFIG_BUCKET_NAME }}
+                  CONFIG_KEY: ${{ vars.CONFIG_KEY }}
               run: |
+                  if [[ -z "$CONFIG_BUCKET_NAME" ]]; then
+                    echo "CONFIG_BUCKET_NAME must be configured as a repository variable for CDK synthesis."
+                    exit 1
+                  fi
                   npx cdk synth -c env=dev --output cdk-out/dev
                   DOCS_ENV=dev npm run docs:check -- cdk-out/dev/BlockbusterTheatreBackendStack-dev.template.json
 
@@ -52,7 +58,13 @@ jobs:
                   CDK_DEFAULT_ACCOUNT: '334624057595'
                   CDK_DEFAULT_REGION: 'eu-west-2'
                   TMDB_API_KEY: 'ci-synth-placeholder'
+                  CONFIG_BUCKET_NAME: ${{ vars.CONFIG_BUCKET_NAME }}
+                  CONFIG_KEY: ${{ vars.CONFIG_KEY }}
               run: |
+                  if [[ -z "$CONFIG_BUCKET_NAME" ]]; then
+                    echo "CONFIG_BUCKET_NAME must be configured as a repository variable for CDK synthesis."
+                    exit 1
+                  fi
                   npx cdk synth -c env=prod --output cdk-out/prod
                   DOCS_ENV=prod npm run docs:check -- cdk-out/prod/BlockbusterTheatreBackendStack-prod.template.json
 

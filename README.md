@@ -79,6 +79,23 @@ The AWS CDK infrastructure is organized into a domain-driven multi-stack archite
 - `lib/backend/` — `BackendStack` (and constructs like API Gateway, DynamoDB, SES, Lambdas) consuming Cognito identifiers from SSM Parameter Store instead of CloudFormation parameters or cross-stack exports.
 - `lib/shared/` — Shared environment helpers, resource naming utilities, and typed SSM Parameter Store read/write helpers.
 
+### Shared Runtime Configuration
+
+The website's S3-hosted `config.json` is also the runtime source of truth for ticket limits and guest-booking linking:
+
+```json
+{
+  "features": {
+    "allowLinkBookings": false
+  },
+  "limits": {
+    "maxTickets": 10
+  }
+}
+```
+
+The frontend reads the object through `VITE_CONFIG_URL`. Backend synthesis requires `CONFIG_BUCKET_NAME` to identify that existing bucket; `CONFIG_KEY` is optional and defaults to `config.json`. Set the bucket as a repository Actions variable and in local CDK environments before synthesizing or deploying the backend. The stack imports the bucket and grants object read access only to booking-related Lambdas. Those functions cache the parsed settings for 45 seconds and fall back to `allowLinkBookings: false` and `maxTickets: 10` if configuration is unavailable or invalid.
+
 ### Cognito Authentication & SSM Parameter Store Wiring
 
 Cognito identifiers are exported by `BlockbusterTheatreAuthStack` to AWS Systems Manager (SSM) Parameter Store under a consistent namespace:
@@ -97,7 +114,7 @@ Before deploying the auth stack, inspect the shared pool for a manually created 
 
 ### Deployment & CI/CD
 
-Set `TMDB_API_KEY` to a non-empty TMDB read access token before backend synthesis:
+Set `TMDB_API_KEY` to a non-empty TMDB read access token and `CONFIG_BUCKET_NAME` to the existing runtime-config bucket before backend synthesis:
 
 ```bash
 # Synthesize all stacks

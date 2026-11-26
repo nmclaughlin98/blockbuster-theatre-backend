@@ -17,3 +17,5 @@ process.env.TMDB_API_KEY = 'test-tmdb-key';
 process.env.TABLE_NAME = 'test-table';
 process.env.MAX_BATCH = '25';
 process.env.UPDATE_CONCURRENCY = '2';
+delete process.env.CONFIG_BUCKET_NAME;
+delete process.env.CONFIG_KEY;

@@ -2,27 +2,38 @@ import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { BackendStack } from '../../../lib/backend';
 import { PROD_TO_DEV_TABLES } from '../../../scripts/sync-prod-to-dev';
-import { maxTicketsParameterForEnvironment } from '../../../lib/shared';
+
+process.env.CONFIG_BUCKET_NAME = 'runtime-config-test';
+process.env.CONFIG_KEY = 'config.json';
 
 describe('BackendStack', () => {
     let stack: BackendStack;
 
-    function expectLinkingParameter(template: Template, functionName: string, parameterName: string): void {
+    function expectRuntimeConfigAccess(template: Template, functionName: string) {
         const functions = template.findResources('AWS::Lambda::Function', {
             Properties: { FunctionName: functionName },
         });
 
         const fn = Object.values(functions)[0];
-        expect(fn.Properties.Environment.Variables.ALLOW_LINK_BOOKINGS_PARAMETER_NAME).toBe(parameterName);
+        expect(fn.Properties.Environment.Variables).toMatchObject({
+            CONFIG_BUCKET_NAME: 'runtime-config-test',
+            CONFIG_KEY: 'config.json',
+        });
+
         const roleId = fn.Properties.Role['Fn::GetAtt'][0];
         const policies = Object.values(template.findResources('AWS::IAM::Policy')).filter((policy) =>
             policy.Properties.Roles.some((role: { Ref?: string }) => role.Ref === roleId),
         );
 
         const statements = policies.flatMap((policy) => policy.Properties.PolicyDocument.Statement);
-        const ssmStatement = statements.find((statement) => statement.Action === 'ssm:GetParameter');
-        expect(ssmStatement).toBeDefined();
-        expect(JSON.stringify(ssmStatement.Resource)).toContain(`parameter${parameterName}`);
+        expect(JSON.stringify(statements)).toContain('s3:GetObject');
+        expect(JSON.stringify(statements)).not.toContain('ssm:GetParameter');
+
+        return { fn, statements };
+    }
+
+    function expectLinkingRuntimeConfigAccess(template: Template, functionName: string): void {
+        const { fn, statements } = expectRuntimeConfigAccess(template, functionName);
         const cognitoStatement = statements.find(
             (statement) => statement.Action === 'cognito-idp:AdminGetUser',
         );
@@ -54,6 +65,16 @@ describe('BackendStack', () => {
         expect(template).toBeDefined();
     });
 
+    it.each([
+        'blockbuster-theatre-prod-checkout-validation-handler',
+        'blockbuster-theatre-prod-booking-confirmation-handler',
+        'blockbuster-theatre-prod-create-booking-handler',
+        'blockbuster-theatre-prod-guest-booked-seats-handler',
+        'blockbuster-theatre-prod-guest-booking-handler',
+    ])('provides cached S3 runtime config access to %s', (functionName) => {
+        expectRuntimeConfigAccess(Template.fromStack(stack), functionName);
+    });
+
     it('uses production suffixes for named tables and functions', () => {
         const template = Template.fromStack(stack);
         const tables = Object.values(template.findResources('AWS::DynamoDB::Table'));
@@ -78,27 +99,17 @@ describe('BackendStack', () => {
             FunctionName: 'blockbuster-theatre-prod-guest-booking-handler',
             Environment: {
                 Variables: Match.objectLike({
-                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterForEnvironment(
-                        '/blockbuster-theatre/booking-configuration/max-tickets-value',
-                        'prod',
-                    ),
+                    CONFIG_BUCKET_NAME: 'runtime-config-test',
+                    CONFIG_KEY: 'config.json',
                 }),
             },
         });
     });
 
     it.each([
-        [
-            'prod',
-            'blockbuster-theatre-prod-guest-booked-seats-handler',
-            '/blockbuster-theatre-prod/parameter-configurations/ALLOW_LINK_BOOKINGS',
-        ],
-        [
-            'dev',
-            'blockbuster-theatre-dev-guest-booked-seats-handler',
-            '/blockbuster-theatre-dev/parameter-configurations/ALLOW_LINK_BOOKINGS',
-        ],
-    ] as const)('configures guest booking linking for %s', (envName, functionName, parameterName) => {
+        ['prod', 'blockbuster-theatre-prod-guest-booked-seats-handler'],
+        ['dev', 'blockbuster-theatre-dev-guest-booked-seats-handler'],
+    ] as const)('configures guest booking linking for %s', (envName, functionName) => {
         const app = new cdk.App();
         const configuredStack = new BackendStack(app, 'FlagStack', {
             envName,
@@ -109,7 +120,7 @@ describe('BackendStack', () => {
             env: { account: '334624057595', region: 'eu-west-2' },
         });
 
-        expectLinkingParameter(Template.fromStack(configuredStack), functionName, parameterName);
+        expectLinkingRuntimeConfigAccess(Template.fromStack(configuredStack), functionName);
     });
 
     it('synthesizes an isolated dev stack without creating prod Cognito or SES resources', () => {
@@ -158,10 +169,8 @@ describe('BackendStack', () => {
                 FunctionName: name,
                 Environment: {
                     Variables: Match.objectLike({
-                        MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterForEnvironment(
-                            '/blockbuster-theatre/booking-configuration/max-tickets-value',
-                            'dev',
-                        ),
+                        CONFIG_BUCKET_NAME: 'runtime-config-test',
+                        CONFIG_KEY: 'config.json',
                     }),
                 },
             });
@@ -414,12 +423,14 @@ describe('BackendStack', () => {
     it('should create API Gateway routes without authorizationScopes', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::ApiGatewayV2::Route', 32);
+
         for (const path of ['/api-docs', '/api-docs/openapi.json']) {
             template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
                 RouteKey: `GET ${path}`,
                 AuthorizationType: 'NONE',
             });
         }
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings',
         });

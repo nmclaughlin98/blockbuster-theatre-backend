@@ -3,6 +3,7 @@ import { DynamoDBDocumentClient, QueryCommand, TransactWriteCommand } from '@aws
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
 import type { BookingRecord } from '../../lib/interfaces';
 import { PricingServiceError, resolvePricing, type ShowtimeSelection } from '../Shared/pricing-service';
+import { getMaxTickets } from '../Shared/max-tickets-service';
 import { createShowtimeId } from '../utils/showtime-ids';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
@@ -319,6 +320,11 @@ function conflictingSeats(error: unknown, seats: string[]): string[] | undefined
  */
 export async function createBooking(value: unknown): Promise<CreatedBooking> {
     const request = parseBookingRequest(value);
+    const maxTickets = await getMaxTickets();
+
+    if (request.seats.length > maxTickets) {
+        throw new BookingServiceError(400, `A maximum of ${maxTickets} seats can be booked at once.`);
+    }
 
     if (request.date < todayInTheatre()) {
         throw new BookingServiceError(400, 'date must not be in the past.');
