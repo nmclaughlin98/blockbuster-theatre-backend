@@ -12,10 +12,10 @@ jobs:
     update-description:
         runs-on: ubuntu-latest
         steps:
-            - name: Check out trusted base revision
+            - name: Check out trusted workflow revision
               uses: actions/checkout@v7
               with:
-                  ref: ${{ github.event.pull_request.base.sha }}
+                  ref: ${{ github.workflow_sha }}
                   persist-credentials: false
 
             - name: Update generated PR details
