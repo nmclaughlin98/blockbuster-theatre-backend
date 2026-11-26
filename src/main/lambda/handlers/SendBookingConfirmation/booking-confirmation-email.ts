@@ -1,97 +1,102 @@
 export interface BookingConfirmationEmail {
-  bookingRef: string;
-  customer: {
-    firstName: string;
-    surname: string;
-    email: string;
-    phone?: string;
-  };
-  movieTitle: string;
-  date: string;
-  time: string;
-  screen: string;
-  seats: string[];
-  tickets: number;
-  totalPrice: number;
+    bookingRef: string;
+    customer: {
+        firstName: string;
+        surname: string;
+        email: string;
+        phone?: string;
+    };
+    movieTitle: string;
+    date: string;
+    time: string;
+    screen: string;
+    seats: string[];
+    tickets: number;
+    totalPrice: number;
 }
 
-export function formatBookingConfirmationEmailBody(
-  booking: BookingConfirmationEmail
-): string {
-  return [
-    'UNPAID BOOKING RESERVATION - NO PAYMENT WAS PROCESSED',
-    '',
-    `Booking reference: ${booking.bookingRef}`,
-    `Name: ${booking.customer.firstName} ${booking.customer.surname}`,
-    `Movie: ${booking.movieTitle}`,
-    `Date: ${booking.date}`,
-    `Time: ${booking.time}`,
-    `Screen: ${booking.screen}`,
-    `Seats: ${booking.seats.join(', ')}`,
-    `Tickets: ${booking.tickets}`,
-    `Total: £${booking.totalPrice.toFixed(2)}`,
-    ...(booking.customer.phone ? [`Phone: ${booking.customer.phone}`] : []),
-    '',
-    'QR code: encodes the booking reference only and is not valid for entry.',
-    'Your seat reservation has been recorded, but payment has not been processed. This email is not an admission ticket.',
-  ].join('\n');
+export function formatBookingConfirmationEmailBody(booking: BookingConfirmationEmail): string {
+    return [
+        'UNPAID BOOKING RESERVATION - NO PAYMENT WAS PROCESSED',
+        '',
+        `Booking reference: ${booking.bookingRef}`,
+        `Name: ${booking.customer.firstName} ${booking.customer.surname}`,
+        `Movie: ${booking.movieTitle}`,
+        `Date: ${booking.date}`,
+        `Time: ${booking.time}`,
+        `Screen: ${booking.screen}`,
+        `Seats: ${booking.seats.join(', ')}`,
+        `Tickets: ${booking.tickets}`,
+        `Total: £${booking.totalPrice.toFixed(2)}`,
+        ...(booking.customer.phone ? [`Phone: ${booking.customer.phone}`] : []),
+        '',
+        'QR code: encodes the booking reference only and is not valid for entry.',
+        'Your seat reservation has been recorded, but payment has not been processed. This email is not an admission ticket.',
+    ].join('\n');
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => {
-    const entities: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    };
-    return entities[character];
-  });
+    return value.replace(/[&<>"']/g, (character) => {
+        const entities: Record<string, string> = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        };
+
+        return entities[character];
+    });
 }
 
 function formatScreeningDate(date: string, time: string) {
-  const parsedDate = new Date(`${date}T00:00:00Z`);
-  const formattedDate = !Number.isNaN(parsedDate.getTime())
-    && parsedDate.toISOString().slice(0, 10) === date
-    ? new Intl.DateTimeFormat('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(parsedDate).replace(',', '')
-    : date;
+    const parsedDate = new Date(`${date}T00:00:00Z`);
+    const formattedDate =
+        !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === date
+            ? new Intl.DateTimeFormat('en-GB', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  timeZone: 'UTC',
+              })
+                  .format(parsedDate)
+                  .replace(',', '')
+            : date;
 
-  return `${formattedDate} at ${time}`;
+    return `${formattedDate} at ${time}`;
 }
 
-export function formatBookingConfirmationEmailHtml(
-  booking: BookingConfirmationEmail
-): string {
-  const details: Array<[string, string]> = [
-    ['SHOWTIME', `${formatScreeningDate(booking.date, booking.time)}`],
-    ['SCREEN', `Screen ${booking.screen}`],
-    [`Seat${booking.seats.length === 1 ? '' : 's'}`, booking.seats.join(', ')],
-    ['GUEST NAME', `${booking.customer.firstName} ${booking.customer.surname}`],
-    ['TICKET BREAKDOWN', `${booking.tickets} ${booking.tickets === 1 ? 'Ticket' : 'Tickets'}`],
-    ['TOTAL', `£${booking.totalPrice.toFixed(2)}`],
-  ];
-  const detailCell = ([label, value]: [string, string]) => `
+export function formatBookingConfirmationEmailHtml(booking: BookingConfirmationEmail): string {
+    const details: Array<[string, string]> = [
+        ['SHOWTIME', `${formatScreeningDate(booking.date, booking.time)}`],
+        ['SCREEN', `Screen ${booking.screen}`],
+        [`Seat${booking.seats.length === 1 ? '' : 's'}`, booking.seats.join(', ')],
+        ['GUEST NAME', `${booking.customer.firstName} ${booking.customer.surname}`],
+        ['TICKET BREAKDOWN', `${booking.tickets} ${booking.tickets === 1 ? 'Ticket' : 'Tickets'}`],
+        ['TOTAL', `£${booking.totalPrice.toFixed(2)}`],
+    ];
+
+    const detailCell = ([label, value]: [string, string]) => `
         <td class="ticket-detail-cell" width="50%" valign="top">
           <div class="ticket-label">${escapeHtml(label)}</div>
           <div class="ticket-text">${escapeHtml(value)}</div>
         </td>`;
-  const detailRows = Array.from({ length: Math.ceil(details.length / 2) }, (_, index) => `
+
+    const detailRows = Array.from(
+        { length: Math.ceil(details.length / 2) },
+        (_, index) => `
         <tr>
           ${detailCell(details[index * 2])}
           ${detailCell(details[index * 2 + 1])}
-        </tr>`).join('');
-  const bookingRef = escapeHtml(booking.bookingRef);
-  const guestName = escapeHtml(`${booking.customer.firstName} ${booking.customer.surname}`);
-  const movieTitle = escapeHtml(booking.movieTitle);
+        </tr>`,
+    ).join('');
 
-  return `<!doctype html>
+    const bookingRef = escapeHtml(booking.bookingRef);
+    const guestName = escapeHtml(`${booking.customer.firstName} ${booking.customer.surname}`);
+    const movieTitle = escapeHtml(booking.movieTitle);
+
+    return `<!doctype html>
 <html lang="en">
 
 <head>

@@ -8,7 +8,7 @@ describe('shared JSON responses', () => {
         { statusCode: 400, level: 'WARN' as const, method: 'warn' as const },
         { statusCode: 500, level: 'ERROR' as const, method: 'error' as const },
     ])('logs a $level response with its status code', ({ statusCode, level, method }) => {
-        const logger = jest.spyOn(console, method).mockImplementation(() => { });
+        const logger = jest.spyOn(console, method).mockImplementation(() => {});
         const response = json(statusCode, { message: 'do not include response data' });
 
         expect(response.statusCode).toBe(statusCode);
@@ -17,6 +17,7 @@ describe('shared JSON responses', () => {
             message: 'API response completed.',
             statusCode,
         });
+
         expect(String(logger.mock.calls[0][0])).not.toContain('do not include response data');
     });
 

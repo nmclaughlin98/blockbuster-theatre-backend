@@ -49,32 +49,32 @@ export class ApiGatewayConstruct extends Construct {
             corsPreflight: {
                 allowOrigins: !isDev
                     ? [
-                        'https://blockbuster-theatre.nml-applications.com',
-                        'https://*',
-                        'http://localhost:3000',
-                        'http://localhost:4173',
-                        'http://localhost:5173',
-                        'http://127.0.0.1:3000',
-                        'http://127.0.0.1:4173',
-                        'http://127.0.0.1:5173',
-                    ]
+                          'https://blockbuster-theatre.nml-applications.com',
+                          'https://*',
+                          'http://localhost:3000',
+                          'http://localhost:4173',
+                          'http://localhost:5173',
+                          'http://127.0.0.1:3000',
+                          'http://127.0.0.1:4173',
+                          'http://127.0.0.1:5173',
+                      ]
                     : ['*'],
                 allowMethods: !isDev
                     ? [
-                        apigw2.CorsHttpMethod.GET,
-                        apigw2.CorsHttpMethod.POST,
-                        apigw2.CorsHttpMethod.PUT,
-                        apigw2.CorsHttpMethod.PATCH,
-                        apigw2.CorsHttpMethod.OPTIONS,
-                    ]
+                          apigw2.CorsHttpMethod.GET,
+                          apigw2.CorsHttpMethod.POST,
+                          apigw2.CorsHttpMethod.PUT,
+                          apigw2.CorsHttpMethod.PATCH,
+                          apigw2.CorsHttpMethod.OPTIONS,
+                      ]
                     : [
-                        apigw2.CorsHttpMethod.GET,
-                        apigw2.CorsHttpMethod.POST,
-                        apigw2.CorsHttpMethod.PUT,
-                        apigw2.CorsHttpMethod.PATCH,
-                        apigw2.CorsHttpMethod.DELETE,
-                        apigw2.CorsHttpMethod.OPTIONS,
-                    ],
+                          apigw2.CorsHttpMethod.GET,
+                          apigw2.CorsHttpMethod.POST,
+                          apigw2.CorsHttpMethod.PUT,
+                          apigw2.CorsHttpMethod.PATCH,
+                          apigw2.CorsHttpMethod.DELETE,
+                          apigw2.CorsHttpMethod.OPTIONS,
+                      ],
                 allowHeaders: ['Content-Type', 'Authorization'],
             },
         });
@@ -84,10 +84,13 @@ export class ApiGatewayConstruct extends Construct {
             retention: logs.RetentionDays.ONE_WEEK,
             removalPolicy: isDev ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
         });
+
         const defaultStage = this.httpApi.defaultStage?.node.defaultChild;
+
         if (!(defaultStage instanceof apigw2.CfnStage)) {
             throw new Error('HTTP API default stage is required for access logging.');
         }
+
         defaultStage.accessLogSettings = {
             destinationArn: accessLogGroup.logGroupArn,
             format: JSON.stringify({
@@ -106,10 +109,11 @@ export class ApiGatewayConstruct extends Construct {
         const customDomainName = isDev
             ? 'api-dev.blockbuster-theatre.nml-applications.com'
             : 'api.blockbuster-theatre.nml-applications.com';
+
         const customDomain = apigw2.CfnDomainName.fromDomainName(
             this,
             'ImportedCustomDomain',
-            customDomainName
+            customDomainName,
         );
 
         new apigw2.ApiMapping(this, 'ApiMapping', {
@@ -119,99 +123,122 @@ export class ApiGatewayConstruct extends Construct {
 
         const integration = new integrations.HttpLambdaIntegration(
             'AddMoviesIntegration',
-            props.addMoviesFunction
+            props.addMoviesFunction,
         );
+
         const updateMoviesIntegration = new integrations.HttpLambdaIntegration(
             'UpdateMoviesIntegration',
-            props.updateMoviesFunction
+            props.updateMoviesFunction,
         );
+
         const listMoviesIntegration = new integrations.HttpLambdaIntegration(
             'ListMoviesIntegration',
-            props.listMoviesFunction
+            props.listMoviesFunction,
         );
+
         const listFeaturedMoviesIntegration = new integrations.HttpLambdaIntegration(
             'ListFeaturedMoviesIntegration',
-            props.listFeaturedMoviesFunction
+            props.listFeaturedMoviesFunction,
         );
+
         const getMovieIntegration = new integrations.HttpLambdaIntegration(
             'GetMovieIntegration',
-            props.getMovieFunction
+            props.getMovieFunction,
         );
+
         const exportMoviesIntegration = new integrations.HttpLambdaIntegration(
             'ExportMoviesIntegration',
-            props.exportMoviesFunction
+            props.exportMoviesFunction,
         );
+
         const listTmdbIdsIntegration = new integrations.HttpLambdaIntegration(
             'ListTmdbIdsIntegration',
-            props.listTmdbIdsFunction
+            props.listTmdbIdsFunction,
         );
+
         const listFilmSelectionsIntegration = new integrations.HttpLambdaIntegration(
             'ListFilmSelectionsIntegration',
-            props.listFilmSelectionsFunction
+            props.listFilmSelectionsFunction,
         );
+
         const getTicketPricingIntegration = new integrations.HttpLambdaIntegration(
             'GetTicketPricingIntegration',
-            props.getTicketPricingFunction
+            props.getTicketPricingFunction,
         );
+
         const validateCheckoutIntegration = new integrations.HttpLambdaIntegration(
             'ValidateCheckoutIntegration',
-            props.validateCheckoutFunction
+            props.validateCheckoutFunction,
         );
+
         const sendBookingConfirmationIntegration = new integrations.HttpLambdaIntegration(
             'SendBookingConfirmationIntegration',
-            props.sendBookingConfirmationFunction
+            props.sendBookingConfirmationFunction,
         );
+
         const upsertBookingOffersIntegration = new integrations.HttpLambdaIntegration(
             'UpsertBookingOffersIntegration',
-            props.upsertBookingOffersFunction
+            props.upsertBookingOffersFunction,
         );
+
         const upsertTicketPricingIntegration = new integrations.HttpLambdaIntegration(
             'UpsertTicketPricingIntegration',
-            props.upsertTicketPricingFunction
+            props.upsertTicketPricingFunction,
         );
+
         const getMovieCollectionIntegration = new integrations.HttpLambdaIntegration(
             'GetMovieCollectionIntegration',
-            props.getMovieCollectionFunction
+            props.getMovieCollectionFunction,
         );
+
         const listMovieCollectionsIntegration = new integrations.HttpLambdaIntegration(
             'ListMovieCollectionsIntegration',
-            props.listMovieCollectionsFunction
+            props.listMovieCollectionsFunction,
         );
+
         const refreshMovieCollectionIntegration = new integrations.HttpLambdaIntegration(
             'RefreshMovieCollectionIntegration',
-            props.refreshMovieCollectionFunction
+            props.refreshMovieCollectionFunction,
         );
+
         const listBookingsIntegration = new integrations.HttpLambdaIntegration(
             'ListBookingsIntegration',
-            props.listBookingsFunction
+            props.listBookingsFunction,
         );
+
         const createBookingIntegration = new integrations.HttpLambdaIntegration(
             'CreateBookingIntegration',
-            props.createBookingFunction
+            props.createBookingFunction,
         );
+
         const rescheduleBookingIntegration = new integrations.HttpLambdaIntegration(
             'RescheduleCustomerBookingIntegration',
-            props.rescheduleBookingFunction
+            props.rescheduleBookingFunction,
         );
+
         const manageShowtimesIntegration = new integrations.HttpLambdaIntegration(
             'ManageShowtimesIntegration',
-            props.manageShowtimesFunction
+            props.manageShowtimesFunction,
         );
+
         const guestBookedSeatsIntegration = new integrations.HttpLambdaIntegration(
             'GuestBookedSeatsIntegration',
-            props.guestBookedSeatsFunction
+            props.guestBookedSeatsFunction,
         );
+
         const guestBookingIntegration = new integrations.HttpLambdaIntegration(
             'GuestBookingIntegration',
-            props.guestBookingFunction
+            props.guestBookingFunction,
         );
+
         const guestConversionIntegration = new integrations.HttpLambdaIntegration(
             'GuestConversionIntegration',
-            props.guestConversionFunction
+            props.guestConversionFunction,
         );
+
         const downloadTicketIntegration = new integrations.HttpLambdaIntegration(
             'DownloadTicketIntegration',
-            props.downloadTicketFunction
+            props.downloadTicketFunction,
         );
 
         this.httpApi.addRoutes({

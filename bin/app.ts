@@ -20,7 +20,7 @@ const shouldInstantiateBackend = !stackContext || stackContext === 'backend' || 
 // 1. Dedicated AuthStack owning Cognito User Pool, Clients, Domain, and Resource Servers
 if (shouldInstantiateAuth && (!envContext || envContext === 'prod' || stackContext === 'auth')) {
     new AuthStack(app, 'BlockbusterTheatreAuthStack', {
-        env: awsEnv
+        env: awsEnv,
     });
 }
 
@@ -30,7 +30,7 @@ if (shouldInstantiateBackend) {
         new BackendStack(app, 'BlockbusterTheatreBackendStack-prod', {
             description: 'BlockbusterTheatre Backend Infrastructure (Prod)',
             envName: 'prod',
-            env: awsEnv
+            env: awsEnv,
         });
     }
 

@@ -16,9 +16,10 @@ export interface BookingConfirmationWithTicket extends BookingConfirmationEmail 
 
 export async function sendBookingConfirmationEmail(
     confirmation: BookingConfirmationEmail,
-    includeTicketPdf = false
+    includeTicketPdf = false,
 ): Promise<void> {
     const source = process.env.BOOKING_EMAIL_FROM;
+
     if (!source) throw new Error('BOOKING_EMAIL_FROM is not configured.');
 
     const qrCode = await QRCode.toBuffer(confirmation.bookingRef, {
@@ -31,14 +32,16 @@ export async function sendBookingConfirmationEmail(
         },
     });
 
-    const attachments: Attachment[] = [{
-        RawContent: qrCode,
-        ContentType: 'image/png',
-        ContentDisposition: 'INLINE',
-        ContentId: 'booking-reference-qr',
-        ContentTransferEncoding: 'BASE64',
-        FileName: 'booking-reference.png',
-    }];
+    const attachments: Attachment[] = [
+        {
+            RawContent: qrCode,
+            ContentType: 'image/png',
+            ContentDisposition: 'INLINE',
+            ContentId: 'booking-reference-qr',
+            ContentTransferEncoding: 'BASE64',
+            FileName: 'booking-reference.png',
+        },
+    ];
 
     // Optionally include the PDF ticket attachment
     if (includeTicketPdf && 'currency' in confirmation) {
@@ -65,21 +68,23 @@ export async function sendBookingConfirmationEmail(
         });
     }
 
-    await sesClient.send(new SendEmailCommand({
-        FromEmailAddress: source,
-        Destination: { ToAddresses: [confirmation.customer.email] },
-        Content: {
-            Simple: {
-                Subject: { Data: `Booking confirmation - ${confirmation.bookingRef}` },
-                Body: {
-                    Text: { Data: formatBookingConfirmationEmailBody(confirmation) },
-                    Html: {
-                        Data: formatBookingConfirmationEmailHtml(confirmation),
-                        Charset: 'UTF-8',
+    await sesClient.send(
+        new SendEmailCommand({
+            FromEmailAddress: source,
+            Destination: { ToAddresses: [confirmation.customer.email] },
+            Content: {
+                Simple: {
+                    Subject: { Data: `Booking confirmation - ${confirmation.bookingRef}` },
+                    Body: {
+                        Text: { Data: formatBookingConfirmationEmailBody(confirmation) },
+                        Html: {
+                            Data: formatBookingConfirmationEmailHtml(confirmation),
+                            Charset: 'UTF-8',
+                        },
                     },
+                    Attachments: attachments,
                 },
-                Attachments: attachments,
             },
-        },
-    }));
+        }),
+    );
 }

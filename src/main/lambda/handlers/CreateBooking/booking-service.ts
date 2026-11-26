@@ -1,9 +1,5 @@
 import { randomUUID } from 'crypto';
-import {
-    DynamoDBDocumentClient,
-    QueryCommand,
-    TransactWriteCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
 import type { BookingRecord } from '../../lib/interfaces';
 import { PricingServiceError, resolvePricing, type ShowtimeSelection } from '../Shared/pricing-service';
@@ -23,7 +19,7 @@ type UnknownRecord = Record<string, unknown>;
 export class BookingServiceError extends Error {
     constructor(
         public readonly statusCode: number,
-        message: string
+        message: string,
     ) {
         super(message);
         this.name = 'BookingServiceError';
@@ -55,7 +51,9 @@ function isRecord(value: unknown): value is UnknownRecord {
 
 function bookingsTableName(): string {
     const tableName = process.env.BOOKINGS_TABLE_NAME;
+
     if (!tableName) throw new BookingServiceError(500, 'BOOKINGS_TABLE_NAME is not configured.');
+
     return tableName;
 }
 
@@ -68,11 +66,12 @@ function isScreen(value: unknown): value is NonNullable<ShowtimeSelection['scree
 }
 
 function parseMovieId(value: unknown): string {
-    const movieId =
-        typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : value;
+    const movieId = typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : value;
+
     if (typeof movieId !== 'string' || !/^\d+$/.test(movieId)) {
         throw new BookingServiceError(400, 'movieId must be a numeric movie ID.');
     }
+
     return movieId;
 }
 
@@ -86,27 +85,32 @@ function parseShowtime(day: unknown, time: unknown, screen?: unknown): ShowtimeS
     ) {
         throw new BookingServiceError(
             400,
-            'showtime.day must be a weekday name and showtime.time must use HH:mm.'
+            'showtime.day must be a weekday name and showtime.time must use HH:mm.',
         );
     }
+
     return { day, time, ...(isScreen(screen) && { screen }) };
 }
 
 /** Validates a YYYY-MM-DD calendar date whose weekday matches the showtime's day. */
 function parseDate(value: unknown, day: string): string {
     const match = typeof value === 'string' ? DATE_PATTERN.exec(value) : null;
+
     if (!match) {
         throw new BookingServiceError(400, 'date must be a valid calendar date in YYYY-MM-DD format.');
     }
 
     const parsed = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+
     if (parsed.toISOString().slice(0, 10) !== value) {
         throw new BookingServiceError(400, 'date must be a valid calendar date in YYYY-MM-DD format.');
     }
+
     // getUTCDay is Sunday-first; DAYS is Monday-first.
     if (DAYS[(parsed.getUTCDay() + 6) % 7] !== day) {
         throw new BookingServiceError(400, `date ${value} is not a ${day}.`);
     }
+
     return value as string;
 }
 
@@ -133,10 +137,9 @@ export function resolveBookingUserId(): string {
  * @param query API Gateway query string parameters.
  * @returns The movie, date, and showtime to look up.
  */
-export function parseShowingQuery(
-    query: Record<string, string | undefined>
-): ShowingSelection {
+export function parseShowingQuery(query: Record<string, string | undefined>): ShowingSelection {
     const showtime = parseShowtime(query.day, query.time, query.screen);
+
     return {
         movieId: parseMovieId(query.movieId),
         date: parseDate(query.date, showtime.day),
@@ -150,30 +153,35 @@ export function parseShowingQuery(
  * @returns The resolved showtime and booked seat IDs sorted alphabetically.
  */
 export async function listBookedSeats(
-    selection: ShowingSelection
+    selection: ShowingSelection,
 ): Promise<{ showtime: ShowtimeSelection; bookedSeats: string[] }> {
     let showtime: ShowtimeSelection;
+
     try {
         const resolved = await resolvePricing({
             movieId: selection.movieId,
             date: selection.date,
             showtime: selection.showtime,
         });
+
         showtime = resolved.showtime;
     } catch (error: unknown) {
         if (error instanceof PricingServiceError) {
             throw new BookingServiceError(error.statusCode, error.message);
         }
+
         throw error;
     }
+
     if (!showtime.screen) throw new Error('Pricing resolution did not return a screen.');
-    const showtimeId = await createShowtimeId(
-        selection.movieId,
-        showtime.day,
-        selection.date,
-        { screen: showtime.screen, time: showtime.time }
-    );
+
+    const showtimeId = await createShowtimeId(selection.movieId, showtime.day, selection.date, {
+        screen: showtime.screen,
+        time: showtime.time,
+    });
+
     const seats: string[] = [];
+
     for (const [tableName, keyName, keyValue, recordFilter] of [
         [bookingsTableName(), 'showtimeId', showtimeId, 'recordType = :seat'],
         [
@@ -197,14 +205,17 @@ export async function listBookedSeats(
                     ProjectionExpression: 'seatId',
                     ConsistentRead: true,
                     ExclusiveStartKey: exclusiveStartKey,
-                })
+                }),
             );
+
             for (const item of result.Items ?? []) {
                 if (typeof item.seatId === 'string') seats.push(item.seatId);
             }
+
             exclusiveStartKey = result.LastEvaluatedKey;
         } while (exclusiveStartKey);
     }
+
     return {
         showtime,
         bookedSeats: [...new Set(seats)].sort(),
@@ -213,7 +224,9 @@ export async function listBookedSeats(
 
 function requiredEnvironmentVariable(name: string): string {
     const value = process.env[name];
+
     if (!value) throw new BookingServiceError(500, `${name} is not configured.`);
+
     return value;
 }
 
@@ -221,24 +234,28 @@ function parseSeats(value: unknown): string[] {
     if (!Array.isArray(value) || value.length === 0) {
         throw new BookingServiceError(400, 'seats must be a non-empty array of seat IDs.');
     }
+
     if (value.length > MAX_SEATS_PER_BOOKING) {
         throw new BookingServiceError(
             400,
-            `A maximum of ${MAX_SEATS_PER_BOOKING} seats can be booked at once.`
+            `A maximum of ${MAX_SEATS_PER_BOOKING} seats can be booked at once.`,
         );
     }
 
     const seats = value.map((seat) => (typeof seat === 'string' ? seat.trim().toUpperCase() : ''));
     const invalid = seats.find((seat) => !SEAT_ID_PATTERN.test(seat));
+
     if (invalid !== undefined) {
         throw new BookingServiceError(
             400,
-            'Each seat must be a row letter A-G followed by a seat number 1-11, e.g. B4.'
+            'Each seat must be a row letter A-G followed by a seat number 1-11, e.g. B4.',
         );
     }
+
     if (new Set(seats).size !== seats.length) {
         throw new BookingServiceError(400, 'Seats must not be repeated.');
     }
+
     return seats;
 }
 
@@ -252,34 +269,27 @@ function parseBookingRequest(value: unknown): {
     if (!isRecord(value)) {
         throw new BookingServiceError(400, 'A JSON request object is required.');
     }
+
     if (
-        Object.keys(value).some(
-            (key) => !['movieId', 'offerId', 'date', 'showtime', 'seats'].includes(key)
-        )
+        Object.keys(value).some((key) => !['movieId', 'offerId', 'date', 'showtime', 'seats'].includes(key))
     ) {
-        throw new BookingServiceError(
-            400,
-            'Only movieId, offerId, date, showtime, and seats are accepted.'
-        );
+        throw new BookingServiceError(400, 'Only movieId, offerId, date, showtime, and seats are accepted.');
     }
+
     if (!isRecord(value.showtime)) {
         throw new BookingServiceError(400, 'showtime with day and time is required.');
     }
+
     if (Object.keys(value.showtime).some((key) => !['day', 'time', 'screen'].includes(key))) {
         throw new BookingServiceError(400, 'showtime only accepts day, time, and optional screen.');
     }
-    if (
-        value.offerId !== undefined &&
-        (typeof value.offerId !== 'string' || !value.offerId.trim())
-    ) {
+
+    if (value.offerId !== undefined && (typeof value.offerId !== 'string' || !value.offerId.trim())) {
         throw new BookingServiceError(400, 'offerId must be a non-empty string.');
     }
 
-    const showtime = parseShowtime(
-        value.showtime.day,
-        value.showtime.time,
-        value.showtime.screen
-    );
+    const showtime = parseShowtime(value.showtime.day, value.showtime.time, value.showtime.screen);
+
     return {
         movieId: parseMovieId(value.movieId),
         offerId: typeof value.offerId === 'string' ? value.offerId.trim() : undefined,
@@ -293,9 +303,10 @@ function conflictingSeats(error: unknown, seats: string[]): string[] | undefined
     if (!(error instanceof Error) || error.name !== 'TransactionCanceledException') {
         return undefined;
     }
-    const reasons = (error as { CancellationReasons?: Array<{ Code?: string }> })
-        .CancellationReasons;
+
+    const reasons = (error as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
     const taken = seats.filter((_, index) => reasons?.[index]?.Code === 'ConditionalCheckFailed');
+
     return taken.length > 0 ? taken : undefined;
 }
 
@@ -308,17 +319,17 @@ function conflictingSeats(error: unknown, seats: string[]): string[] | undefined
  */
 export async function createBooking(value: unknown): Promise<CreatedBooking> {
     const request = parseBookingRequest(value);
+
     if (request.date < todayInTheatre()) {
         throw new BookingServiceError(400, 'date must not be in the past.');
     }
 
     let resolved;
+
     try {
         // Pricing resolution takes either a movie or an offer, never both.
         resolved = await resolvePricing({
-            ...(request.offerId
-                ? { offerId: request.offerId }
-                : { movieId: request.movieId }),
+            ...(request.offerId ? { offerId: request.offerId } : { movieId: request.movieId }),
             date: request.date,
             showtime: request.showtime,
         });
@@ -326,8 +337,10 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
         if (error instanceof PricingServiceError) {
             throw new BookingServiceError(error.statusCode, error.message);
         }
+
         throw error;
     }
+
     if (resolved.movieId !== request.movieId) {
         throw new BookingServiceError(400, 'movieId does not match the selected offer.');
     }
@@ -337,22 +350,17 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
     const bookedAt = new Date().toISOString();
     const tableName = bookingsTableName();
     const screen = resolved.showtime.screen;
+
     if (!screen) throw new Error('Pricing resolution did not return a screen.');
-    const showtimeId = await createShowtimeId(
-        resolved.movieId,
-        request.showtime.day,
-        request.date,
-        { screen, time: request.showtime.time }
-    );
+
+    const showtimeId = await createShowtimeId(resolved.movieId, request.showtime.day, request.date, {
+        screen,
+        time: request.showtime.time,
+    });
+
     const legacyTableName = requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME');
-    const showtimeRegistryTableName = requiredEnvironmentVariable(
-        'SHOWTIME_REGISTRY_TABLE_NAME'
-    );
-    const legacyId = legacyShowingId(
-        resolved.movieId,
-        request.date,
-        request.showtime.time
-    );
+    const showtimeRegistryTableName = requiredEnvironmentVariable('SHOWTIME_REGISTRY_TABLE_NAME');
+    const legacyId = legacyShowingId(resolved.movieId, request.date, request.showtime.time);
 
     const records: BookingRecord[] = request.seats.map((seatId) => ({
         showtimeId,
@@ -396,22 +404,26 @@ export async function createBooking(value: unknown): Promise<CreatedBooking> {
                         },
                     },
                 ],
-            })
+            }),
         );
     } catch (error: unknown) {
-        const reasons = error instanceof Error && error.name === 'TransactionCanceledException'
-            ? (error as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons
-            : undefined;
+        const reasons =
+            error instanceof Error && error.name === 'TransactionCanceledException'
+                ? (error as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons
+                : undefined;
+
         const conflicts = reasons?.some((reason) => reason.Code === 'ConditionalCheckFailed');
         const taken = conflictingSeats(error, request.seats);
+
         if (taken || conflicts) {
             throw new BookingServiceError(
                 409,
                 taken
                     ? `Seat${taken.length > 1 ? 's' : ''} already booked: ${taken.join(', ')}.`
-                    : 'One or more selected seats are no longer available.'
+                    : 'One or more selected seats are no longer available.',
             );
         }
+
         throw error;
     }
 

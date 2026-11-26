@@ -28,36 +28,27 @@ const movie: MovieRecord = {
 
 describe('movie lifecycle scheduling', () => {
     it('opens pre-sales only for eligible upcoming movies with future screenings', () => {
-        expect(movieLifecycleStatus(movie, true, '2026-11-01'))
-            .toBe('Coming Soon (Pre-Sales Open)');
-        expect(movieLifecycleStatus(movie, false, '2026-11-01'))
-            .toBe('Coming Soon (No Showtimes Yet)');
-        expect(movieLifecycleStatus(
-            { ...movie, preSalesEligible: false },
-            true,
-            '2026-11-01'
-        )).toBe('Coming Soon (No Showtimes Yet)');
+        expect(movieLifecycleStatus(movie, true, '2026-11-01')).toBe('Coming Soon (Pre-Sales Open)');
+        expect(movieLifecycleStatus(movie, false, '2026-11-01')).toBe('Coming Soon (No Showtimes Yet)');
+        expect(movieLifecycleStatus({ ...movie, preSalesEligible: false }, true, '2026-11-01')).toBe(
+            'Coming Soon (No Showtimes Yet)',
+        );
     });
 
     it('allows explicit pre-release dates only within the configured start/end window', () => {
         expect(isMovieScheduleDateAllowed(movie, '2026-12-15', '2026-11-01')).toBe(true);
-        expect(isMovieScheduleDateAllowed(
-            { ...movie, runEndDate: '2026-12-14' },
-            '2026-12-15',
-            '2026-11-01'
-        )).toBe(false);
-        expect(isMovieScheduleDateAllowed(
-            { ...movie, preSalesEligible: false },
-            '2026-12-15',
-            '2026-11-01'
-        )).toBe(false);
+        expect(
+            isMovieScheduleDateAllowed({ ...movie, runEndDate: '2026-12-14' }, '2026-12-15', '2026-11-01'),
+        ).toBe(false);
+
+        expect(
+            isMovieScheduleDateAllowed({ ...movie, preSalesEligible: false }, '2026-12-15', '2026-11-01'),
+        ).toBe(false);
     });
 
     it('reports an ended run after its configured end date', () => {
-        expect(movieLifecycleStatus(
-            { ...movie, runEndDate: '2026-10-31' },
-            false,
-            '2026-11-01'
-        )).toBe('Ended');
+        expect(movieLifecycleStatus({ ...movie, runEndDate: '2026-10-31' }, false, '2026-11-01')).toBe(
+            'Ended',
+        );
     });
 });

@@ -17,9 +17,7 @@ export class DatabaseConstruct extends Construct {
     constructor(scope: Construct, id: string, envName: EnvironmentName = 'prod') {
         super(scope, id);
         const tableName = (name: string): string => resourceName(name, envName);
-        const removalPolicy = envName === 'dev'
-            ? cdk.RemovalPolicy.DESTROY
-            : cdk.RemovalPolicy.RETAIN;
+        const removalPolicy = envName === 'dev' ? cdk.RemovalPolicy.DESTROY : cdk.RemovalPolicy.RETAIN;
 
         this.movieCatalogueTable = new dynamodb.Table(this, 'BlockbusterTheatreMovies', {
             // Use a new physical name so CloudFormation can replace the old key schema safely.
@@ -81,11 +79,13 @@ export class DatabaseConstruct extends Construct {
             sortKey: { name: 'bookedAt', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
         });
+
         this.legacyBookingsTable.addGlobalSecondaryIndex({
             indexName: 'CustomerEmailBookings',
             partitionKey: { name: 'customerEmail', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
         });
+
         this.legacyBookingsTable.addGlobalSecondaryIndex({
             indexName: 'CustomerEmailUpcomingBookings',
             partitionKey: { name: 'customerEmail', type: dynamodb.AttributeType.STRING },
@@ -100,17 +100,20 @@ export class DatabaseConstruct extends Construct {
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy,
         });
+
         this.bookingsTable.addGlobalSecondaryIndex({
             indexName: 'UserBookings',
             partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'bookedAt', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
         });
+
         this.bookingsTable.addGlobalSecondaryIndex({
             indexName: 'CustomerEmailBookings',
             partitionKey: { name: 'customerEmail', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
         });
+
         this.bookingsTable.addGlobalSecondaryIndex({
             indexName: 'CustomerEmailUpcomingBookings',
             partitionKey: { name: 'customerEmail', type: dynamodb.AttributeType.STRING },
@@ -124,6 +127,7 @@ export class DatabaseConstruct extends Construct {
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
             removalPolicy,
         });
+
         this.showtimeRegistryTable.addGlobalSecondaryIndex({
             indexName: 'ShowtimesByDate',
             partitionKey: { name: 'GSI1PK', type: dynamodb.AttributeType.STRING },
@@ -147,7 +151,7 @@ export class DatabaseConstruct extends Construct {
                 billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
                 timeToLiveAttribute: 'expiresAt',
                 removalPolicy,
-            }
+            },
         );
     }
 }

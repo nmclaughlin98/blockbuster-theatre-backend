@@ -9,10 +9,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isText(value: unknown, maxLength: number): value is string {
-    return typeof value === 'string'
-        && value.trim().length > 0
-        && value.trim().length <= maxLength
-        && !/[\r\n\0]/.test(value);
+    return (
+        typeof value === 'string' &&
+        value.trim().length > 0 &&
+        value.trim().length <= maxLength &&
+        !/[\r\n\0]/.test(value)
+    );
 }
 
 function isSeat(value: unknown): value is string {
@@ -21,18 +23,19 @@ function isSeat(value: unknown): value is string {
 
 function parseSeats(value: unknown): string[] | undefined {
     if (!Array.isArray(value)) return undefined;
+
     const seats: string[] = [];
+
     for (const seat of value) {
         if (!isSeat(seat)) return undefined;
+
         seats.push(seat);
     }
+
     return seats;
 }
 
-function parseConfirmation(
-    value: unknown,
-    maxTickets: number
-): BookingConfirmationEmail | undefined {
+function parseConfirmation(value: unknown, maxTickets: number): BookingConfirmationEmail | undefined {
     if (!isRecord(value) || !isRecord(value.customer)) return undefined;
 
     const bookingRef = value.bookingRef;
@@ -49,29 +52,29 @@ function parseConfirmation(
     const totalPrice = value.totalPrice;
 
     if (
-        !isText(bookingRef, 10)
-        || !/^BBT-\d{6}$/.test(bookingRef)
-        || !isText(firstName, 80)
-        || !isText(surname, 80)
-        || !isText(email, 254)
-        || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-        || (phone !== undefined && phone !== '' && !isText(phone, 32))
-        || !isText(movieTitle, 160)
-        || !isText(date, 64)
-        || typeof time !== 'string'
-        || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
-        || !isText(screen, 32)
-        || !seats
-        || typeof tickets !== 'number'
-        || !Number.isInteger(tickets)
-        || tickets < 1
-        || tickets > maxTickets
-        || seats.length !== tickets
-        || new Set(seats).size !== seats.length
-        || typeof totalPrice !== 'number'
-        || !Number.isFinite(totalPrice)
-        || totalPrice < 0
-        || totalPrice > 10000
+        !isText(bookingRef, 10) ||
+        !/^BBT-\d{6}$/.test(bookingRef) ||
+        !isText(firstName, 80) ||
+        !isText(surname, 80) ||
+        !isText(email, 254) ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        (phone !== undefined && phone !== '' && !isText(phone, 32)) ||
+        !isText(movieTitle, 160) ||
+        !isText(date, 64) ||
+        typeof time !== 'string' ||
+        !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time) ||
+        !isText(screen, 32) ||
+        !seats ||
+        typeof tickets !== 'number' ||
+        !Number.isInteger(tickets) ||
+        tickets < 1 ||
+        tickets > maxTickets ||
+        seats.length !== tickets ||
+        new Set(seats).size !== seats.length ||
+        typeof totalPrice !== 'number' ||
+        !Number.isFinite(totalPrice) ||
+        totalPrice < 0 ||
+        totalPrice > 10000
     ) {
         return undefined;
     }
@@ -94,23 +97,22 @@ function parseConfirmation(
     };
 }
 
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
+
     if (!event.body) return json(400, { message: 'A JSON request body is required.' });
 
     let request: unknown;
+
     try {
-        const body = event.isBase64Encoded
-            ? Buffer.from(event.body, 'base64').toString('utf8')
-            : event.body;
+        const body = event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body;
         request = JSON.parse(body);
     } catch {
         return json(400, { message: 'Request body must contain valid JSON.' });
     }
 
     let maxTickets: number;
+
     try {
         maxTickets = await getMaxTickets();
     } catch (error: unknown) {
@@ -118,22 +120,27 @@ export const handler = async (
             requestId,
             error: error instanceof Error ? error.name : 'Unknown error',
         });
+
         return json(500, { message: 'Unable to validate booking confirmation details.' });
     }
 
     const confirmation = parseConfirmation(request, maxTickets);
+
     if (!confirmation) {
         return json(400, { message: 'Booking confirmation details are invalid.' });
     }
 
     const source = process.env.BOOKING_EMAIL_FROM;
+
     if (!source) {
         log('ERROR', 'Booking email sender is not configured', { requestId });
+
         return json(500, { message: 'Booking confirmation email is not configured.' });
     }
 
     try {
         await sendBookingConfirmationEmail(confirmation);
+
         return json(200, {
             message: 'Booking reservation confirmation email sent.',
             bookingRef: confirmation.bookingRef,
@@ -143,6 +150,7 @@ export const handler = async (
             requestId,
             error: error instanceof Error ? error.name : 'Unknown error',
         });
+
         return json(502, { message: 'Unable to send booking confirmation email.' });
     }
 };

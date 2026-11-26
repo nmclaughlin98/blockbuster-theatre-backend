@@ -18,26 +18,27 @@ export function todayInTheatre(now = new Date()): string {
 }
 
 export function movieStartDate(movie: MovieRecord, today = todayInTheatre()): string {
-    return movie.startDate ?? (dateOnly(movie.releaseDate) > today
-        ? dateOnly(movie.releaseDate)
-        : today);
+    return movie.startDate ?? (dateOnly(movie.releaseDate) > today ? dateOnly(movie.releaseDate) : today);
 }
 
 export function isMovieScheduleDateAllowed(
     movie: MovieRecord,
     date: string,
-    today = todayInTheatre()
+    today = todayInTheatre(),
 ): boolean {
     const releaseDate = dateOnly(movie.releaseDate);
-    return date >= movieStartDate(movie, today)
-        && (movie.runEndDate === undefined || date <= movie.runEndDate)
-        && (date >= releaseDate || movie.preSalesEligible === true);
+
+    return (
+        date >= movieStartDate(movie, today) &&
+        (movie.runEndDate === undefined || date <= movie.runEndDate) &&
+        (date >= releaseDate || movie.preSalesEligible === true)
+    );
 }
 
 export function hasUpcomingTemplateScreenings(
     movie: MovieRecord,
     schedule: MovieShowtimes,
-    today = todayInTheatre()
+    today = todayInTheatre(),
 ): boolean {
     const finalDate = new Date(`${today}T00:00:00.000Z`);
     const daysUntilSunday = (7 - finalDate.getUTCDay()) % 7;
@@ -47,27 +48,29 @@ export function hasUpcomingTemplateScreenings(
     while (date <= finalDate) {
         const dateString = date.toISOString().slice(0, 10);
         const day = DAYS[date.getUTCDay()];
-        if (
-            isMovieScheduleDateAllowed(movie, dateString, today)
-            && (schedule[day]?.length ?? 0) > 0
-        ) {
+
+        if (isMovieScheduleDateAllowed(movie, dateString, today) && (schedule[day]?.length ?? 0) > 0) {
             return true;
         }
+
         date.setUTCDate(date.getUTCDate() + 1);
     }
+
     return false;
 }
 
 export function movieLifecycleStatus(
     movie: MovieRecord,
     hasUpcomingScreenings: boolean,
-    today = todayInTheatre()
+    today = todayInTheatre(),
 ): MovieLifecycleStatus {
     if (movie.runEndDate && today > movie.runEndDate) return 'Ended';
+
     if (dateOnly(movie.releaseDate) > today) {
         return movie.preSalesEligible && hasUpcomingScreenings
             ? 'Coming Soon (Pre-Sales Open)'
             : 'Coming Soon (No Showtimes Yet)';
     }
+
     return 'Now Showing';
 }

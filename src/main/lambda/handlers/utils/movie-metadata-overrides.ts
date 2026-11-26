@@ -4,9 +4,7 @@ export interface MovieMetadataOverride {
     sortTitle?: string;
 }
 
-export const TMDB_MOVIE_METADATA_OVERRIDES: Readonly<
-    Record<number, MovieMetadataOverride>
-> = {
+export const TMDB_MOVIE_METADATA_OVERRIDES: Readonly<Record<number, MovieMetadataOverride>> = {
     // Add metadata overrides for other franchises or collections here.
     1893: {
         title: 'Star Wars: Episode I - The Phantom Menace',

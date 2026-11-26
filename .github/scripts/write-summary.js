@@ -18,7 +18,7 @@ if (mode === 'build') {
         `**Status:** \`${jobStatus}\``,
         `**Branch:** \`${branch}\``,
         `**Build Number:** \`${buildNumber}\``,
-        `**Artifact Name:** \`build-artifact-${buildNumber}\``
+        `**Artifact Name:** \`build-artifact-${buildNumber}\``,
     );
 
     steps = [
@@ -45,7 +45,7 @@ if (mode === 'build') {
         `**Branch:** \`${branch}\``,
         `**Environment:** \`${deployEnv}\``,
         `**Stack:** \`${deployStack}\``,
-        `**Build Number:** \`${buildNumber}\``
+        `**Build Number:** \`${buildNumber}\``,
     );
 
     if (buildRunId) {
@@ -63,7 +63,7 @@ if (mode === 'build') {
     ];
 
     console.log(
-        `Deploy of ${deployStack} (build #${buildNumber}) on ${branch}: ${jobStatus} at ${completedAt}`
+        `Deploy of ${deployStack} (build #${buildNumber}) on ${branch}: ${jobStatus} at ${completedAt}`,
     );
 }
 

@@ -21,10 +21,17 @@ describe('BlockbusterTheatreAuthStack', () => {
     it('preserves Cognito resource logical IDs when resources are extracted', () => {
         const resources = Template.fromStack(stack).toJSON().Resources;
         expect(resources.BlockbusterTheatreCognitoUsers309F56C0.Type).toBe('AWS::Cognito::UserPool');
-        expect(resources.BlockbusterTheatreCognitoUsersCognitoDomain0BCE2B90.Type).toBe('AWS::Cognito::UserPoolDomain');
-        expect(resources.BlockbusterTheatreCognitoUsersBookingsResourceServer2DB5531C.Type)
-            .toBe('AWS::Cognito::UserPoolResourceServer');
-        expect(resources.BlockbusterTheatreCognitoUsersBackendClientA5AC95EE.Type).toBe('AWS::Cognito::UserPoolClient');
+        expect(resources.BlockbusterTheatreCognitoUsersCognitoDomain0BCE2B90.Type).toBe(
+            'AWS::Cognito::UserPoolDomain',
+        );
+
+        expect(resources.BlockbusterTheatreCognitoUsersBookingsResourceServer2DB5531C.Type).toBe(
+            'AWS::Cognito::UserPoolResourceServer',
+        );
+
+        expect(resources.BlockbusterTheatreCognitoUsersBackendClientA5AC95EE.Type).toBe(
+            'AWS::Cognito::UserPoolClient',
+        );
     });
 
     it('creates the shared Cognito User Pool with self-signup and password policy', () => {
@@ -56,6 +63,7 @@ describe('BlockbusterTheatreAuthStack', () => {
     it('creates PROD and DEV resource servers with the bookings.read scope', () => {
         const template = Template.fromStack(stack);
         template.resourceCountIs('AWS::Cognito::UserPoolResourceServer', 2);
+
         for (const identifier of [
             'https://api.blockbuster-theatre.nml-applications.com',
             'https://api-dev.blockbuster-theatre.nml-applications.com',
@@ -73,10 +81,7 @@ describe('BlockbusterTheatreAuthStack', () => {
         template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
             ClientName: 'blockbuster-theatre-backend',
             GenerateSecret: false,
-            ExplicitAuthFlows: Match.arrayEquals([
-                'ALLOW_ADMIN_USER_PASSWORD_AUTH',
-                'ALLOW_USER_SRP_AUTH',
-            ]),
+            ExplicitAuthFlows: Match.arrayEquals(['ALLOW_ADMIN_USER_PASSWORD_AUTH', 'ALLOW_USER_SRP_AUTH']),
             AllowedOAuthFlowsUserPoolClient: false,
             AllowedOAuthScopes: Match.absent(),
             AllowedOAuthFlows: Match.absent(),
@@ -112,22 +117,28 @@ describe('BlockbusterTheatreAuthStack', () => {
 
         const clients = template.findResources('AWS::Cognito::UserPoolClient');
         const alexaClient = Object.values(clients).find(
-            (c) => c.Properties.ClientName === 'alexa-skill-client'
+            (c) => c.Properties.ClientName === 'alexa-skill-client',
         );
+
         expect(alexaClient).toBeDefined();
         const scopes = alexaClient!.Properties.AllowedOAuthScopes;
         expect(scopes).toContain('openid');
         expect(scopes).toContain('email');
         expect(scopes).toContain('profile');
         const servers = template.findResources('AWS::Cognito::UserPoolResourceServer');
+
         for (const identifier of [
             'https://api.blockbuster-theatre.nml-applications.com',
             'https://api-dev.blockbuster-theatre.nml-applications.com',
         ]) {
-            const serverId = Object.keys(servers).find((id) => servers[id].Properties.Identifier === identifier);
+            const serverId = Object.keys(servers).find(
+                (id) => servers[id].Properties.Identifier === identifier,
+            );
+
             expect(serverId).toBeDefined();
             expect(scopes).toContainEqual({ 'Fn::Join': ['', [{ Ref: serverId }, '/bookings.read']] });
         }
+
         expect(scopes).toHaveLength(5);
     });
 
@@ -138,18 +149,22 @@ describe('BlockbusterTheatreAuthStack', () => {
             Name: AUTH_SSM_PARAMETER_NAMES.USER_POOL_ID,
             Type: 'String',
         });
+
         template.hasResourceProperties('AWS::SSM::Parameter', {
             Name: AUTH_SSM_PARAMETER_NAMES.USER_POOL_ARN,
             Type: 'String',
         });
+
         template.hasResourceProperties('AWS::SSM::Parameter', {
             Name: AUTH_SSM_PARAMETER_NAMES.BACKEND_CLIENT_ID,
             Type: 'String',
         });
+
         template.hasResourceProperties('AWS::SSM::Parameter', {
             Name: AUTH_SSM_PARAMETER_NAMES.POSTMAN_CLIENT_ID,
             Type: 'String',
         });
+
         template.hasResourceProperties('AWS::SSM::Parameter', {
             Name: AUTH_SSM_PARAMETER_NAMES.ALEXA_CLIENT_ID,
             Type: 'String',
@@ -162,6 +177,7 @@ describe('BlockbusterTheatreAuthStack', () => {
         const functions = template.findResources('AWS::Lambda::Function', {
             Properties: { FunctionName: 'blockbuster-theatre-pre-token-generation-handler' },
         });
+
         const functionId = Object.keys(functions)[0];
 
         template.hasResourceProperties('AWS::Cognito::UserPool', {
@@ -172,6 +188,7 @@ describe('BlockbusterTheatreAuthStack', () => {
                 },
             },
         });
+
         template.hasResourceProperties('AWS::Lambda::Permission', {
             Action: 'lambda:InvokeFunction',
             Principal: 'cognito-idp.amazonaws.com',

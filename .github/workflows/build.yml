@@ -2,70 +2,70 @@ name: 1. Build and Package 🔨
 run-name: '🔨 Build and Package (${{ github.head_ref || github.ref_name }} #${{ github.run_number }})'
 
 on:
-  push:
-  workflow_dispatch:
+    push:
+    workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    env:
-      BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
-    outputs:
-      build_number: ${{ github.run_number }}
-
-    steps:
-      - name: Checkout Code
-        id: checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        id: setup_node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: 'npm'
-
-      - name: Install Dependencies
-        id: install_dependencies
-        run: npm ci --include=dev
-
-      - name: Check TypeScript Compilation
-        id: compile
-        run: npm run build
-
-      - name: Synthesize CDK App
-        id: synthesize
+    build:
+        runs-on: ubuntu-latest
         env:
-          CDK_DEFAULT_ACCOUNT: '334624057595'
-          CDK_DEFAULT_REGION: 'eu-west-2'
-          TMDB_API_KEY: 'ci-synth-placeholder'
-        run: |
-          echo "Synthesizing AuthStack and BackendStack (dev)..."
-          npx cdk synth -c env=dev --output cdk-out/dev
+            BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
+        outputs:
+            build_number: ${{ github.run_number }}
 
-          echo "Synthesizing AuthStack and BackendStack (prod)..."
-          npx cdk synth -c env=prod --output cdk-out/prod
+        steps:
+            - name: Checkout Code
+              id: checkout
+              uses: actions/checkout@v7
 
-      - name: Upload Build Artifact
-        id: upload_artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-artifact-${{ github.run_number }}
-          path: cdk-out
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 7
+            - name: Setup Node.js
+              id: setup_node
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+                  cache: 'npm'
 
-      - name: Write Build Summary
-        if: always()
-        env:
-          BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
-          BUILD_NUMBER: ${{ github.run_number }}
-          JOB_STATUS: ${{ job.status }}
-          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
-          SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
-          INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
-          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
-          SYNTHESIZE_OUTCOME: ${{ steps.synthesize.outcome }}
-          UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
-        run: node .github/scripts/write-summary.js build
+            - name: Install Dependencies
+              id: install_dependencies
+              run: npm ci --include=dev
+
+            - name: Check TypeScript Compilation
+              id: compile
+              run: npm run build
+
+            - name: Synthesize CDK App
+              id: synthesize
+              env:
+                  CDK_DEFAULT_ACCOUNT: '334624057595'
+                  CDK_DEFAULT_REGION: 'eu-west-2'
+                  TMDB_API_KEY: 'ci-synth-placeholder'
+              run: |
+                  echo "Synthesizing AuthStack and BackendStack (dev)..."
+                  npx cdk synth -c env=dev --output cdk-out/dev
+
+                  echo "Synthesizing AuthStack and BackendStack (prod)..."
+                  npx cdk synth -c env=prod --output cdk-out/prod
+
+            - name: Upload Build Artifact
+              id: upload_artifact
+              uses: actions/upload-artifact@v7
+              with:
+                  name: build-artifact-${{ github.run_number }}
+                  path: cdk-out
+                  if-no-files-found: error
+                  include-hidden-files: true
+                  retention-days: 7
+
+            - name: Write Build Summary
+              if: always()
+              env:
+                  BUILD_BRANCH: ${{ github.head_ref || github.ref_name }}
+                  BUILD_NUMBER: ${{ github.run_number }}
+                  JOB_STATUS: ${{ job.status }}
+                  CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+                  SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+                  INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
+                  COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+                  SYNTHESIZE_OUTCOME: ${{ steps.synthesize.outcome }}
+                  UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
+              run: node .github/scripts/write-summary.js build

@@ -9,6 +9,7 @@ dist/
 build/
 *.js
 !.github/scripts/*.js
+!scripts/build.js
 !*.config.js
 !jest.config.ts
 *.d.ts

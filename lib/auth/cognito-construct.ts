@@ -10,7 +10,7 @@ import { lambdaSettings } from '../backend/lambdas-construct';
 export function createCognitoResources(
     scope: Construct,
     removalPolicy: cdk.RemovalPolicy,
-    domainPrefix: string
+    domainPrefix: string,
 ): { userPool: cognito.UserPool; userPoolDomain: cognito.UserPoolDomain } {
     const userPool = new cognito.UserPool(scope, 'BlockbusterTheatreCognitoUsers', {
         userPoolName: 'blockbuster-theatre-users',
@@ -31,7 +31,10 @@ export function createCognitoResources(
     const preTokenFunction = new lambdaNodejs.NodejsFunction(scope, 'PreTokenGenerationHandler', {
         functionName: 'blockbuster-theatre-pre-token-generation-handler',
         runtime: lambdaSettings.runtime,
-        entry: path.join(__dirname, '../../src/main/lambda/handlers/PreTokenGeneration/pre-token-generation-handler.ts'),
+        entry: path.join(
+            __dirname,
+            '../../src/main/lambda/handlers/PreTokenGeneration/pre-token-generation-handler.ts',
+        ),
         handler: 'handler',
         memorySize: lambdaSettings.default.memorySize,
         timeout: cdk.Duration.seconds(5),
@@ -41,15 +44,17 @@ export function createCognitoResources(
     userPool.addTrigger(
         cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
         preTokenFunction,
-        cognito.LambdaVersion.V1_0
+        cognito.LambdaVersion.V1_0,
     );
 
     new iam.Policy(scope, 'PreTokenGenerationUserReadPolicy', {
         roles: [preTokenFunction.role!],
-        statements: [new iam.PolicyStatement({
-            actions: ['cognito-idp:AdminGetUser'],
-            resources: [userPool.userPoolArn],
-        })],
+        statements: [
+            new iam.PolicyStatement({
+                actions: ['cognito-idp:AdminGetUser'],
+                resources: [userPool.userPoolArn],
+            }),
+        ],
     });
 
     const userPoolDomain = userPool.addDomain('CognitoDomain', {

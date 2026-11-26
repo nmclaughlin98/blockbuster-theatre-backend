@@ -1,23 +1,23 @@
-import type {
-    APIGatewayProxyEventV2,
-    APIGatewayProxyResultV2,
-} from 'aws-lambda';
-import {
-    DynamoDBDocumentClient,
-    TransactWriteCommand,
-} from '@aws-sdk/lib-dynamodb';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { DynamoDBDocumentClient, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 process.env.OFFERS_TABLE_NAME = 'test-booking-offers';
 process.env.PRICING_TABLE_NAME = 'test-ticket-pricing';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler: upsertOffers } = require('../../../main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
-const { handler: upsertPricing } = require('../../../main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
+let upsertOffers: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+let upsertPricing: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+
+beforeAll(async () => {
+    const [offers, pricing] = await Promise.all([
+        import('../../../main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler'),
+        import('../../../main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler'),
+    ]);
+
+    upsertOffers = offers.handler;
+    upsertPricing = pricing.handler;
+});
 
 const offer = {
     offerId: 'kids-club',
@@ -56,6 +56,7 @@ function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> 
     if (typeof result === 'string') {
         throw new Error('Expected a structured API Gateway response.');
     }
+
     return JSON.parse(result.body as string) as Record<string, unknown>;
 }
 
@@ -73,9 +74,7 @@ describe('Bulk booking data upsert handlers', () => {
     });
 
     it('upserts submitted offer records atomically by offerId', async () => {
-        const result = await upsertOffers(
-            createEvent(JSON.stringify({ offers: [offer] }))
-        );
+        const result = await upsertOffers(createEvent(JSON.stringify({ offers: [offer] })));
 
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toMatchObject({ count: 1, ids: ['kids-club'] });
@@ -92,9 +91,7 @@ describe('Bulk booking data upsert handlers', () => {
     });
 
     it('upserts submitted pricing records atomically by pricingId', async () => {
-        const result = await upsertPricing(
-            createEvent(JSON.stringify({ pricing: [pricing] }))
-        );
+        const result = await upsertPricing(createEvent(JSON.stringify({ pricing: [pricing] })));
 
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toMatchObject({ count: 1, ids: ['KIDS_CLUB_RATES'] });
@@ -112,9 +109,11 @@ describe('Bulk booking data upsert handlers', () => {
 
     it('rejects malformed records before writing anything', async () => {
         const result = await upsertOffers(
-            createEvent(JSON.stringify({
-                offers: [{ ...offer, featuredMovieId: 456 }],
-            }))
+            createEvent(
+                JSON.stringify({
+                    offers: [{ ...offer, featuredMovieId: 456 }],
+                }),
+            ),
         );
 
         expect(result).toMatchObject({ statusCode: 400 });
@@ -122,17 +121,22 @@ describe('Bulk booking data upsert handlers', () => {
             message: 'One or more booking offers records are invalid.',
             invalidIndexes: [0],
         });
+
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
 
     it('rejects legacy string showtimes in offer overrides', async () => {
         const result = await upsertOffers(
-            createEvent(JSON.stringify({
-                offers: [{
-                    ...offer,
-                    overrideShowtimes: { Tuesday: ['11:00'] },
-                }],
-            }))
+            createEvent(
+                JSON.stringify({
+                    offers: [
+                        {
+                            ...offer,
+                            overrideShowtimes: { Tuesday: ['11:00'] },
+                        },
+                    ],
+                }),
+            ),
         );
 
         expect(result).toMatchObject({ statusCode: 400 });
@@ -140,41 +144,40 @@ describe('Bulk booking data upsert handlers', () => {
     });
 
     it('rejects duplicate keys in a request', async () => {
-        const result = await upsertPricing(
-            createEvent(JSON.stringify({ pricing: [pricing, pricing] }))
-        );
+        const result = await upsertPricing(createEvent(JSON.stringify({ pricing: [pricing, pricing] })));
 
         expect(result).toMatchObject({ statusCode: 400 });
         expect(responseBody(result)).toEqual({
             message: 'Duplicate pricingId values are not allowed in one request.',
             duplicateIds: ['KIDS_CLUB_RATES'],
         });
+
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
 
     it('rejects empty or oversized batches', async () => {
         const empty = await upsertOffers(createEvent(JSON.stringify({ offers: [] })));
         const oversized = await upsertPricing(
-            createEvent(JSON.stringify({ pricing: Array.from({ length: 26 }, () => pricing) }))
+            createEvent(JSON.stringify({ pricing: Array.from({ length: 26 }, () => pricing) })),
         );
 
         expect(empty).toMatchObject({ statusCode: 400 });
         expect(responseBody(empty)).toEqual({
             message: 'offers must be a non-empty array.',
         });
+
         expect(oversized).toMatchObject({ statusCode: 400 });
         expect(responseBody(oversized)).toEqual({
             message: 'pricing cannot exceed 25 items per request.',
         });
+
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
 
     it('reports DynamoDB write failures with a request ID', async () => {
         ddbMock.on(TransactWriteCommand).rejects(new Error('DynamoDB unavailable'));
 
-        const result = await upsertOffers(
-            createEvent(JSON.stringify({ offers: [offer] }))
-        );
+        const result = await upsertOffers(createEvent(JSON.stringify({ offers: [offer] })));
 
         expect(result).toMatchObject({ statusCode: 500 });
         expect(responseBody(result)).toEqual({

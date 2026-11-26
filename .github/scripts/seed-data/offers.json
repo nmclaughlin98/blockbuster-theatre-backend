@@ -11,9 +11,7 @@
             "tagline": "Advance Booking Required • All Weekends",
             "title": "Birthday Party Pack",
             "overrideShowtimes": {
-                "Tuesday": [
-                    "11:00"
-                ]
+                "Tuesday": ["11:00"]
             }
         },
         {

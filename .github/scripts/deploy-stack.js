@@ -9,7 +9,7 @@ function deployAuth() {
     execFileSync(
         'npx',
         ['cdk', 'deploy', 'BlockbusterTheatreAuthStack', '--app', 'cdk-out', '--require-approval', 'never'],
-        { stdio: 'inherit' }
+        { stdio: 'inherit' },
     );
 }
 
@@ -20,7 +20,7 @@ function deployBackend() {
     }
 
     const targetStack =
-        deployEnv === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
+        deployEnv === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack-prod';
     console.log(`Deploying Backend Stack: ${targetStack}`);
 
     execFileSync(
@@ -36,7 +36,7 @@ function deployBackend() {
             '--parameters',
             `TmdbApiKey=${tmdbApiKey}`,
         ],
-        { stdio: 'inherit' }
+        { stdio: 'inherit' },
     );
 }
 

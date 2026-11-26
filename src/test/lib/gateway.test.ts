@@ -48,11 +48,11 @@ describe('ApiGatewayConstruct', () => {
             handler: 'index.handler',
             code: lambda.Code.fromInline('exports.handler = async () => {};'),
         });
-        jwtAuthorizer = new authorizers.HttpJwtAuthorizer(
-            'TestJwtAuthorizer',
-            'https://issuer.example.com',
-            { jwtAudience: ['test-client'] }
-        );
+
+        jwtAuthorizer = new authorizers.HttpJwtAuthorizer('TestJwtAuthorizer', 'https://issuer.example.com', {
+            jwtAudience: ['test-client'],
+        });
+
         construct = createGateway('prod');
     });
 
@@ -81,124 +81,152 @@ describe('ApiGatewayConstruct', () => {
             RouteKey: 'GET /api/v1/bookings/guest',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /api/v1/bookings/guest',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/account',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /api/v1/bookings/account/history',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings/{bookingId}/ticket',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /api/v1/auth/convert-guest',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /bookings',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'PATCH /bookings/reschedule-booking',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /showtimes',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'PATCH /showtimes/{showtimeId}',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'DELETE /showtimes/{showtimeId}',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/newest',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/top-picks',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/export',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/tmdb-ids',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/{id}',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /movies',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'PATCH /movies',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /movies/{id}',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /film-selections',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /ticket-pricing',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /ticket-pricing',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /booking-offers',
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /collections',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /collections/{id}',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /collections/refresh',
             AuthorizationType: 'JWT',
@@ -206,10 +234,12 @@ describe('ApiGatewayConstruct', () => {
             AuthorizationType: 'JWT',
             AuthorizerId: Match.anyValue(),
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /checkout/validate',
             AuthorizationType: 'NONE',
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'POST /booking/confirmation',
             AuthorizationType: 'NONE',
@@ -222,17 +252,23 @@ describe('ApiGatewayConstruct', () => {
     });
 
     it('does not require scopes on JWT routes so SRP access tokens are accepted', () => {
-        const routes = Object.values(Template.fromStack(stack).findResources('AWS::ApiGatewayV2::Route'))
-            .filter((route) => route.Properties.AuthorizationType === 'JWT');
+        const routes = Object.values(
+            Template.fromStack(stack).findResources('AWS::ApiGatewayV2::Route'),
+        ).filter((route) => route.Properties.AuthorizationType === 'JWT');
+
         expect(routes.length).toBeGreaterThan(0);
+
         for (const route of routes) {
             expect(route.Properties.AuthorizationScopes).toBeUndefined();
         }
-        expect(routes.map((route) => route.Properties.RouteKey)).toEqual(expect.arrayContaining([
-            'GET /api/v1/bookings/account',
-            'GET /api/v1/bookings/account/history',
-            'POST /api/v1/bookings/account',
-        ]));
+
+        expect(routes.map((route) => route.Properties.RouteKey)).toEqual(
+            expect.arrayContaining([
+                'GET /api/v1/bookings/account',
+                'GET /api/v1/bookings/account/history',
+                'POST /api/v1/bookings/account',
+            ]),
+        );
     });
 
     it('should export httpApi property', () => {
@@ -258,11 +294,13 @@ describe('ApiGatewayConstruct', () => {
 
     it.each(['prod', 'dev'] as const)('logs %s API access through the existing default stage', (envName) => {
         if (envName === 'dev') createGateway('dev');
+
         const template = Template.fromStack(stack);
         const logName = `/aws/vendedlogs/blockbuster-theatre-${envName}-api-access`;
         const groups = template.findResources('AWS::Logs::LogGroup', {
             Properties: { LogGroupName: logName },
         });
+
         const logGroupId = Object.keys(groups)[0];
         expect(logGroupId).toBeDefined();
         template.hasResource('AWS::Logs::LogGroup', {
@@ -270,6 +308,7 @@ describe('ApiGatewayConstruct', () => {
             UpdateReplacePolicy: envName === 'dev' ? 'Delete' : 'Retain',
             Properties: { LogGroupName: logName, RetentionInDays: 7 },
         });
+
         template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
             StageName: '$default',
             AutoDeploy: true,

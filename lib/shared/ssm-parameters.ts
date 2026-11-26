@@ -26,10 +26,7 @@ export interface WriteAuthParametersProps {
 }
 
 export class AuthSsmHelper {
-    public static writeAuthParameters(
-        scope: Construct,
-        props: WriteAuthParametersProps
-    ): void {
+    public static writeAuthParameters(scope: Construct, props: WriteAuthParametersProps): void {
         new ssm.StringParameter(scope, 'AuthUserPoolIdParameter', {
             parameterName: AUTH_SSM_PARAMETER_NAMES.USER_POOL_ID,
             stringValue: props.userPoolId,
@@ -61,36 +58,29 @@ export class AuthSsmHelper {
         });
     }
 
-    public static readAuthParameters(
-        scope: Construct,
-        overrides?: Partial<AuthParameters>
-    ): AuthParameters {
+    public static readAuthParameters(scope: Construct, overrides?: Partial<AuthParameters>): AuthParameters {
         return {
-            userPoolId: overrides?.userPoolId
-                ?? ssm.StringParameter.valueForStringParameter(
+            userPoolId:
+                overrides?.userPoolId ??
+                ssm.StringParameter.valueForStringParameter(scope, AUTH_SSM_PARAMETER_NAMES.USER_POOL_ID),
+            userPoolArn:
+                overrides?.userPoolArn ??
+                ssm.StringParameter.valueForStringParameter(scope, AUTH_SSM_PARAMETER_NAMES.USER_POOL_ARN),
+            backendClientId:
+                overrides?.backendClientId ??
+                ssm.StringParameter.valueForStringParameter(
                     scope,
-                    AUTH_SSM_PARAMETER_NAMES.USER_POOL_ID
+                    AUTH_SSM_PARAMETER_NAMES.BACKEND_CLIENT_ID,
                 ),
-            userPoolArn: overrides?.userPoolArn
-                ?? ssm.StringParameter.valueForStringParameter(
+            postmanClientId:
+                overrides?.postmanClientId ??
+                ssm.StringParameter.valueForStringParameter(
                     scope,
-                    AUTH_SSM_PARAMETER_NAMES.USER_POOL_ARN
+                    AUTH_SSM_PARAMETER_NAMES.POSTMAN_CLIENT_ID,
                 ),
-            backendClientId: overrides?.backendClientId
-                ?? ssm.StringParameter.valueForStringParameter(
-                    scope,
-                    AUTH_SSM_PARAMETER_NAMES.BACKEND_CLIENT_ID
-                ),
-            postmanClientId: overrides?.postmanClientId
-                ?? ssm.StringParameter.valueForStringParameter(
-                    scope,
-                    AUTH_SSM_PARAMETER_NAMES.POSTMAN_CLIENT_ID
-                ),
-            alexaClientId: overrides?.alexaClientId
-                ?? ssm.StringParameter.valueForStringParameter(
-                    scope,
-                    AUTH_SSM_PARAMETER_NAMES.ALEXA_CLIENT_ID
-                ),
+            alexaClientId:
+                overrides?.alexaClientId ??
+                ssm.StringParameter.valueForStringParameter(scope, AUTH_SSM_PARAMETER_NAMES.ALEXA_CLIENT_ID),
         };
     }
 }

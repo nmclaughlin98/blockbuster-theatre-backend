@@ -15,14 +15,13 @@ const TABLE_NAME = process.env.TABLE_NAME ?? '';
  * @param event API Gateway request with the movie ID in its path.
  * @returns Movie detail or an API error response.
  */
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
     const id = event.pathParameters?.id;
 
     if (!TABLE_NAME) {
         log('ERROR', 'TABLE_NAME is not configured', { requestId });
+
         return json(500, { message: 'TABLE_NAME is not configured.' });
     }
 
@@ -38,13 +37,15 @@ export const handler = async (
                 ExpressionAttributeValues: { ':tmdbId': id },
                 Limit: 2,
                 ConsistentRead: true,
-            })
+            }),
         );
 
         const movies = result.Items ?? [];
+
         if (movies.length > 1) {
             return json(409, { message: 'Multiple movie records match this ID.' });
         }
+
         const movie = movies[0];
 
         if (!movie) {
@@ -55,25 +56,22 @@ export const handler = async (
             throw new Error('DynamoDB returned an invalid movie record.');
         }
 
-        return json(
-            200,
-            await projectMovieDetail(
-                movie,
-                event.queryStringParameters?.date
-            )
-        );
+        return json(200, await projectMovieDetail(movie, event.queryStringParameters?.date));
     } catch (error: unknown) {
         if (error instanceof ShowtimeIdError) {
             return json(error.statusCode, { message: error.message });
         }
+
         if (error instanceof MovieScheduleError) {
             return json(error.statusCode, { message: error.message });
         }
+
         log('ERROR', 'Failed to retrieve movie', {
             requestId,
             id,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
+
         return json(500, { message: 'Unable to retrieve movie.' });
     }
 };

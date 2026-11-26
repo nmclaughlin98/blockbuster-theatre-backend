@@ -81,11 +81,14 @@ describe('movie payload validation', () => {
 
     it('validates optional movie record metadata', () => {
         expect(isMovieRecord(movieRecord)).toBe(true);
-        expect(isMovieRecord({
-            ...movieRecord,
-            collectionId: '123',
-            sortTitle: 'A Movie',
-        })).toBe(true);
+        expect(
+            isMovieRecord({
+                ...movieRecord,
+                collectionId: '123',
+                sortTitle: 'A Movie',
+            }),
+        ).toBe(true);
+
         expect(isMovieRecord({ ...movieRecord, collectionId: 'not-a-number' })).toBe(false);
         expect(isMovieRecord({ ...movieRecord, sortTitle: '   ' })).toBe(false);
     });

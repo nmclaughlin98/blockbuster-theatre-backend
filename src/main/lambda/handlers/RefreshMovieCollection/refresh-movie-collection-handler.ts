@@ -1,20 +1,8 @@
-import type {
-    APIGatewayProxyEventV2,
-    APIGatewayProxyResultV2,
-} from 'aws-lambda';
-import {
-    DynamoDBDocumentClient,
-    UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../Shared/dynamodb-client';
 import type { MovieCollectionRecord } from '../../lib/interfaces';
-import {
-    intEnv,
-    json,
-    log,
-    mapWithConcurrency,
-    sleep,
-} from '../utils/common';
+import { intEnv, json, log, mapWithConcurrency, sleep } from '../utils/common';
 
 const docClient = DynamoDBDocumentClient.from(createDynamoDBClient());
 const COLLECTIONS_TABLE_NAME = process.env.COLLECTIONS_TABLE_NAME ?? '';
@@ -26,18 +14,18 @@ const REFRESH_CONCURRENCY = 5;
 
 type RefreshResult =
     | {
-        collectionId: string;
-        success: true;
-        name: string;
-        movieCount: number;
-        lastUpdated: string;
-    }
+          collectionId: string;
+          success: true;
+          name: string;
+          movieCount: number;
+          lastUpdated: string;
+      }
     | {
-        collectionId: string;
-        success: false;
-        statusCode: number;
-        message: string;
-    };
+          collectionId: string;
+          success: false;
+          statusCode: number;
+          message: string;
+      };
 
 interface TmdbListItem {
     id: number;
@@ -56,7 +44,10 @@ interface TmdbListResponse {
 }
 
 class TmdbListError extends Error {
-    constructor(message: string, readonly statusCode: number) {
+    constructor(
+        message: string,
+        readonly statusCode: number,
+    ) {
         super(message);
     }
 }
@@ -65,27 +56,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseCollectionIds(event: APIGatewayProxyEventV2):
-    | { ids: string[] }
-    | { error: string; invalidIndexes?: number[]; duplicateIds?: string[] } {
+function parseCollectionIds(
+    event: APIGatewayProxyEventV2,
+): { ids: string[] } | { error: string; invalidIndexes?: number[]; duplicateIds?: string[] } {
     if (!event.body) {
         return { error: 'Missing request body.' };
     }
 
     let body: unknown;
+
     try {
         const content = event.isBase64Encoded
             ? Buffer.from(event.body, 'base64').toString('utf8')
             : event.body;
+
         body = JSON.parse(content);
     } catch {
         return { error: 'Request body is not valid JSON.' };
     }
 
     const ids = isRecord(body) ? body.ids : undefined;
+
     if (!Array.isArray(ids) || ids.length === 0) {
         return { error: 'ids must be a non-empty array.' };
     }
+
     if (ids.length > MAX_COLLECTIONS_PER_REFRESH) {
         return {
             error: `ids cannot exceed ${MAX_COLLECTIONS_PER_REFRESH} items per request.`,
@@ -98,20 +93,23 @@ function parseCollectionIds(event: APIGatewayProxyEventV2):
     const duplicateIds = new Set<string>();
 
     ids.forEach((value, index) => {
-        const rawId = typeof value === 'number' && Number.isSafeInteger(value)
-            ? String(value)
-            : typeof value === 'string'
-                ? value
-                : '';
-        if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(Number(rawId)) ||
-            Number(rawId) <= 0
-        ) {
+        const rawId =
+            typeof value === 'number' && Number.isSafeInteger(value)
+                ? String(value)
+                : typeof value === 'string'
+                  ? value
+                  : '';
+
+        if (!/^\d+$/.test(rawId) || !Number.isSafeInteger(Number(rawId)) || Number(rawId) <= 0) {
             invalidIndexes.push(index);
+
             return;
         }
 
         const id = String(Number(rawId));
+
         if (seenIds.has(id)) duplicateIds.add(id);
+
         seenIds.add(id);
         normalizedIds.push(id);
     });
@@ -122,6 +120,7 @@ function parseCollectionIds(event: APIGatewayProxyEventV2):
             invalidIndexes,
         };
     }
+
     if (duplicateIds.size > 0) {
         return {
             error: 'Duplicate collection IDs are not allowed in one request.',
@@ -133,15 +132,18 @@ function parseCollectionIds(event: APIGatewayProxyEventV2):
 }
 
 function isTmdbListItem(value: unknown): value is TmdbListItem {
-    return isRecord(value) &&
+    return (
+        isRecord(value) &&
         Number.isSafeInteger(value.id) &&
         typeof value.id === 'number' &&
         value.id > 0 &&
-        (value.media_type === undefined || typeof value.media_type === 'string');
+        (value.media_type === undefined || typeof value.media_type === 'string')
+    );
 }
 
 function isTmdbListResponse(value: unknown): value is TmdbListResponse {
-    return isRecord(value) &&
+    return (
+        isRecord(value) &&
         Number.isSafeInteger(value.id) &&
         typeof value.id === 'number' &&
         typeof value.name === 'string' &&
@@ -161,17 +163,16 @@ function isTmdbListResponse(value: unknown): value is TmdbListResponse {
         typeof value.total_pages === 'number' &&
         value.total_pages >= value.page &&
         Array.isArray(value.items) &&
-        value.items.every(isTmdbListItem);
+        value.items.every(isTmdbListItem)
+    );
 }
 
-async function fetchTmdbListPage(
-    listId: string,
-    page: number
-): Promise<TmdbListResponse> {
+async function fetchTmdbListPage(listId: string, page: number): Promise<TmdbListResponse> {
     const params = new URLSearchParams({
         language: 'en-US',
         page: String(page),
     });
+
     const url = `https://api.themoviedb.org/3/list/${listId}?${params}`;
     let lastError: Error | undefined;
 
@@ -194,9 +195,11 @@ async function fetchTmdbListPage(
 
             if (response.status === 429 || response.status >= 500) {
                 const retryAfter = Number(response.headers.get('retry-after'));
-                const delay = Number.isFinite(retryAfter) && retryAfter > 0
-                    ? Math.min(retryAfter * 1000, 5000)
-                    : 200 * 2 ** attempt;
+                const delay =
+                    Number.isFinite(retryAfter) && retryAfter > 0
+                        ? Math.min(retryAfter * 1000, 5000)
+                        : 200 * 2 ** attempt;
+
                 log('WARN', 'TMDB list request failed, retrying', {
                     listId,
                     page,
@@ -204,35 +207,31 @@ async function fetchTmdbListPage(
                     status: response.status,
                     delayMs: delay,
                 });
+
                 await sleep(delay);
-                lastError = new TmdbListError(
-                    `TMDB list request returned ${response.status}.`,
-                    502
-                );
+                lastError = new TmdbListError(`TMDB list request returned ${response.status}.`, 502);
                 continue;
             }
 
             if (!response.ok) {
-                throw new TmdbListError(
-                    `TMDB list request returned ${response.status}.`,
-                    502
-                );
+                throw new TmdbListError(`TMDB list request returned ${response.status}.`, 502);
             }
 
             const body: unknown = await response.json();
-            if (!isTmdbListResponse(body) ||
-                String(body.id) !== listId ||
-                body.page !== page
-            ) {
+
+            if (!isTmdbListResponse(body) || String(body.id) !== listId || body.page !== page) {
                 throw new TmdbListError('TMDB returned an invalid list response.', 502);
             }
+
             return body;
         } catch (error: unknown) {
             if (error instanceof TmdbListError) throw error;
+
             if (error instanceof Error && error.name === 'AbortError') {
                 lastError = new TmdbListError('TMDB list request timed out.', 502);
                 continue;
             }
+
             throw new TmdbListError('Unable to fetch the TMDB list.', 502);
         } finally {
             clearTimeout(timer);
@@ -242,30 +241,29 @@ async function fetchTmdbListPage(
     throw lastError ?? new TmdbListError('TMDB list request failed.', 502);
 }
 
-async function refreshList(
-    listId: string,
-    requestId: string | undefined
-): Promise<RefreshResult> {
+async function refreshList(listId: string, requestId: string | undefined): Promise<RefreshResult> {
     try {
         const firstPage = await fetchTmdbListPage(listId, 1);
         const itemPages = [firstPage];
+
         for (let page = 2; page <= firstPage.total_pages; page++) {
             itemPages.push(await fetchTmdbListPage(listId, page));
         }
 
-        const movieIds = [...new Set(
-            itemPages
-                .flatMap((listPage) => listPage.items)
-                .filter((item) => item.media_type === undefined || item.media_type === 'movie')
-                .map((item) => String(item.id))
-        )];
+        const movieIds = [
+            ...new Set(
+                itemPages
+                    .flatMap((listPage) => listPage.items)
+                    .filter((item) => item.media_type === undefined || item.media_type === 'movie')
+                    .map((item) => String(item.id)),
+            ),
+        ];
+
         const collection: MovieCollectionRecord = {
             collectionId: listId,
             name: firstPage.name,
             description: firstPage.description ?? '',
-            posterUrl: firstPage.poster_path
-                ? `https://image.tmdb.org/t/p/w500${firstPage.poster_path}`
-                : '',
+            posterUrl: firstPage.poster_path ? `https://image.tmdb.org/t/p/w500${firstPage.poster_path}` : '',
             backdropUrl: firstPage.backdrop_path
                 ? `https://image.tmdb.org/t/p/w1280${firstPage.backdrop_path}`
                 : '',
@@ -278,7 +276,8 @@ async function refreshList(
             new UpdateCommand({
                 TableName: COLLECTIONS_TABLE_NAME,
                 Key: { collectionId: listId },
-                UpdateExpression: 'SET #name = :name, #description = :description, #posterUrl = :posterUrl, #backdropUrl = :backdropUrl, #movieIds = :movieIds, #lastUpdated = :lastUpdated, #isActive = if_not_exists(#isActive, :isActive)',
+                UpdateExpression:
+                    'SET #name = :name, #description = :description, #posterUrl = :posterUrl, #backdropUrl = :backdropUrl, #movieIds = :movieIds, #lastUpdated = :lastUpdated, #isActive = if_not_exists(#isActive, :isActive)',
                 ExpressionAttributeNames: {
                     '#name': 'name',
                     '#description': 'description',
@@ -297,7 +296,7 @@ async function refreshList(
                     ':lastUpdated': collection.lastUpdated,
                     ':isActive': true,
                 },
-            })
+            }),
         );
 
         log('INFO', 'TMDB list refreshed', {
@@ -306,6 +305,7 @@ async function refreshList(
             pages: firstPage.total_pages,
             movieCount: movieIds.length,
         });
+
         return {
             collectionId: listId,
             success: true,
@@ -314,30 +314,28 @@ async function refreshList(
             lastUpdated: collection.lastUpdated,
         };
     } catch (error: unknown) {
-        const statusCode = error instanceof TmdbListError
-            ? error.statusCode
-            : 500;
+        const statusCode = error instanceof TmdbListError ? error.statusCode : 500;
         log('ERROR', 'Failed to refresh TMDB list', {
             requestId,
             listId,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
+
         return {
             collectionId: listId,
             success: false,
             statusCode,
-            message: statusCode === 404
-                ? 'TMDB list not found.'
-                : statusCode === 502
-                    ? 'Unable to retrieve the TMDB list.'
-                    : 'Unable to refresh the collection.',
+            message:
+                statusCode === 404
+                    ? 'TMDB list not found.'
+                    : statusCode === 502
+                      ? 'Unable to retrieve the TMDB list.'
+                      : 'Unable to refresh the collection.',
         };
     }
 }
 
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
 
     if (!COLLECTIONS_TABLE_NAME) {
@@ -345,14 +343,18 @@ export const handler = async (
             requestId,
             collectionsTableConfigured: Boolean(COLLECTIONS_TABLE_NAME),
         });
+
         return json(500, { message: 'Collection data is not configured.' });
     }
+
     if (!TMDB_TOKEN) {
         log('ERROR', 'TMDB_API_KEY is not configured', { requestId });
+
         return json(500, { message: 'TMDB_API_KEY is not configured.' });
     }
 
     const parsedIds = parseCollectionIds(event);
+
     if ('error' in parsedIds) {
         return json(400, {
             message: parsedIds.error,
@@ -361,17 +363,17 @@ export const handler = async (
         });
     }
 
-    const results = await mapWithConcurrency(
-        parsedIds.ids,
-        REFRESH_CONCURRENCY,
-        (listId) => refreshList(listId, requestId)
+    const results = await mapWithConcurrency(parsedIds.ids, REFRESH_CONCURRENCY, (listId) =>
+        refreshList(listId, requestId),
     );
+
     const failedCount = results.filter((result) => !result.success).length;
 
     return json(failedCount > 0 ? 207 : 200, {
-        message: failedCount > 0
-            ? 'One or more TMDB lists could not be refreshed.'
-            : 'TMDB lists refreshed successfully.',
+        message:
+            failedCount > 0
+                ? 'One or more TMDB lists could not be refreshed.'
+                : 'TMDB lists refreshed successfully.',
         refreshedCount: results.length - failedCount,
         failedCount,
         results,
