@@ -1,7 +1,4 @@
-import type {
-    APIGatewayProxyEventV2,
-    APIGatewayProxyResultV2,
-} from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import {
     DynamoDBDocumentClient,
     GetCommand,
@@ -9,13 +6,10 @@ import {
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-
-process.env.TABLE_NAME = 'test-table';
-process.env.MAX_BATCH = '25';
-process.env.UPDATE_CONCURRENCY = '2';
+import { handler } from '../../../main/lambda/handlers/UpdateMovies/update-movies-handler';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../handlers/movies/update-movie-record') as {
+const { handler } = require('../../../main/lambda/handlers/UpdateMovies/update-movies-handler') as {
     handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 };
 
@@ -47,32 +41,30 @@ function createEvent(body: string | undefined): APIGatewayProxyEventV2 {
     } as unknown as APIGatewayProxyEventV2;
 }
 
-async function invoke(
-    body: string | undefined
-): Promise<Exclude<APIGatewayProxyResultV2, string>> {
+async function invoke(body: string | undefined): Promise<Exclude<APIGatewayProxyResultV2, string>> {
     const result = await handler(createEvent(body));
+
     if (typeof result === 'string') {
         throw new Error('Expected a structured API Gateway response.');
     }
+
     return result;
 }
 
-function responseBody(
-    result: Exclude<APIGatewayProxyResultV2, string>
-): Record<string, any> {
+function responseBody(result: Exclude<APIGatewayProxyResultV2, string>): Record<string, any> {
     return JSON.parse(result.body as string);
 }
 
 describe('Update movies Lambda handler', () => {
     beforeEach(() => {
         ddbMock.reset();
-        ddbMock.on(GetCommand).callsFake((input) => ({
-            Item: {
+        ddbMock.on(QueryCommand).callsFake((input) => ({
+            Items: [{
                 ...movieRecord,
-                tmdbId: String(input.Key?.movieId),
-                movieId: String(input.Key?.movieId),
-            },
+                tmdbId: String(input.ExpressionAttributeValues?.[':tmdbId']),
+            }],
         }));
+
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -86,8 +78,9 @@ describe('Update movies Lambda handler', () => {
         ddbMock.on(UpdateCommand).resolves({});
 
         const result = await invoke(
-            JSON.stringify({ movieIds: [123, '123', 456], updates: { visible: false } })
+            JSON.stringify({ movieIds: [123, '123', 456], updates: { visible: false } }),
         );
+
         const commands = ddbMock.commandCalls(UpdateCommand);
 
         expect(result.statusCode).toBe(200);
@@ -103,6 +96,7 @@ describe('Update movies Lambda handler', () => {
                 { id: '456', status: 'SUCCESS' },
             ],
         });
+
         expect(commands).toHaveLength(2);
         expect(commands[0].args[0].input).toMatchObject({
             Key: { movieId: '123' },
@@ -122,7 +116,8 @@ describe('Update movies Lambda handler', () => {
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             Key: { movieId: '123' },
-            UpdateExpression: 'SET #field0 = :value0, #field1 = :value1, #field2 = :value2 REMOVE collectionId, GSI2PK, GSI2SK, showtimes',
+            UpdateExpression:
+                'SET #field0 = :value0, #field1 = :value1, #field2 = :value2 REMOVE collectionId, GSI2PK, GSI2SK, showtimes',
             ExpressionAttributeNames: {
                 '#field0': 'title',
                 '#field1': 'genres',
@@ -139,10 +134,12 @@ describe('Update movies Lambda handler', () => {
     it('removes legacy movie showtimes while updating scheduling metadata', async () => {
         ddbMock.on(UpdateCommand).resolves({});
 
-        const result = await invoke(JSON.stringify({
-            movieIds: [123],
-            updates: { startDate: '2026-10-01', runEndDate: '2026-12-31', preSalesEligible: true },
-        }));
+        const result = await invoke(
+            JSON.stringify({
+                movieIds: [123],
+                updates: { startDate: '2026-10-01', runEndDate: '2026-12-31', preSalesEligible: true },
+            }),
+        );
 
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
@@ -159,7 +156,7 @@ describe('Update movies Lambda handler', () => {
         ddbMock.on(UpdateCommand).resolves({});
 
         const result = await invoke(
-            JSON.stringify({ movieIds: [123], updates: { sortTitle: 'Saga 01 - First Film' } })
+            JSON.stringify({ movieIds: [123], updates: { sortTitle: 'Saga 01 - First Film' } }),
         );
 
         expect(result.statusCode).toBe(200);
@@ -177,7 +174,8 @@ describe('Update movies Lambda handler', () => {
 
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             Key: { movieId: '123' },
-            UpdateExpression: 'SET #field0 = :value0, #gsi1sk = :gsi1sk REMOVE collectionId, GSI2PK, GSI2SK, showtimes',
+            UpdateExpression:
+                'SET #field0 = :value0, #gsi1sk = :gsi1sk REMOVE collectionId, GSI2PK, GSI2SK, showtimes',
             ExpressionAttributeNames: {
                 '#field0': 'releaseDate',
                 '#gsi1sk': 'GSI1SK',
@@ -192,9 +190,7 @@ describe('Update movies Lambda handler', () => {
     it('updates the slug without changing the movie key', async () => {
         ddbMock.on(UpdateCommand).resolves({});
 
-        const result = await invoke(
-            JSON.stringify({ movieIds: [123], updates: { slug: 'new-slug' } })
-        );
+        const result = await invoke(JSON.stringify({ movieIds: [123], updates: { slug: 'new-slug' } }));
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
             Key: { movieId: '123' },
@@ -206,14 +202,10 @@ describe('Update movies Lambda handler', () => {
 
     it('allows a slug-only update when the slug is unchanged', async () => {
         ddbMock.on(UpdateCommand).resolves({});
-        const result = await invoke(
-            JSON.stringify({ movieIds: [123], updates: { slug: 'a-movie' } })
-        );
+        const result = await invoke(JSON.stringify({ movieIds: [123], updates: { slug: 'a-movie' } }));
 
         expect(result.statusCode).toBe(200);
-        expect(responseBody(result).successful).toEqual([
-            { id: '123', status: 'SUCCESS' },
-        ]);
+        expect(responseBody(result).successful).toEqual([{ id: '123', status: 'SUCCESS' }]);
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
@@ -221,10 +213,12 @@ describe('Update movies Lambda handler', () => {
     it('updates the release-date index when updating a slug', async () => {
         ddbMock.on(UpdateCommand).resolves({});
 
-        const result = await invoke(JSON.stringify({
-            movieIds: [123],
-            updates: { slug: 'new-slug', releaseDate: '2030-04-05' },
-        }));
+        const result = await invoke(
+            JSON.stringify({
+                movieIds: [123],
+                updates: { slug: 'new-slug', releaseDate: '2030-04-05' },
+            }),
+        );
 
         expect(result.statusCode).toBe(200);
         expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input)
@@ -235,36 +229,33 @@ describe('Update movies Lambda handler', () => {
                     ':value1': '2030-04-05',
                     ':gsi1sk': '2030-04-05#123',
                 },
-            });
+            ],
+        });
     });
 
     it('uses the release-date fallback for an empty supplied release date', async () => {
         ddbMock.on(UpdateCommand).resolves({});
 
-        const result = await invoke(
-            JSON.stringify({ movieIds: [123], updates: { releaseDate: '' } })
-        );
+        const result = await invoke(JSON.stringify({ movieIds: [123], updates: { releaseDate: '' } }));
 
         expect(result.statusCode).toBe(200);
-        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input)
-            .toMatchObject({
-                ExpressionAttributeValues: {
-                    ':value0': '',
-                    ':gsi1sk': '0000-00-00#123',
-                },
-            });
+        expect(ddbMock.commandCalls(UpdateCommand)[0].args[0].input).toMatchObject({
+            ExpressionAttributeValues: {
+                ':value0': '',
+                ':gsi1sk': '0000-00-00#123',
+            },
+        });
     });
 
     it('reports a missing movie without attempting an update', async () => {
         ddbMock.on(GetCommand).resolves({});
 
-        const result = await invoke(
-            JSON.stringify({ movieIds: [123], updates: { visible: false } })
-        );
+        const result = await invoke(JSON.stringify({ movieIds: [123], updates: { visible: false } }));
 
         expect(responseBody(result).failed).toEqual([
             { id: '123', status: 'FAILED', error: 'Movie not found.' },
         ]);
+
         expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
 
@@ -281,18 +272,27 @@ describe('Update movies Lambda handler', () => {
         ['invalid runtime', { movieIds: [123], updates: { runtime: '100' } }],
         ['invalid genres array', { movieIds: [123], updates: { genres: ['Drama', 42] } }],
         ['invalid starring array', { movieIds: [123], updates: { starring: [null] } }],
-        ['invalid screen number', {
-            movieIds: [123],
-            updates: { showtimes: { Monday: [{ screen: '6', time: '13:00' }] } },
-        }],
-        ['invalid screened showtime time', {
-            movieIds: [123],
-            updates: { showtimes: { Monday: [{ screen: '2', time: '25:00' }] } },
-        }],
-        ['legacy string showtimes', {
-            movieIds: [123],
-            updates: { showtimes: { Monday: ['13:00'] } },
-        }],
+        [
+            'invalid screen number',
+            {
+                movieIds: [123],
+                updates: { showtimes: { Monday: [{ screen: '6', time: '13:00' }] } },
+            },
+        ],
+        [
+            'invalid screened showtime time',
+            {
+                movieIds: [123],
+                updates: { showtimes: { Monday: [{ screen: '2', time: '25:00' }] } },
+            },
+        ],
+        [
+            'legacy string showtimes',
+            {
+                movieIds: [123],
+                updates: { showtimes: { Monday: ['13:00'] } },
+            },
+        ],
         ['empty IDs', { movieIds: [], updates: { title: 'New title' } }],
         ['nonnumeric ID', { movieIds: ['12x'], updates: { title: 'New title' } }],
     ])('rejects %s without writing', async (_name, request) => {
@@ -323,15 +323,23 @@ describe('Update movies Lambda handler', () => {
         });
     });
 
-    it('reports invalid stored movie records', async () => {
-        ddbMock.on(GetCommand).resolves({ Item: { ...movieRecord, title: 42 } });
-        const result = await invoke(JSON.stringify({
-            movieIds: [123],
-            updates: { visible: false },
-        }));
-        expect(responseBody(result).failed).toHaveLength(1);
-        expect(responseBody(result).failed[0].status).toBe('FAILED');
-        expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+    it('reports ambiguous and invalid stored movie records', async () => {
+        for (const items of [
+            [movieRecord, { ...movieRecord, slug: 'another-slug' }],
+            [{ ...movieRecord, title: 42 }],
+        ]) {
+            ddbMock.reset();
+            ddbMock.on(QueryCommand).resolves({ Items: items });
+
+            const result = await invoke(JSON.stringify({
+                movieIds: [123],
+                updates: { visible: false },
+            }));
+
+            expect(responseBody(result).failed).toHaveLength(1);
+            expect(responseBody(result).failed[0].status).toBe('FAILED');
+            expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+        }
     });
 
     it('reports per-movie write failures without failing the rest of the batch', async () => {
@@ -339,11 +347,12 @@ describe('Update movies Lambda handler', () => {
             if (input.Key?.movieId === '123') {
                 throw new Error('Movie does not exist');
             }
+
             return {};
         });
 
         const result = await invoke(
-            JSON.stringify({ movieIds: [123, 456], updates: { poster: 'poster-url' } })
+            JSON.stringify({ movieIds: [123, 456], updates: { poster: 'poster-url' } }),
         );
 
         expect(result.statusCode).toBe(200);
@@ -357,15 +366,19 @@ describe('Update movies Lambda handler', () => {
     it('reports non-Error write failures with the standard message', async () => {
         ddbMock.on(UpdateCommand).callsFake(() => Promise.reject('write failed'));
 
-        const result = await invoke(JSON.stringify({
-            movieIds: [123],
-            updates: { poster: 'poster-url' },
-        }));
+        const result = await invoke(
+            JSON.stringify({
+                movieIds: [123],
+                updates: { poster: 'poster-url' },
+            }),
+        );
 
-        expect(responseBody(result).failed).toEqual([{
-            id: '123',
-            status: 'FAILED',
-            error: 'Failed to update movie',
-        }]);
+        expect(responseBody(result).failed).toEqual([
+            {
+                id: '123',
+                status: 'FAILED',
+                error: 'Failed to update movie',
+            },
+        ]);
     });
 });

@@ -1,20 +1,16 @@
-import type {
-    APIGatewayProxyEventV2,
-    APIGatewayProxyResultV2,
-} from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { json, log } from '../../main/lambda/handlers/utils/common';
 import { scanTable } from '../../main/lambda/handlers/Shared/scan-table';
 import { isMovieCollectionRecord } from '../../main/lambda/handlers/utils/collection-validation';
 
 const COLLECTIONS_TABLE_NAME = process.env.COLLECTIONS_TABLE_NAME ?? '';
 
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
 
     if (!COLLECTIONS_TABLE_NAME) {
         log('ERROR', 'Collection table is not configured', { requestId });
+
         return json(500, { message: 'Collection data is not configured.' });
     }
 
@@ -25,21 +21,19 @@ export const handler = async (
                 if (!isMovieCollectionRecord(record)) {
                     throw new Error('DynamoDB returned an invalid movie collection record.');
                 }
+
                 return {
-                collectionId: record.collectionId,
-                name: record.name,
-                description: record.description,
-                posterUrl: record.posterUrl,
-                backdropUrl: record.backdropUrl,
-                movieCount: record.movieIds.length,
-                isActive: record.isActive ?? true,
-                ...(record.lastUpdated && { lastUpdated: record.lastUpdated }),
+                    collectionId: record.collectionId,
+                    name: record.name,
+                    description: record.description,
+                    posterUrl: record.posterUrl,
+                    backdropUrl: record.backdropUrl,
+                    movieCount: record.movieIds.length,
+                    isActive: record.isActive ?? true,
+                    ...(record.lastUpdated && { lastUpdated: record.lastUpdated }),
                 };
             })
-            .sort((a, b) => (
-                a.name.localeCompare(b.name) ||
-                a.collectionId.localeCompare(b.collectionId)
-            ));
+            .sort((a, b) => a.name.localeCompare(b.name) || a.collectionId.localeCompare(b.collectionId));
 
         return json(200, { collections });
     } catch (error: unknown) {
@@ -47,6 +41,7 @@ export const handler = async (
             requestId,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
+
         return json(500, {
             message: 'Unable to retrieve movie collections.',
             requestId,

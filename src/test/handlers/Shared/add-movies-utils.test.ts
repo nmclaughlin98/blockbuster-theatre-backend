@@ -119,6 +119,7 @@ describe('add movies utilities', () => {
                 poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
                 still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
             });
+
             expect(movie).not.toHaveProperty('showtimes');
             expect(movie.preSalesEligible).toBe(false);
         });
@@ -202,6 +203,7 @@ describe('add movies utilities', () => {
                     id: 42,
                     title: 'A Movie',
                 });
+
                 const movie = {
                     ...movieData,
                     tmdbId: String(movieId),
@@ -213,6 +215,7 @@ describe('add movies utilities', () => {
                     poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
                     still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
                 });
+
                 expect(await projectMovieDetail(movie)).toMatchObject({
                     poster: 'https://image.tmdb.org/t/p/original/poster.jpg',
                     still: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
@@ -221,18 +224,18 @@ describe('add movies utilities', () => {
 
             describe('generateShowtimes validation', () => {
                 it('rejects invalid release dates and non-finite scores', () => {
-                    expect(() => generateShowtimes(
-                        '42',
-                        'not-a-date',
-                        7,
-                        new Date('2026-01-01T00:00:00.000Z')
-                    )).toThrow('Invalid movie release date: not-a-date');
-                    expect(() => generateShowtimes(
-                        '42',
-                        '2025-01-01',
-                        Number.NaN,
-                        new Date('2026-01-01T00:00:00.000Z')
-                    )).toThrow('Movie 42 has an invalid score.');
+                    expect(() =>
+                        generateShowtimes('42', 'not-a-date', 7, new Date('2026-01-01T00:00:00.000Z')),
+                    ).toThrow('Invalid movie release date: not-a-date');
+
+                    expect(() =>
+                        generateShowtimes(
+                            '42',
+                            '2025-01-01',
+                            Number.NaN,
+                            new Date('2026-01-01T00:00:00.000Z'),
+                        ),
+                    ).toThrow('Movie 42 has an invalid score.');
                 });
             });
         });
@@ -242,6 +245,7 @@ describe('add movies utilities', () => {
         it('returns mapped results in input order', async () => {
             const results = await mapWithConcurrency([30, 10, 20], 2, async (delay) => {
                 await new Promise((resolve) => setTimeout(resolve, delay));
+
                 return delay;
             });
 
@@ -256,7 +260,7 @@ describe('add movies utilities', () => {
             await expect(
                 mapWithConcurrency([1], 1, async () => {
                     throw new Error('worker failed');
-                })
+                }),
             ).rejects.toThrow('worker failed');
         });
     });

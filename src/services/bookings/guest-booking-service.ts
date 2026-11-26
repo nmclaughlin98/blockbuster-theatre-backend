@@ -3,8 +3,7 @@ import {
     DynamoDBDocumentClient,
     GetCommand,
     QueryCommand,
-    TransactWriteCommand,
-} from '@aws-sdk/lib-dynamodb';
+    TransactWriteCommand} from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../../main/lambda/handlers/Shared/dynamodb-client';
 import { getMaxTickets } from '../../main/lambda/handlers/Shared/max-tickets-service';
 import { PricingServiceError, validateCheckout } from '../checkout/pricing-service';
@@ -23,7 +22,7 @@ type UnknownRecord = Record<string, unknown>;
 export class GuestBookingError extends Error {
     constructor(
         public readonly statusCode: number,
-        message: string
+        message: string,
     ) {
         super(message);
         this.name = 'GuestBookingError';
@@ -46,7 +45,9 @@ function isRecord(value: unknown): value is UnknownRecord {
 
 function requiredEnvironmentVariable(name: string): string {
     const value = process.env[name];
+
     if (!value) throw new GuestBookingError(500, `${name} is not configured.`);
+
     return value;
 }
 
@@ -54,61 +55,57 @@ function parseSeats(value: unknown): string[] {
     if (!Array.isArray(value) || value.length === 0) {
         throw new GuestBookingError(400, 'seats must be a non-empty array of seat IDs.');
     }
+
     if (value.length > MAX_SEATS_PER_BOOKING) {
         throw new GuestBookingError(
             400,
-            `A maximum of ${MAX_SEATS_PER_BOOKING} seats can be booked at once.`
+            `A maximum of ${MAX_SEATS_PER_BOOKING} seats can be booked at once.`,
         );
     }
 
-    const seats = value.map((seat) =>
-        typeof seat === 'string' ? seat.trim().toUpperCase() : ''
-    );
+    const seats = value.map((seat) => (typeof seat === 'string' ? seat.trim().toUpperCase() : ''));
+
     if (seats.some((seat) => !SEAT_ID_PATTERN.test(seat))) {
         throw new GuestBookingError(
             400,
-            'Each seat must be a row letter A-G followed by a seat number 1-11, e.g. F10.'
+            'Each seat must be a row letter A-G followed by a seat number 1-11, e.g. F10.',
         );
     }
+
     if (new Set(seats).size !== seats.length) {
         throw new GuestBookingError(400, 'Seats must not be repeated.');
     }
+
     return seats;
 }
 
 function parseRequest(value: unknown): GuestBookingRequest {
     if (!isRecord(value)) throw new GuestBookingError(400, 'A JSON request object is required.');
+
     if (
         Object.keys(value).some(
             (key) =>
-                ![
-                    'showtimeId',
-                    'date',
-                    'offerId',
-                    'seats',
-                    'email',
-                    'customerName',
-                    'tickets',
-                ].includes(key)
+                !['showtimeId', 'date', 'offerId', 'seats', 'email', 'customerName', 'tickets'].includes(key),
         )
     ) {
         throw new GuestBookingError(
             400,
-            'Only showtimeId, date, offerId, seats, email, customerName, and tickets are accepted.'
+            'Only showtimeId, date, offerId, seats, email, customerName, and tickets are accepted.',
         );
     }
 
     const parsedShowtime = parseShowtimeId(value.showtimeId);
+
     if (!parsedShowtime) throw new GuestBookingError(400, 'showtimeId is invalid.');
+
     if (value.date !== parsedShowtime.date) {
         throw new GuestBookingError(400, 'date must match the date embedded in showtimeId.');
     }
-    if (
-        value.offerId !== undefined &&
-        (typeof value.offerId !== 'string' || !value.offerId.trim())
-    ) {
+
+    if (value.offerId !== undefined && (typeof value.offerId !== 'string' || !value.offerId.trim())) {
         throw new GuestBookingError(400, 'offerId must be a non-empty string.');
     }
+
     if (
         typeof value.email !== 'string' ||
         value.email.length > 254 ||
@@ -116,6 +113,7 @@ function parseRequest(value: unknown): GuestBookingRequest {
     ) {
         throw new GuestBookingError(400, 'A valid email address is required.');
     }
+
     if (
         typeof value.customerName !== 'string' ||
         !value.customerName.trim() ||
@@ -137,12 +135,11 @@ function parseRequest(value: unknown): GuestBookingRequest {
 
 function parseTickets(value: unknown): Array<{ tierId: string; quantity: number }> {
     if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SEATS_PER_BOOKING) {
-        throw new GuestBookingError(
-            400,
-            `tickets must contain 1-${MAX_SEATS_PER_BOOKING} ticket tiers.`
-        );
+        throw new GuestBookingError(400, `tickets must contain 1-${MAX_SEATS_PER_BOOKING} ticket tiers.`);
     }
+
     const tickets: Array<{ tierId: string; quantity: number }> = [];
+
     for (const ticket of value) {
         if (
             !isRecord(ticket) ||
@@ -154,14 +151,16 @@ function parseTickets(value: unknown): Array<{ tierId: string; quantity: number 
         ) {
             throw new GuestBookingError(
                 400,
-                'Each ticket must include a tierId and a positive integer quantity.'
+                'Each ticket must include a tierId and a positive integer quantity.',
             );
         }
+
         tickets.push({
             tierId: ticket.tierId.trim(),
             quantity: ticket.quantity as number,
         });
     }
+
     return tickets;
 }
 
@@ -169,45 +168,42 @@ function tokenHash(token: string): string {
     return createHash('sha256').update(token).digest('hex');
 }
 
-export async function createGuestBooking(
-    value: unknown,
-    userId?: string
-): Promise<Record<string, unknown>> {
+export async function createGuestBooking(value: unknown, userId?: string): Promise<Record<string, unknown>> {
     if (userId !== undefined && !userId.trim()) {
         throw new GuestBookingError(400, 'userId must be a non-empty Cognito subject.');
     }
+
     const request = parseRequest(value);
     const maxTickets = await getMaxTickets();
     const screening = await resolveShowtimeId(request.showtimeId);
+
     if (screening.date !== request.date) {
         throw new GuestBookingError(400, 'date must match the date embedded in showtimeId.');
     }
+
     let ticketCount = 0;
+
     for (const ticket of request.tickets) {
         ticketCount += ticket.quantity;
+
         if (!Number.isSafeInteger(ticketCount) || ticketCount > request.seats.length) {
-            throw new GuestBookingError(
-                400,
-                'Ticket quantities must add up to the selected seat count.'
-            );
+            throw new GuestBookingError(400, 'Ticket quantities must add up to the selected seat count.');
         }
+
         if (ticketCount > maxTickets) {
-            throw new GuestBookingError(
-                400,
-                `A maximum of ${maxTickets} tickets can be booked at once.`
-            );
+            throw new GuestBookingError(400, `A maximum of ${maxTickets} tickets can be booked at once.`);
         }
     }
+
     if (ticketCount !== request.seats.length) {
         throw new GuestBookingError(400, 'Ticket quantities must add up to the selected seat count.');
     }
 
     let checkout: Awaited<ReturnType<typeof validateCheckout>>;
+
     try {
         checkout = await validateCheckout({
-            ...(request.offerId
-                ? { offerId: request.offerId }
-                : { movieId: screening.movieId }),
+            ...(request.offerId ? { offerId: request.offerId } : { movieId: screening.movieId }),
             date: request.date,
             showtime: {
                 day: screening.day,
@@ -220,24 +216,26 @@ export async function createGuestBooking(
         if (error instanceof PricingServiceError) {
             throw new GuestBookingError(error.statusCode, error.message);
         }
+
         throw error;
     }
+
     if (checkout.movieId !== screening.movieId) {
         throw new GuestBookingError(400, 'showtimeId does not match the selected offer.');
     }
 
     const bookingId = `bk_${randomUUID()}`;
     const now = Math.floor(Date.now() / 1000);
-    const bookingOwnership = userId === undefined
-        ? {
-            kind: 'guest' as const,
-            conversionToken: `cnv_tok_${randomBytes(32).toString('base64url')}`,
-            expiresAt: now + CONVERSION_TOKEN_TTL_SECONDS,
-            conversionTokenTableName: requiredEnvironmentVariable(
-                'GUEST_CONVERSION_TOKENS_TABLE_NAME'
-            ),
-        }
-        : { kind: 'account' as const, userId };
+    const bookingOwnership =
+        userId === undefined
+            ? {
+                  kind: 'guest' as const,
+                  conversionToken: `cnv_tok_${randomBytes(32).toString('base64url')}`,
+                  expiresAt: now + CONVERSION_TOKEN_TTL_SECONDS,
+                  conversionTokenTableName: requiredEnvironmentVariable('GUEST_CONVERSION_TOKENS_TABLE_NAME'),
+              }
+            : { kind: 'account' as const, userId };
+
     const bookedAt = new Date().toISOString();
     const bookingsTableName = requiredEnvironmentVariable('BOOKINGS_TABLE_NAME');
     const showtimeRegistryTableName = requiredEnvironmentVariable(
@@ -251,6 +249,7 @@ export async function createGuestBooking(
         unitPrice: ticket.unitPrice,
         subtotal: ticket.subtotal,
     }));
+
     const booking = {
         ...bookingKey,
         recordType: 'BOOKING',
@@ -276,10 +275,10 @@ export async function createGuestBooking(
     };
 
     let bookingRef: string | undefined;
+
     for (let attempt = 0; attempt < 5; attempt += 1) {
         const candidate = `BBT-${randomInt(100000, 1000000)}`;
-        const bookingReferenceIndex =
-            request.seats.length + (bookingOwnership.kind === 'guest' ? 2 : 1);
+        const bookingReferenceIndex = request.seats.length + (bookingOwnership.kind === 'guest' ? 2 : 1);
         const transactionItems = [
             ...request.seats.map((seatId) => ({
                 Put: {
@@ -301,18 +300,20 @@ export async function createGuestBooking(
                 },
             },
             ...(bookingOwnership.kind === 'guest'
-                ? [{
-                    Put: {
-                        TableName: bookingOwnership.conversionTokenTableName,
-                        Item: {
-                            tokenHash: tokenHash(bookingOwnership.conversionToken),
-                            bookingId,
-                            customerEmail: request.email,
+                ? [
+                      {
+                          Put: {
+                              TableName: bookingOwnership.conversionTokenTableName,
+                              Item: {
+                                  tokenHash: tokenHash(bookingOwnership.conversionToken),
+                                  bookingId,
+                                  customerEmail: request.email,
                             expiresAt: bookingOwnership.expiresAt,
                         },
                         ConditionExpression: 'attribute_not_exists(tokenHash)',
                     },
-                }]
+                },
+                  ]
                 : []),
             {
                 Put: {
@@ -341,44 +342,44 @@ export async function createGuestBooking(
                 },
             },
         ];
+
         try {
-            await docClient.send(
-                new TransactWriteCommand({ TransactItems: transactionItems })
-            );
+            await docClient.send(new TransactWriteCommand({ TransactItems: transactionItems }));
             bookingRef = candidate;
             break;
         } catch (error: unknown) {
             if (!(error instanceof Error) || error.name !== 'TransactionCanceledException') {
                 throw error;
             }
-            const reasons = (
-                error as { CancellationReasons?: Array<{ Code?: string }> }
-            ).CancellationReasons;
+
+            const reasons = (error as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
             const seatConflict =
-                reasons?.slice(0, request.seats.length).some(
-                    (reason) => reason.Code === 'ConditionalCheckFailed'
-                ) ||
-                reasons?.slice(bookingReferenceIndex + 1).some(
-                    (reason) => reason.Code === 'ConditionalCheckFailed'
-                );
+                reasons
+                    ?.slice(0, request.seats.length)
+                    .some((reason) => reason.Code === 'ConditionalCheckFailed') ||
+                reasons
+                    ?.slice(bookingReferenceIndex + 1)
+                    .some((reason) => reason.Code === 'ConditionalCheckFailed');
+
             if (seatConflict) {
-                throw new GuestBookingError(
-                    409,
-                    'One or more selected seats are no longer available.'
-                );
+                throw new GuestBookingError(409, 'One or more selected seats are no longer available.');
             }
+
             if (reasons?.[bookingReferenceIndex]?.Code === 'ConditionalCheckFailed') {
                 continue;
             }
+
             throw error;
         }
     }
+
     if (!bookingRef) throw new Error('Unable to allocate a unique booking reference.');
 
     const nameParts = request.customerName.split(/\s+/);
     const firstName = nameParts.shift() ?? request.customerName;
     const surname = nameParts.join(' ') || 'Guest';
     let confirmationEmailSent = true;
+
     try {
         await sendBookingConfirmationEmail({
             bookingRef,
@@ -402,6 +403,7 @@ export async function createGuestBooking(
             errorName: error instanceof Error ? error.name : 'UnknownError',
         });
     }
+
     return {
         bookingId,
         bookingRef,
@@ -415,9 +417,7 @@ export async function createGuestBooking(
         date: request.date,
         ...(bookingOwnership.kind === 'guest' && {
             conversionToken: bookingOwnership.conversionToken,
-            conversionTokenExpiresAt: new Date(
-                bookingOwnership.expiresAt * 1000
-            ).toISOString(),
+            conversionTokenExpiresAt: new Date(bookingOwnership.expiresAt * 1000).toISOString(),
         }),
         confirmationEmailSent,
     };
@@ -426,49 +426,86 @@ export async function createGuestBooking(
 export async function listGuestBookedSeats(
     showtimeId: string | undefined,
     date: string | undefined,
-    userId?: string
+    userId?: string,
 ): Promise<{ showtimeId: string; date: string; bookedSeats: string[]; myBookedSeats?: string[] }> {
     if (userId !== undefined && !userId.trim()) {
         throw new GuestBookingError(400, 'userId must be a non-empty Cognito subject.');
     }
+
     const screening = await resolveShowtimeId(showtimeId);
+
     if (date !== undefined && date !== screening.date) {
         throw new GuestBookingError(400, 'date must match the date embedded in showtimeId.');
     }
+    const legacyShowingId = `${screening.movieId}#${screening.date}#${screening.time}`;
     const seats: string[] = [];
     const mySeats: string[] = [];
-    const tableName = requiredEnvironmentVariable('BOOKINGS_TABLE_NAME');
-    const locks: Array<{ seat: string; bookingId: string }> = [];
-    let exclusiveStartKey: Record<string, unknown> | undefined;
-    do {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: 'PK = :showtime AND begins_with(SK, :seat)',
-            ExpressionAttributeValues: { ':showtime': `SHOWTIME#${screening.showtimeId}`, ':seat': 'SEAT#' },
-            ConsistentRead: true,
-            ExclusiveStartKey: exclusiveStartKey,
-        }));
-        for (const item of result.Items ?? []) {
-            if (item.recordType !== 'SEAT' || typeof item.SK !== 'string'
-                || !item.SK.startsWith('SEAT#') || typeof item.bookingId !== 'string') {
-                throw new Error('DynamoDB returned an invalid seat lock.');
+    for (const [tableName, keyName, keyValue, filterExpression, filterValue] of [
+        [
+            requiredEnvironmentVariable('BOOKINGS_TABLE_NAME'),
+            'showtimeId',
+            screening.showtimeId,
+            userId === undefined ? 'recordType = :seat' : undefined,
+            userId === undefined ? 'SEAT' : undefined,
+        ],
+        [
+            requiredEnvironmentVariable('LEGACY_BOOKINGS_TABLE_NAME'),
+            'showingId',
+            legacyShowingId,
+            undefined,
+            undefined,
+        ],
+    ] as const) {
+        let exclusiveStartKey: Record<string, unknown> | undefined;
+        do {
+            const result = await docClient.send(
+                new QueryCommand({
+                    TableName: tableName,
+                    KeyConditionExpression: `${keyName} = :key`,
+                    ...(filterExpression && { FilterExpression: filterExpression }),
+                    ExpressionAttributeValues: {
+                        ':key': keyValue,
+                        ...(filterValue && { ':seat': filterValue }),
+                    },
+                    ProjectionExpression: userId === undefined || keyName !== 'showtimeId'
+                        ? 'seatId'
+                        : '#seatId, #recordType, #userId, #seats',
+                    ...(userId !== undefined && keyName === 'showtimeId' && {
+                        ExpressionAttributeNames: {
+                            '#seatId': 'seatId',
+                            '#recordType': 'recordType',
+                            '#userId': 'userId',
+                            '#seats': 'seats',
+                        },
+                    }),
+                    ConsistentRead: true,
+                    ExclusiveStartKey: exclusiveStartKey,
+                })
+            );
+            for (const item of result.Items ?? []) {
+                if (
+                    (
+                        userId === undefined
+                        || keyName !== 'showtimeId'
+                        || item.recordType === 'SEAT'
+                    )
+                    && typeof item.seatId === 'string'
+                ) {
+                    seats.push(item.seatId);
+                }
+                if (
+                    userId !== undefined
+                    && item.recordType === 'BOOKING'
+                    && item.userId === userId
+                    && Array.isArray(item.seats)
+                ) {
+                    mySeats.push(...item.seats.filter(
+                        (seat): seat is string => typeof seat === 'string'
+                    ));
+                }
             }
-            locks.push({ seat: item.SK.slice(5), bookingId: item.bookingId });
-            seats.push(item.SK.slice(5));
-        }
-        exclusiveStartKey = result.LastEvaluatedKey;
-    } while (exclusiveStartKey);
-    if (userId) {
-        for (const bookingId of new Set(locks.map((lock) => lock.bookingId))) {
-            const result = await docClient.send(new GetCommand({
-                TableName: tableName,
-                Key: { PK: `BOOKING#${bookingId}`, SK: 'METADATA' },
-                ConsistentRead: true,
-            }));
-            if (result.Item?.userId === userId && result.Item.showtimeId === screening.showtimeId) {
-                mySeats.push(...locks.filter((lock) => lock.bookingId === bookingId).map((lock) => lock.seat));
-            }
-        }
+            exclusiveStartKey = result.LastEvaluatedKey;
+        } while (exclusiveStartKey);
     }
 
     return {

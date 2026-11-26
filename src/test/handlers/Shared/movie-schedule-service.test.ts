@@ -49,13 +49,16 @@ const movie: MovieRecord = {
 function nextScheduledDate(): string {
     const schedule = generateShowtimes(movie.tmdbId, movie.releaseDate, movie.score);
     const date = new Date(`${today}T00:00:00.000Z`);
+
     for (let offset = 1; offset <= 7; offset += 1) {
         date.setUTCDate(date.getUTCDate() + 1);
         const day = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
             date.getUTCDay()
         ];
+
         if (schedule[day]?.length) return date.toISOString().slice(0, 10);
     }
+
     throw new Error('The generated schedule should include at least one of the next seven days.');
 }
 
@@ -69,34 +72,41 @@ describe('movie schedule service', () => {
             if (input.IndexName === 'ShowtimesByDate') {
                 return {
                     Items: [...registry.values()].filter(
-                        (record) =>
-                            record.GSI1PK === input.ExpressionAttributeValues?.[':dateKey']
+                        (record) => record.GSI1PK === input.ExpressionAttributeValues?.[':dateKey'],
                     ),
                 };
             }
+
             if (input.TableName === 'test-movies') return { Items: [movie] };
+
             if (
                 input.TableName === 'test-bookings' &&
                 input.ExpressionAttributeValues?.[':showtimeId'] === `SHOWTIME#${bookedShowtimeId}`
             ) {
                 return { Items: [{ recordType: 'SEAT' }] };
             }
+
             return { Items: [] };
         });
+
         ddbMock.on(GetCommand).callsFake((input) => ({
             Item: input.TableName === 'test-movies'
                 ? movie
                 : registry.get(input.Key?.registryKey as string),
         }));
+
         ddbMock.on(TransactWriteCommand).callsFake((input) => {
             for (const action of input.TransactItems ?? []) {
                 const item = action.Put?.Item;
+
                 if (item && typeof item.registryKey === 'string') {
                     registry.set(item.registryKey, item);
                 }
             }
+
             return {};
         });
+
         ddbMock.on(UpdateCommand).resolves({});
     });
 
@@ -106,30 +116,34 @@ describe('movie schedule service', () => {
         const firstDay = first.recordsByDate.get(date) ?? [];
 
         expect(firstDay.length).toBeLessThanOrEqual(4);
-        expect(firstDay.every((record) =>
-            record.source === 'GENERATED' && record.status === 'ACTIVE'
-        )).toBe(true);
+        expect(firstDay.every((record) => record.source === 'GENERATED' && record.status === 'ACTIVE')).toBe(
+            true,
+        );
 
         for (const screen of new Set(firstDay.map((record) => record.screen))) {
             const screenings = firstDay
                 .filter((record) => record.screen === screen)
                 .sort((left, right) => String(left.time).localeCompare(String(right.time)));
+
             for (let index = 1; index < screenings.length; index += 1) {
                 const previousEnd =
-                    Number(String(screenings[index - 1].time).slice(0, 2)) * 60
-                    + Number(String(screenings[index - 1].time).slice(3))
-                    + movie.runtime
-                    + 45;
+                    Number(String(screenings[index - 1].time).slice(0, 2)) * 60 +
+                    Number(String(screenings[index - 1].time).slice(3)) +
+                    movie.runtime +
+                    45;
+
                 const nextStart =
-                    Number(String(screenings[index].time).slice(0, 2)) * 60
-                    + Number(String(screenings[index].time).slice(3));
+                    Number(String(screenings[index].time).slice(0, 2)) * 60 +
+                    Number(String(screenings[index].time).slice(3));
+
                 expect(nextStart).toBeGreaterThanOrEqual(previousEnd);
             }
         }
 
         const second = await maintainRollingSchedule({ dates: [date] });
-        expect((second.recordsByDate.get(date) ?? []).map((record) => record.showtimeId))
-            .toEqual(firstDay.map((record) => record.showtimeId));
+        expect((second.recordsByDate.get(date) ?? []).map((record) => record.showtimeId)).toEqual(
+            firstDay.map((record) => record.showtimeId),
+        );
     });
 
     it('does not generate screenings beyond the movie run end date', async () => {
@@ -153,15 +167,16 @@ describe('movie schedule service', () => {
             screen: '5',
             time: '22:00',
         });
+
         bookedShowtimeId = showtime.showtimeId as string;
 
-        await expect(cancelManualShowtime(movie.tmdbId, bookedShowtimeId))
-            .rejects.toMatchObject({
-                statusCode: 409,
-                message: 'A screening with active bookings cannot be cancelled.',
-            });
-        expect(ddbMock.commandCalls(UpdateCommand).map((call) =>
-            call.args[0].input.UpdateExpression
-        )).toContain('SET #status = :closing');
+        await expect(cancelManualShowtime(movie.tmdbId, bookedShowtimeId)).rejects.toMatchObject({
+            statusCode: 409,
+            message: 'A screening with active bookings cannot be cancelled.',
+        });
+
+        expect(
+            ddbMock.commandCalls(UpdateCommand).map((call) => call.args[0].input.UpdateExpression),
+        ).toContain('SET #status = :closing');
     });
 });

@@ -45,15 +45,21 @@ const ddbMock = mockClient(DynamoDBDocumentClient);
 const cognitoMock = mockClient(CognitoIdentityProviderClient);
 const sesMock = mockClient(SESv2Client);
 type Handler = (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-const { handler: guestBookingHandler } = require(
-    '../../../handlers/bookings/create-booking-record'
-) as { handler: Handler };
-const { handler: bookedSeatsHandler } = require(
-    '../../../handlers/bookings/list-booking-records'
-) as { handler: Handler };
-const { handler: guestConversionHandler } = require(
-    '../../../handlers/auth/convert-guest-bookings-to-registered-account'
-) as { handler: Handler };
+let guestBookingHandler: Handler;
+let bookedSeatsHandler: Handler;
+let guestConversionHandler: Handler;
+
+beforeAll(async () => {
+    const [guestBooking, bookedSeats, guestConversion] = await Promise.all([
+        import('../../../handlers/bookings/create-booking-record'),
+        import('../../../handlers/bookings/list-booking-records'),
+        import('../../../handlers/auth/convert-guest-bookings-to-registered-account'),
+    ]);
+
+    guestBookingHandler = guestBooking.handler;
+    bookedSeatsHandler = bookedSeats.handler;
+    guestConversionHandler = guestConversion.handler;
+});
 
 const time = '12:15';
 const screen = '5';
@@ -63,7 +69,9 @@ const tokenHash = createHash('sha256').update(conversionToken).digest('hex');
 function upcomingSunday(): string {
     const value = new Date();
     value.setUTCDate(value.getUTCDate() + 7);
+
     while (value.getUTCDay() !== 0) value.setUTCDate(value.getUTCDate() + 1);
+
     return value.toISOString().slice(0, 10);
 }
 
@@ -154,6 +162,7 @@ function accountBookedSeatsEvent(query: Record<string, string>, userId?: string)
 
 function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> {
     if (typeof result === 'string') throw new Error('Expected a structured response.');
+
     return JSON.parse(result.body as string) as Record<string, unknown>;
 }
 
@@ -162,18 +171,14 @@ function mockPricing(): void {
     ddbMock
         .on(QueryCommand, { TableName: 'test-showtime-registry', IndexName: 'ShowtimesByDate' })
         .resolves({ Items: [registryRecord] });
+
     ddbMock.on(GetCommand, { TableName: 'test-pricing' }).resolves({ Item: pricing });
 }
 
 function mockShowtimeResolution(): void {
-    ddbMock
-        .on(GetCommand, { TableName: 'test-showtime-registry' })
-        .callsFake((input) => ({
-            Item:
-                input.Key?.registryKey === `SHOWTIME#${showtimeId}`
-                    ? registryRecord
-                    : undefined,
-        }));
+    ddbMock.on(GetCommand, { TableName: 'test-showtime-registry' }).callsFake((input) => ({
+        Item: input.Key?.registryKey === `SHOWTIME#${showtimeId}` ? registryRecord : undefined,
+    }));
 }
 
 function validGuestPayload(): Record<string, unknown> {
@@ -191,18 +196,17 @@ function validGuestPayload(): Record<string, unknown> {
 }
 
 function mockConversionRecords(overrides: Record<string, unknown> = {}): void {
-    ddbMock
-        .on(GetCommand, { TableName: 'test-conversion-tokens' })
-        .resolves({
-            Item: {
-                tokenHash,
-                bookingId: 'bk_123',
-                showtimeId,
-                customerEmail: 'customer@example.com',
-                expiresAt: Math.floor(Date.now() / 1000) + 600,
-                ...overrides,
-            },
-        });
+    ddbMock.on(GetCommand, { TableName: 'test-conversion-tokens' }).resolves({
+        Item: {
+            tokenHash,
+            bookingId: 'bk_123',
+            showtimeId,
+            customerEmail: 'customer@example.com',
+            expiresAt: Math.floor(Date.now() / 1000) + 600,
+            ...overrides,
+        },
+    });
+
     ddbMock.on(GetCommand, { TableName: 'test-bookings' }).resolves({
         Item: {
             recordType: 'BOOKING',
@@ -226,6 +230,7 @@ describe('unpaid guest bookings', () => {
 
     afterEach(() => {
         jest.restoreAllMocks();
+
         if (originalMaxTicketsParameterName === undefined) {
             delete process.env.MAX_TICKETS_PARAMETER_NAME;
         } else {
@@ -255,6 +260,7 @@ describe('unpaid guest bookings', () => {
                 { tierId: 'child', quantity: 1, unitPrice: 6, subtotal: 6 },
             ],
         });
+
         expect(response.bookingId).toEqual(expect.stringMatching(/^bk_/));
         expect(response.conversionToken).toEqual(expect.stringMatching(/^cnv_tok_/));
         expect(response.bookingRef).toEqual(expect.stringMatching(/^BBT-\d{6}$/));
@@ -276,7 +282,7 @@ describe('unpaid guest bookings', () => {
                     requestId: 'guest-booking-test',
                     bookingId: response.bookingId,
                 }),
-            ])
+            ]),
         );
 
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
@@ -308,13 +314,15 @@ describe('unpaid guest bookings', () => {
                         .digest('hex'),
                 }),
                 expect.objectContaining({ PK: `REFERENCE#${response.bookingRef}`, SK: 'METADATA' }),
-            ])
+            ]),
         );
+
         expect(transaction.TransactItems?.[0].Put?.Item?.showingId).toBeUndefined();
         expect(sesMock.commandCalls(SendEmailCommand)[0].args[0].input).toMatchObject({
             Destination: { ToAddresses: ['customer@example.com'] },
             Content: { Simple: { Attachments: [{ ContentId: 'booking-reference-qr' }] } },
         });
+
         expect(cognitoMock.calls()).toHaveLength(0);
     });
 
@@ -327,12 +335,10 @@ describe('unpaid guest bookings', () => {
         const result = await guestBookingHandler(event(payload));
 
         expect(result).toMatchObject({ statusCode: 400 });
-        expect(responseBody(result).message).toBe(
-            'A maximum of 10 tickets can be booked at once.'
-        );
+        expect(responseBody(result).message).toBe('A maximum of 10 tickets can be booked at once.');
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
         expect(info.mock.calls.map(([entry]) => String(entry)).join('\n')).toContain(
-            '"maxTickets":10,"source":"default"'
+            '"maxTickets":10,"source":"default"',
         );
     });
 
@@ -391,9 +397,7 @@ describe('unpaid guest bookings', () => {
         mockPricing();
         ddbMock.on(TransactWriteCommand).resolves({});
 
-        const result = await guestBookingHandler(
-            accountBookingEvent(validGuestPayload(), 'cognito-sub-123')
-        );
+        const result = await guestBookingHandler(accountBookingEvent(validGuestPayload(), 'cognito-sub-123'));
 
         expect(result).toMatchObject({ statusCode: 201 });
         const response = responseBody(result);
@@ -404,8 +408,9 @@ describe('unpaid guest bookings', () => {
         const writes = transaction.TransactItems?.map((item) => item.Put?.Item).filter(Boolean);
         expect(transaction.TransactItems).toHaveLength(5);
         expect(writes).toContainEqual(
-            expect.objectContaining({ recordType: 'BOOKING', userId: 'cognito-sub-123' })
+            expect.objectContaining({ recordType: 'BOOKING', userId: 'cognito-sub-123' }),
         );
+
         expect(writes?.some((item) => item && 'tokenHash' in item)).toBe(false);
     });
 
@@ -418,9 +423,7 @@ describe('unpaid guest bookings', () => {
 
     it('does not accept a client-supplied userId as booking ownership', async () => {
         const payload = { ...validGuestPayload(), userId: 'attacker-sub' };
-        const result = await guestBookingHandler(
-            accountBookingEvent(payload, 'cognito-sub-123')
-        );
+        const result = await guestBookingHandler(accountBookingEvent(payload, 'cognito-sub-123'));
 
         expect(result).toMatchObject({ statusCode: 400 });
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
@@ -433,11 +436,10 @@ describe('unpaid guest bookings', () => {
                 { SK: 'SEAT#F11', bookingId: 'bk_2', recordType: 'SEAT' },
             ],
         });
+
         ddbMock.on(QueryCommand, { TableName: 'test-legacy-bookings' }).resolves({ Items: [] });
 
-        const result = await bookedSeatsHandler(
-            event(undefined, { showtimeId, date })
-        );
+        const result = await bookedSeatsHandler(event(undefined, { showtimeId, date }));
 
         expect(result).toMatchObject({ statusCode: 200 });
         expect(responseBody(result)).toEqual({
@@ -445,6 +447,7 @@ describe('unpaid guest bookings', () => {
             date,
             bookedSeats: ['F10', 'F11'],
         });
+
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-bookings',
             KeyConditionExpression: 'PK = :showtime AND begins_with(SK, :seat)',
@@ -459,16 +462,10 @@ describe('unpaid guest bookings', () => {
                 { SK: 'SEAT#F11', recordType: 'SEAT', bookingId: 'other-account' },
             ],
         });
-        ddbMock.on(GetCommand, { TableName: 'test-bookings' }).callsFake((input) => ({
-            Item: {
-                showtimeId,
-                userId: input.Key?.PK === 'BOOKING#account' ? 'cognito-sub-123' : 'another-sub',
-            },
-        }));
         ddbMock.on(QueryCommand, { TableName: 'test-legacy-bookings' }).resolves({ Items: [] });
 
         const result = await bookedSeatsHandler(
-            accountBookedSeatsEvent({ showtimeId, date }, 'cognito-sub-123')
+            accountBookedSeatsEvent({ showtimeId, date }, 'cognito-sub-123'),
         );
 
         expect(result).toMatchObject({ statusCode: 200 });
@@ -478,6 +475,7 @@ describe('unpaid guest bookings', () => {
             bookedSeats: ['F10', 'F11'],
             myBookedSeats: ['F10'],
         });
+
         expect(ddbMock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-bookings',
             KeyConditionExpression: 'PK = :showtime AND begins_with(SK, :seat)',
@@ -486,9 +484,7 @@ describe('unpaid guest bookings', () => {
     });
 
     it('rejects an invalid token on seat lookup', async () => {
-        const result = await bookedSeatsHandler(
-            accountBookedSeatsEvent({ showtimeId, date })
-        );
+        const result = await bookedSeatsHandler(accountBookedSeatsEvent({ showtimeId, date }));
 
         expect(result).toMatchObject({ statusCode: 401 });
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
@@ -530,6 +526,7 @@ describe('unpaid guest bookings', () => {
         expect(await guestBookingHandler(event(missingName))).toMatchObject({
             statusCode: 400,
         });
+
         expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
@@ -548,7 +545,7 @@ describe('unpaid guest bookings', () => {
                     { Code: 'None' },
                     { Code: 'None' },
                 ],
-            })
+            }),
         );
 
         const result = await guestBookingHandler(event(validGuestPayload()));
@@ -575,6 +572,7 @@ describe('guest account conversion', () => {
         cognitoMock.on(AdminCreateUserCommand).resolves({
             User: { Attributes: [{ Name: 'sub', Value: 'user-sub-123' }] },
         });
+
         cognitoMock.on(AdminSetUserPasswordCommand).resolves({});
         cognitoMock.on(AdminInitiateAuthCommand).resolves({
             AuthenticationResult: {
@@ -582,9 +580,11 @@ describe('guest account conversion', () => {
                 RefreshToken: 'refresh-token-response',
             },
         });
+
         cognitoMock.on(AdminGetUserCommand).resolves({
             UserAttributes: [{ Name: 'sub', Value: 'user-sub-123' }],
         });
+
         ddbMock.on(TransactWriteCommand).resolves({});
 
         const result = await guestConversionHandler(
@@ -593,7 +593,7 @@ describe('guest account conversion', () => {
                 password: 'SuperSecretPassword123!',
                 firstName: 'Niall',
                 surname: 'McLaughlin',
-            })
+            }),
         );
 
         expect(result).toMatchObject({ statusCode: 200 });
@@ -603,23 +603,37 @@ describe('guest account conversion', () => {
             accessToken: 'access-token-response',
             refreshToken: 'refresh-token-response',
         });
-        expect(cognitoMock.commandCalls(AdminSetUserPasswordCommand)[0].args[0].input)
-            .toMatchObject({ Permanent: true });
-        expect(cognitoMock.commandCalls(AdminCreateUserCommand)[0].args[0].input.UserAttributes)
-            .toContainEqual({ Name: 'given_name', Value: 'Niall' });
-        expect(cognitoMock.commandCalls(AdminCreateUserCommand)[0].args[0].input.UserAttributes)
-            .toContainEqual({ Name: 'family_name', Value: 'McLaughlin' });
-        expect(cognitoMock.commandCalls(AdminInitiateAuthCommand)[0].args[0].input)
-            .toMatchObject({ AuthFlow: 'ADMIN_USER_PASSWORD_AUTH' });
+
+        expect(cognitoMock.commandCalls(AdminSetUserPasswordCommand)[0].args[0].input).toMatchObject({
+            Permanent: true,
+        });
+
+        expect(
+            cognitoMock.commandCalls(AdminCreateUserCommand)[0].args[0].input.UserAttributes,
+        ).toContainEqual({ Name: 'given_name', Value: 'Niall' });
+
+        expect(
+            cognitoMock.commandCalls(AdminCreateUserCommand)[0].args[0].input.UserAttributes,
+        ).toContainEqual({ Name: 'family_name', Value: 'McLaughlin' });
+
+        expect(cognitoMock.commandCalls(AdminInitiateAuthCommand)[0].args[0].input).toMatchObject({
+            AuthFlow: 'ADMIN_USER_PASSWORD_AUTH',
+        });
+
         const transaction = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input;
-        expect(transaction.TransactItems?.[0].Update?.ConditionExpression)
-            .toContain('attribute_not_exists(consumedAt)');
+        expect(transaction.TransactItems?.[0].Update?.ConditionExpression).toContain(
+            'attribute_not_exists(consumedAt)',
+        );
+
         expect(transaction.TransactItems?.[1].Update?.Key).toEqual({
             PK: 'BOOKING#bk_123',
             SK: 'METADATA',
         });
-        expect(transaction.TransactItems?.[1].Update?.ConditionExpression)
-            .toContain('conversionTokenHash = :tokenHash AND (attribute_not_exists(userId) OR userId = :null)');
+
+        expect(transaction.TransactItems?.[1].Update?.ConditionExpression).toContain(
+            'conversionTokenHash = :tokenHash AND (attribute_not_exists(userId) OR userId = :null)',
+        );
+
         expect(JSON.stringify(transaction)).not.toContain('SuperSecretPassword123!');
         expect(JSON.stringify(transaction)).not.toContain(conversionToken);
     });
@@ -633,7 +647,7 @@ describe('guest account conversion', () => {
                 password: 'SuperSecretPassword123!',
                 firstName: 'Other',
                 surname: 'Person',
-            })
+            }),
         );
 
         expect(result).toMatchObject({ statusCode: 400 });
@@ -649,9 +663,11 @@ describe('guest account conversion', () => {
                 userId: 'another-user',
             },
         });
+
         const result = await guestConversionHandler(
-            event({ conversionToken, password: 'SuperSecretPassword123!' })
+            event({ conversionToken, password: 'SuperSecretPassword123!' }),
         );
+
         expect(result).toMatchObject({ statusCode: 410 });
         expect(cognitoMock.calls()).toHaveLength(0);
     });
@@ -660,7 +676,7 @@ describe('guest account conversion', () => {
         ddbMock.on(GetCommand, { TableName: 'test-conversion-tokens' }).resolves({});
 
         const result = await guestConversionHandler(
-            event({ conversionToken, password: 'SuperSecretPassword123!' })
+            event({ conversionToken, password: 'SuperSecretPassword123!' }),
         );
 
         expect(result).toMatchObject({ statusCode: 404 });
@@ -671,7 +687,7 @@ describe('guest account conversion', () => {
         mockConversionRecords({ expiresAt: Math.floor(Date.now() / 1000) - 1 });
 
         const result = await guestConversionHandler(
-            event({ conversionToken, password: 'SuperSecretPassword123!' })
+            event({ conversionToken, password: 'SuperSecretPassword123!' }),
         );
 
         expect(result).toMatchObject({ statusCode: 410 });
@@ -682,7 +698,7 @@ describe('guest account conversion', () => {
         mockConversionRecords({ consumedAt: new Date().toISOString() });
 
         const result = await guestConversionHandler(
-            event({ conversionToken, password: 'SuperSecretPassword123!' })
+            event({ conversionToken, password: 'SuperSecretPassword123!' }),
         );
 
         expect(result).toMatchObject({ statusCode: 409 });

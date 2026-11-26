@@ -1,9 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import type {
-    APIGatewayProxyEventV2,
-    APIGatewayProxyResultV2,
-} from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 
 const localEndpoint = 'http://127.0.0.1:8000';
 const adminToken = process.env.LOCAL_ADMIN_TOKEN ?? 'local-dev-token';
@@ -19,17 +16,20 @@ const allowedOrigins = new Set([
 
 function requireCloudTestTable(environmentVariable: string): string {
     const tableName = process.env[environmentVariable]?.trim();
+
     if (!tableName) {
         throw new Error(`${environmentVariable} must name an existing cloud dev/test table.`);
     }
+
     if (
         !/^[A-Za-z0-9_.-]{3,255}$/.test(tableName) ||
-        !/-(dev|development|test|testing|staging|sandbox)$/i.test(tableName)
+        !/(^|[-_])(dev|development|test|testing|staging|sandbox)([-_]|$)/i.test(tableName)
     ) {
         throw new Error(
-            `${environmentVariable} must be a valid DynamoDB table name ending in -dev, -development, -test, -testing, -staging, or -sandbox.`
+            `${environmentVariable} must be a valid DynamoDB table name with a distinct dev, development, test, testing, staging, or sandbox environment segment.`,
         );
     }
+
     return tableName;
 }
 
@@ -52,12 +52,19 @@ if (cloudDatabaseMode) {
     process.env.BOOKINGS_TABLE_NAME = requireCloudTestTable(
         'LOCAL_CLOUD_BOOKINGS_TABLE_NAME'
     );
+    process.env.LEGACY_BOOKINGS_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_LEGACY_BOOKINGS_TABLE_NAME'
+    );
     process.env.SHOWTIME_REGISTRY_TABLE_NAME = requireCloudTestTable(
-        'LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME'
+        'LOCAL_CLOUD_SHOWTIME_REGISTRY_TABLE_NAME',
+    );
+    process.env.BOOKING_REFERENCES_TABLE_NAME = requireCloudTestTable(
+        'LOCAL_CLOUD_BOOKING_REFERENCES_TABLE_NAME'
     );
     process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME = requireCloudTestTable(
-        'LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME'
+        'LOCAL_CLOUD_GUEST_CONVERSION_TOKENS_TABLE_NAME',
     );
+
     process.env.USER_POOL_ID = process.env.LOCAL_CLOUD_USER_POOL_ID ?? '';
     process.env.USER_POOL_CLIENT_ID = process.env.LOCAL_CLOUD_USER_POOL_CLIENT_ID ?? '';
     process.env.POSTMAN_CLIENT_ID = process.env.LOCAL_CLOUD_POSTMAN_CLIENT_ID ?? '';
@@ -70,13 +77,10 @@ if (cloudDatabaseMode) {
     process.env.COLLECTIONS_TABLE_NAME = 'blockbuster-theatre-movie-collections-local';
     process.env.BOOKINGS_TABLE_NAME = 'blockbuster-theatre-bookings-table-local';
     process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'blockbuster-theatre-showtime-registry-local';
-    process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME =
-        'blockbuster-theatre-guest-conversion-tokens-local';
+    process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME = 'blockbuster-theatre-guest-conversion-tokens-local';
 }
 
-type LocalHandler = (
-    event: APIGatewayProxyEventV2
-) => Promise<APIGatewayProxyResultV2>;
+type LocalHandler = (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 function loadHandler(path: string): LocalHandler {
     return (require(path) as { handler: LocalHandler }).handler;
@@ -87,14 +91,26 @@ const handlers = {
     addMovie: loadHandler('../src/handlers/movies/add-movie-to-db'),
     updateMovie: loadHandler('../src/handlers/movies/update-movie-record'),
     getMovie: loadHandler('../src/handlers/movies/get-movie-record'),
-    listFilmSelections: loadHandler('../src/handlers/checkout/list-checkout-selections'),
+    listFilmSelections: loadHandler(
+        '../src/handlers/checkout/list-checkout-selections',
+    ),
     getTicketPricing: loadHandler('../src/handlers/pricing/get-ticket-pricing'),
     validateCheckout: loadHandler('../src/handlers/checkout/validate-checkout'),
-    upsertTicketPricing: loadHandler('../src/handlers/pricing/upsert-ticket-pricing'),
-    upsertBookingOffers: loadHandler('../src/handlers/offers/upsert-booking-offers'),
-    listMovieCollections: loadHandler('../src/handlers/collections/list-collection-records'),
-    getMovieCollection: loadHandler('../src/handlers/collections/get-collection-record'),
-    refreshMovieCollection: loadHandler('../src/handlers/collections/refresh-collection-records'),
+    upsertTicketPricing: loadHandler(
+        '../src/handlers/pricing/upsert-ticket-pricing',
+    ),
+    upsertBookingOffers: loadHandler(
+        '../src/handlers/offers/upsert-booking-offers',
+    ),
+    listMovieCollections: loadHandler(
+        '../src/handlers/collections/list-collection-records',
+    ),
+    getMovieCollection: loadHandler(
+        '../src/handlers/collections/get-collection-record',
+    ),
+    refreshMovieCollection: loadHandler(
+        '../src/handlers/collections/refresh-collection-records',
+    ),
     listBookings: loadHandler('../src/handlers/bookings/list-booking-records'),
     createBooking: loadHandler('../src/handlers/bookings/create-booking-record'),
     getBooking: loadHandler('../src/handlers/bookings/get-booking-record'),
@@ -110,22 +126,20 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
         'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type,Authorization',
     };
+
     if (origin && allowedOrigins.has(origin)) {
         headers['Access-Control-Allow-Origin'] = origin;
     }
+
     return headers;
 }
 
-function sendJson(
-    response: ServerResponse,
-    statusCode: number,
-    body: unknown,
-    origin?: string
-): void {
+function sendJson(response: ServerResponse, statusCode: number, body: unknown, origin?: string): void {
     response.writeHead(statusCode, {
         'Content-Type': 'application/json',
         ...corsHeaders(origin),
     });
+
     response.end(JSON.stringify(body));
 }
 
@@ -137,28 +151,36 @@ function readBody(request: IncomingMessage): Promise<string | undefined> {
 
         request.on('data', (chunk: Buffer | string) => {
             if (exceededLimit) return;
+
             const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
             size += buffer.byteLength;
+
             if (size > maxBodyBytes) {
                 exceededLimit = true;
                 reject(new Error('Request body exceeds the 1 MiB local limit.'));
+
                 return;
             }
+
             chunks.push(buffer);
         });
+
         request.on('end', () => {
             if (!exceededLimit) {
                 resolve(size === 0 ? undefined : Buffer.concat(chunks).toString('utf8'));
             }
         });
+
         request.on('error', reject);
     });
 }
 
 function routeRequest(
     method: string,
-    pathname: string
-): { handler: LocalHandler; pathParameters?: Record<string, string>; requiresLocalToken?: boolean } | undefined {
+    pathname: string,
+):
+    | { handler: LocalHandler; pathParameters?: Record<string, string>; requiresLocalToken?: boolean }
+    | undefined {
     if (!pathname.startsWith('/api/v1/')) return undefined;
     pathname = pathname.slice('/api/v1'.length);
     if (method === 'GET' && pathname === '/movies') {
@@ -169,40 +191,41 @@ function routeRequest(
     if (method === 'GET' && pathname === '/checkout/current-selections') {
         return { handler: handlers.listFilmSelections };
     }
+
     if (method === 'GET' && pathname === '/collections') {
         return { handler: handlers.listMovieCollections };
     }
+
     if (method === 'GET' && pathname === '/pricing') {
         return { handler: handlers.getTicketPricing };
     }
+
     if (method === 'POST' && pathname === '/pricing') {
         return { handler: handlers.upsertTicketPricing, requiresLocalToken: true };
     }
+
     if (method === 'POST' && pathname === '/offers') {
         return { handler: handlers.upsertBookingOffers, requiresLocalToken: true };
     }
+
     if (method === 'POST' && pathname === '/checkout/validate') {
         return { handler: handlers.validateCheckout };
     }
+
     if (method === 'GET' && pathname === '/bookings') {
         return { handler: handlers.listBookings };
     }
+
     if (method === 'POST' && pathname === '/bookings') {
         return { handler: handlers.createBooking };
-    }
-    const bookingMatch = /^\/bookings\/([^/]+)(?:\/(reschedule|ticket|confirmation))?$/.exec(pathname);
-    if (bookingMatch) {
-        const pathParameters = { bookingId: decodeURIComponent(bookingMatch[1]) };
-        if (method === 'GET' && !bookingMatch[2]) return { handler: handlers.getBooking, pathParameters };
-        if (method === 'GET' && bookingMatch[2] === 'ticket') return { handler: handlers.downloadTicket, pathParameters };
-        if (method === 'POST' && bookingMatch[2] === 'confirmation') return { handler: handlers.sendConfirmation, pathParameters };
-        if (method === 'PATCH' && bookingMatch[2] === 'reschedule') return { handler: handlers.rescheduleBooking, pathParameters, requiresLocalToken: true };
     }
     if (method === 'POST' && pathname === '/showtimes') {
         return { handler: handlers.manageShowtimes, requiresLocalToken: true };
     }
+
     if (method === 'PATCH' || method === 'DELETE') {
         const showtimeMatch = /^\/showtimes\/([^/]+)$/.exec(pathname);
+
         if (showtimeMatch) {
             return {
                 handler: handlers.manageShowtimes,
@@ -219,63 +242,71 @@ function routeRequest(
     }
 
     const movieMatch = method === 'GET' ? /^\/movies\/(\d+)$/.exec(pathname) : null;
+
     if (movieMatch) {
         return {
             handler: handlers.getMovie,
             pathParameters: { movieId: movieMatch[1] },
         };
     }
+
     if (method === 'POST' && pathname === '/collections/refresh') {
         return {
             handler: handlers.refreshMovieCollection,
             requiresLocalToken: true,
         };
     }
+
     const collectionMatch = method === 'GET' ? /^\/collections\/(\d+)$/.exec(pathname) : null;
+
     if (collectionMatch) {
         return {
             handler: handlers.getMovieCollection,
             pathParameters: { collectionId: collectionMatch[1] },
         };
     }
+
     return undefined;
 }
 
-async function handleRequest(
-    request: IncomingMessage,
-    response: ServerResponse
-): Promise<void> {
-    const origin = typeof request.headers.origin === 'string'
-        ? request.headers.origin
-        : undefined;
+async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
 
     if (request.method === 'OPTIONS') {
         response.writeHead(204, corsHeaders(origin));
         response.end();
+
         return;
     }
 
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+
     if (request.method === 'GET' && url.pathname === '/health') {
         sendJson(response, 200, { status: 'ok' }, origin);
+
         return;
     }
 
     const route = routeRequest(request.method ?? 'GET', url.pathname);
+
     if (!route) {
         sendJson(response, 404, { message: 'Local API route not found.' }, origin);
+
         return;
     }
 
     if (route.requiresLocalToken) {
         const expected = `Bearer ${adminToken}`;
+
         if (request.headers.authorization !== expected) {
             sendJson(response, 401, { message: 'A valid local admin token is required.' }, origin);
+
             return;
         }
     }
 
     let body: string | undefined;
+
     try {
         body = await readBody(request);
     } catch (error: unknown) {
@@ -283,16 +314,18 @@ async function handleRequest(
             response,
             413,
             { message: error instanceof Error ? error.message : 'Request body is too large.' },
-            origin
+            origin,
         );
+
         return;
     }
 
     const headers = Object.fromEntries(
-        Object.entries(request.headers).flatMap(([key, value]) => (
-            typeof value === 'string' ? [[key, value]] : []
-        ))
+        Object.entries(request.headers).flatMap(([key, value]) =>
+            typeof value === 'string' ? [[key, value]] : [],
+        ),
     );
+
     const event = {
         version: '2.0',
         routeKey: `${request.method} ${url.pathname}`,
@@ -320,23 +353,29 @@ async function handleRequest(
 
     try {
         const result = await route.handler(event);
+
         if (typeof result === 'string') {
             response.writeHead(200, {
                 'Content-Type': 'text/plain',
                 ...corsHeaders(origin),
             });
+
             response.end(result);
+
             return;
         }
 
         const handlerHeaders: Record<string, string> = {};
+
         for (const [name, value] of Object.entries(result.headers ?? {})) {
             if (value !== undefined) handlerHeaders[name] = String(value);
         }
+
         response.writeHead(result.statusCode ?? 200, {
             ...handlerHeaders,
             ...corsHeaders(origin),
         });
+
         response.end(result.isBase64Encoded ? Buffer.from(result.body ?? '', 'base64') : result.body ?? '');
     } catch (error: unknown) {
         console.error('Local API handler failed:', error);
@@ -354,12 +393,16 @@ const server = createServer((request, response) => {
 
 server.listen(port, '127.0.0.1', () => {
     console.log(`Local API listening at http://127.0.0.1:${port}`);
+
     if (cloudDatabaseMode) {
         console.log(`AWS region: ${process.env.AWS_REGION}`);
-        console.log(`Cloud dev/test tables: ${process.env.TABLE_NAME}, ${process.env.PRICING_TABLE_NAME}, ${process.env.OFFERS_TABLE_NAME}, ${process.env.COLLECTIONS_TABLE_NAME}, ${process.env.BOOKINGS_TABLE_NAME}, ${process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME}`);
+        console.log(
+            `Cloud dev/test tables: ${process.env.TABLE_NAME}, ${process.env.PRICING_TABLE_NAME}, ${process.env.OFFERS_TABLE_NAME}, ${process.env.COLLECTIONS_TABLE_NAME}, ${process.env.BOOKINGS_TABLE_NAME}, ${process.env.GUEST_CONVERSION_TOKENS_TABLE_NAME}`,
+        );
     } else {
         console.log(`DynamoDB Local endpoint: ${localEndpoint}`);
     }
+
     console.log(`Local admin token: ${adminToken}`);
     console.log('This local server bypasses the deployed API Gateway JWT authorizer.');
 });

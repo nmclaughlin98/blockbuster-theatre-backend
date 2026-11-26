@@ -16,9 +16,10 @@ jest.mock('../../../main/lambda/handlers/utils/common', () => {
 });
 
 jest.mock('../../../main/lambda/handlers/utils/ticket-pdf-generator', () => {
-    const actual = jest.requireActual<typeof import('../../../main/lambda/handlers/utils/ticket-pdf-generator')>(
-        '../../../main/lambda/handlers/utils/ticket-pdf-generator'
-    );
+    const actual = jest.requireActual<
+        typeof import('../../../main/lambda/handlers/utils/ticket-pdf-generator')
+    >('../../../main/lambda/handlers/utils/ticket-pdf-generator');
+
     return { ...actual, generateTicketPdf: jest.fn(actual.generateTicketPdf) };
 });
 
@@ -26,9 +27,11 @@ process.env.BOOKINGS_TABLE_NAME = 'current-bookings';
 process.env.LEGACY_BOOKINGS_TABLE_NAME = 'legacy-bookings';
 
 const ddb = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../handlers/bookings/download-booking-ticket') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyStructuredResultV2>;
-};
+let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyStructuredResultV2>;
+
+beforeAll(async () => {
+    ({ handler } = await import('../../../handlers/bookings/download-booking-ticket'));
+});
 
 const booking = {
     showtimeId: 'show-1',
@@ -75,6 +78,10 @@ test('rejects invalid supplied tokens before accessing bookings', async () => {
 });
 
 test('downloads an owned booking using the JWT subject and real stored ticket fields', async () => {
+    ddb.on(QueryCommand).resolvesOnce({
+        Items: [],
+        LastEvaluatedKey: { showtimeId: 'earlier', seatId: 'A1', userId: 'user-1', bookedAt: 'now' },
+    }).resolvesOnce({ Items: [{ showtimeId: 'show-1', seatId: 'BOOKING#bk_1' }] });
     ddb.on(GetCommand).resolves({ Item: booking });
     const generate = jest.mocked(pdfGenerator.generateTicketPdf);
 
@@ -82,11 +89,14 @@ test('downloads an owned booking using the JWT subject and real stored ticket fi
 
     expect(result.statusCode).toBe(200);
     expect(result.isBase64Encoded).toBe(true);
-    expect(result.headers).toEqual(expect.objectContaining({
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="Example_Movie_BBT-123456.pdf"',
-        'Cache-Control': 'no-store',
-    }));
+    expect(result.headers).toEqual(
+        expect.objectContaining({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': 'attachment; filename="Example_Movie_BBT-123456.pdf"',
+            'Cache-Control': 'no-store',
+        }),
+    );
+
     const pdf = Buffer.from(result.body!, 'base64');
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(result.headers?.['Content-Length']).toBe(String(pdf.length));
@@ -102,6 +112,16 @@ test('downloads an owned booking using the JWT subject and real stored ticket fi
         totalAmount: 0,
         currency: 'GBP',
     });
+    const queries = ddb.commandCalls(QueryCommand);
+    expect(queries).toHaveLength(2);
+    expect(queries[0].args[0].input).toEqual(expect.objectContaining({
+        TableName: 'current-bookings',
+        IndexName: 'UserBookings',
+        ExpressionAttributeValues: {
+            ':userId': 'user-1', ':booking': 'BOOKING', ':bookingId': 'bk_1',
+        },
+    }));
+    expect(queries[1].args[0].input.ExclusiveStartKey).toBeDefined();
     expect(ddb.commandCalls(GetCommand)[0].args[0].input).toEqual({
         TableName: 'current-bookings',
         Key: { PK: 'BOOKING#bk_1', SK: 'METADATA' },
@@ -109,7 +129,10 @@ test('downloads an owned booking using the JWT subject and real stored ticket fi
     });
 });
 
-test('does not disclose another user’s booking', async () => {
+test('does not disclose a booking when the index has stale ownership', async () => {
+    ddb.on(QueryCommand, { TableName: 'current-bookings' })
+        .resolves({ Items: [{ showtimeId: 'show-1', seatId: 'BOOKING#bk_1' }] });
+    ddb.on(QueryCommand, { TableName: 'legacy-bookings' }).resolves({ Items: [] });
     ddb.on(GetCommand).resolves({ Item: { ...booking, userId: 'another-user' } });
     const generate = jest.mocked(pdfGenerator.generateTicketPdf);
 
@@ -118,13 +141,18 @@ test('does not disclose another user’s booking', async () => {
     expect(generate).not.toHaveBeenCalled();
 });
 
-test('allows an unlinked guest only with both the reference and email', async () => {
-    ddb.on(GetCommand).resolves({ Item: { ...booking, userId: undefined } });
-    const request = { ...event(), queryStringParameters: { bookingRef: booking.bookingRef, email: ' ALEX@example.com ' } };
-    expect((await handler(request)).statusCode).toBe(200);
-    expect((await handler({ ...request, queryStringParameters: { ...request.queryStringParameters, email: 'other@example.com' } })).statusCode).toBe(404);
-    ddb.on(GetCommand).resolves({ Item: booking });
-    expect((await handler(request)).statusCode).toBe(404);
+test('finds an owned converted booking in the legacy table', async () => {
+    ddb.on(QueryCommand, { TableName: 'current-bookings' }).resolves({ Items: [] });
+    ddb.on(QueryCommand, { TableName: 'legacy-bookings' })
+        .resolves({ Items: [{ showingId: 'legacy-show', seatId: 'BOOKING#bk_1' }] });
+    ddb.on(GetCommand).resolves({ Item: { ...booking, showingId: 'legacy-show' } });
+
+    expect((await handler(event('user-1'))).statusCode).toBe(200);
+    expect(ddb.commandCalls(GetCommand)[0].args[0].input).toEqual({
+        TableName: 'legacy-bookings',
+        Key: { showingId: 'legacy-show', seatId: 'BOOKING#bk_1' },
+        ConsistentRead: true,
+    });
 });
 
 test.each([

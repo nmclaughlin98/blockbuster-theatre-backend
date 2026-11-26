@@ -18,11 +18,12 @@ describe('maximum ticket configuration', () => {
         } else {
             process.env.MAX_TICKETS_PARAMETER_NAME = originalParameterName;
         }
+
         jest.restoreAllMocks();
     });
 
     it('uses 10 when no parameter name is configured', async () => {
-        const info = jest.spyOn(console, 'log').mockImplementation(() => { });
+        const info = jest.spyOn(console, 'log').mockImplementation(() => {});
         await expect(getMaxTickets()).resolves.toBe(10);
         expect(ssmMock.calls()).toHaveLength(0);
         expect(JSON.parse(String(info.mock.calls[0][0]))).toMatchObject({
@@ -33,7 +34,7 @@ describe('maximum ticket configuration', () => {
 
     it('reads the configured maximum from Parameter Store', async () => {
         process.env.MAX_TICKETS_PARAMETER_NAME = parameterName;
-        const info = jest.spyOn(console, 'log').mockImplementation(() => { });
+        const info = jest.spyOn(console, 'log').mockImplementation(() => {});
         ssmMock.on(GetParameterCommand, { Name: parameterName }).resolves({
             Parameter: { Value: '12' },
         });
@@ -49,11 +50,12 @@ describe('maximum ticket configuration', () => {
 
     it('uses 10 when the configured parameter does not exist', async () => {
         process.env.MAX_TICKETS_PARAMETER_NAME = parameterName;
-        const info = jest.spyOn(console, 'log').mockImplementation(() => { });
-        ssmMock.on(GetParameterCommand, { Name: parameterName }).rejects(
-            Object.assign(new Error('Parameter not found'), { name: 'ParameterNotFound' })
-        );
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => { });
+        const info = jest.spyOn(console, 'log').mockImplementation(() => {});
+        ssmMock
+            .on(GetParameterCommand, { Name: parameterName })
+            .rejects(Object.assign(new Error('Parameter not found'), { name: 'ParameterNotFound' }));
+
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
         await expect(getMaxTickets()).resolves.toBe(10);
         expect(warn).toHaveBeenCalledTimes(1);
@@ -71,7 +73,7 @@ describe('maximum ticket configuration', () => {
         });
 
         await expect(getMaxTickets()).rejects.toThrow(
-            `SSM parameter ${parameterName} must contain a positive integer.`
+            `SSM parameter ${parameterName} must contain a positive integer.`,
         );
     });
 

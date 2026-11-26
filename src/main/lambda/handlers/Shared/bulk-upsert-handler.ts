@@ -1,7 +1,4 @@
-import type {
-    APIGatewayProxyEventV2,
-    APIGatewayProxyResultV2,
-} from 'aws-lambda';
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import {
     DynamoDBDocumentClient,
     TransactWriteCommand,
@@ -28,16 +25,16 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 export function createBulkUpsertHandler<T>(options: BulkUpsertOptions<T>) {
-    return async (
-        event: APIGatewayProxyEventV2
-    ): Promise<APIGatewayProxyResultV2> => {
+    return async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
         const requestId = event.requestContext?.requestId;
         const tableName = process.env[options.tableEnvironmentVariable];
+
         if (!tableName) {
             log('ERROR', 'Bulk upsert table is not configured', {
                 requestId,
                 tableEnvironmentVariable: options.tableEnvironmentVariable,
             });
+
             return json(500, { message: 'The data table is not configured.', requestId });
         }
 
@@ -46,6 +43,7 @@ export function createBulkUpsertHandler<T>(options: BulkUpsertOptions<T>) {
         }
 
         let body: unknown;
+
         try {
             body = JSON.parse(event.body);
         } catch {
@@ -53,11 +51,13 @@ export function createBulkUpsertHandler<T>(options: BulkUpsertOptions<T>) {
         }
 
         const records = isObject(body) ? body[options.collectionName] : undefined;
+
         if (!Array.isArray(records) || records.length === 0) {
             return json(400, {
                 message: `${options.collectionName} must be a non-empty array.`,
             });
         }
+
         if (records.length > MAX_BATCH) {
             return json(400, {
                 message: `${options.collectionName} cannot exceed ${MAX_BATCH} items per request.`,
@@ -72,12 +72,16 @@ export function createBulkUpsertHandler<T>(options: BulkUpsertOptions<T>) {
         records.forEach((record, index) => {
             if (!options.isRecord(record)) {
                 invalidIndexes.push(index);
+
                 return;
             }
+
             const id = options.getId(record);
+
             if (seenIds.has(id)) {
                 duplicateIds.add(id);
             }
+
             seenIds.add(id);
             validRecords.push(record);
         });
@@ -88,6 +92,7 @@ export function createBulkUpsertHandler<T>(options: BulkUpsertOptions<T>) {
                 invalidIndexes,
             });
         }
+
         if (duplicateIds.size > 0) {
             return json(400, {
                 message: `Duplicate ${options.idField} values are not allowed in one request.`,
@@ -104,7 +109,7 @@ export function createBulkUpsertHandler<T>(options: BulkUpsertOptions<T>) {
                             Item: options.toItem(record),
                         },
                     })),
-                })
+                }),
             );
         } catch (error: unknown) {
             log('ERROR', `Failed to upsert ${options.entityName}`, {
@@ -112,6 +117,7 @@ export function createBulkUpsertHandler<T>(options: BulkUpsertOptions<T>) {
                 count: validRecords.length,
                 error: error instanceof Error ? error.message : 'Unknown error',
             });
+
             return json(500, {
                 message: `Unable to save ${options.entityName}.`,
                 requestId,

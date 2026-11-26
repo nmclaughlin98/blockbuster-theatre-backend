@@ -1,9 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import {
-    DynamoDBDocumentClient,
-    QueryCommand,
-    type NativeAttributeValue,
-} from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, type NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../../main/lambda/handlers/Shared/dynamodb-client';
 import { authenticateOptional, InvalidAuthorizationError, json, jsonResponseByteLength, log } from '../../main/lambda/handlers/utils/common';
 import { handler as listFeatured } from '../../services/movies/list-featured-movies';
@@ -53,9 +49,11 @@ function parsePageSize(value: string | undefined): number {
     if (value === undefined) return DEFAULT_PAGE_SIZE;
 
     const pageSize = Number(value);
+
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
         throw new Error(`limit must be an integer between 1 and ${MAX_PAGE_SIZE}.`);
     }
+
     return pageSize;
 }
 
@@ -69,6 +67,7 @@ function parseNextToken(value: string | undefined): Record<string, NativeAttribu
     if (value === undefined) return undefined;
 
     let parsed: unknown;
+
     try {
         parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
     } catch {
@@ -87,9 +86,7 @@ function parseNextToken(value: string | undefined): Record<string, NativeAttribu
 }
 
 function encodeNextToken(key: Record<string, NativeAttributeValue> | undefined): string | null {
-    return key && Object.keys(key).length
-        ? Buffer.from(JSON.stringify(key)).toString('base64url')
-        : null;
+    return key && Object.keys(key).length ? Buffer.from(JSON.stringify(key)).toString('base64url') : null;
 }
 
 function responseSize(movies: MovieSummary[], nextToken: string | null): number {
@@ -101,9 +98,7 @@ function responseSize(movies: MovieSummary[], nextToken: string | null): number 
  * @param event API Gateway request with optional `limit` and `nextToken` query parameters.
  * @returns A page of summaries and its continuation token.
  */
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
     const sort = event.queryStringParameters?.sort;
     const view = event.queryStringParameters?.view;
@@ -124,21 +119,25 @@ export const handler = async (
 
     if (!TABLE_NAME) {
         log('ERROR', 'TABLE_NAME is not configured', { requestId });
+
         return json(500, { message: 'TABLE_NAME is not configured.' });
     }
 
     let limit: number;
     let exclusiveStartKey: Record<string, NativeAttributeValue> | undefined;
+
     try {
         limit = parsePageSize(event.queryStringParameters?.limit);
         exclusiveStartKey = parseNextToken(event.queryStringParameters?.nextToken);
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Invalid pagination parameters.';
+
         return json(400, { message });
     }
 
     try {
         let movies: MovieSummary[] = [];
+
         for (let page = 0; page < MAX_QUERY_PAGES; page++) {
             const result = await docClient.send(
                 new QueryCommand({
@@ -151,18 +150,21 @@ export const handler = async (
                     Limit: limit,
                     ScanIndexForward: false,
                     ExclusiveStartKey: exclusiveStartKey,
-                })
+                }),
             );
 
             const visibleItems = (result.Items ?? []).filter((item) => item.visible !== false);
             const pageMovies = visibleItems.map((item) => {
                 // Legacy records without visible remain public; preserve the summary's boolean shape.
                 const normalized = item.visible === undefined ? { ...item, visible: true } : item;
+
                 if (!isMovieRecord(normalized)) {
                     throw new Error('DynamoDB returned an invalid movie record.');
                 }
+
                 return projectMovieSummary(normalized);
             });
+
             const nextToken = encodeNextToken(result.LastEvaluatedKey);
             const combined = [...movies, ...pageMovies];
 
@@ -174,23 +176,30 @@ export const handler = async (
                 // A single DynamoDB page can expand when JSON is escaped in the proxy response.
                 for (let i = 0; i < pageMovies.length; i++) {
                     const item = visibleItems[i];
+
                     if (!isMovieCursor(item)) {
                         throw new Error('DynamoDB returned a movie without pagination keys.');
                     }
+
                     const cursor = {
                         movieId: item.movieId,
                         GSI1PK: item.GSI1PK,
                         GSI1SK: item.GSI1SK,
                     };
+
                     const candidate = [...movies, pageMovies[i]];
+
                     if (responseSize(candidate, encodeNextToken(cursor)) > MAX_RESPONSE_BYTES) {
                         if (!movies.length) {
                             throw new Error('A movie exceeds the response size budget.');
                         }
+
                         const previous = visibleItems[i - 1];
+
                         if (!isMovieCursor(previous)) {
                             throw new Error('DynamoDB returned a movie without pagination keys.');
                         }
+
                         return json(200, {
                             movies,
                             nextToken: encodeNextToken({
@@ -200,12 +209,16 @@ export const handler = async (
                             }),
                         });
                     }
+
                     movies = candidate;
                 }
+
                 const last = visibleItems[visibleItems.length - 1];
+
                 if (!isMovieCursor(last)) {
                     throw new Error('DynamoDB returned a movie without pagination keys.');
                 }
+
                 return json(200, {
                     movies,
                     nextToken: encodeNextToken({
@@ -217,20 +230,29 @@ export const handler = async (
             }
 
             movies = combined;
-            if (!nextToken || event.queryStringParameters?.limit !== undefined || page === MAX_QUERY_PAGES - 1) {
+
+            if (
+                !nextToken ||
+                event.queryStringParameters?.limit !== undefined ||
+                page === MAX_QUERY_PAGES - 1
+            ) {
                 return json(200, { movies, nextToken });
             }
+
             exclusiveStartKey = result.LastEvaluatedKey;
         }
+
         throw new Error('Unable to complete movie pagination.');
     } catch (error: unknown) {
         if (error instanceof ShowtimeIdError) {
             return json(error.statusCode, { message: error.message });
         }
+
         log('ERROR', 'Failed to retrieve movies', {
             requestId,
             error: error instanceof Error ? error.message : 'Unknown error',
         });
+
         return json(500, { message: 'Unable to retrieve movies.' });
     }
 };

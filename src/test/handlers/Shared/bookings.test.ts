@@ -17,12 +17,18 @@ process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 type Handler = (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-const { handler: listBookings } = require('../../../main/lambda/handlers/ListBookings/list-bookings-handler') as {
-    handler: Handler;
-};
-const { handler: createBooking } = require('../../../main/lambda/handlers/CreateBooking/create-booking-handler') as {
-    handler: Handler;
-};
+let listBookings: Handler;
+let createBooking: Handler;
+
+beforeAll(async () => {
+    const [bookings, create] = await Promise.all([
+        import('../../../main/lambda/handlers/ListBookings/list-bookings-handler'),
+        import('../../../main/lambda/handlers/CreateBooking/create-booking-handler'),
+    ]);
+
+    listBookings = bookings.handler;
+    createBooking = create.handler;
+});
 
 const movie = {
     tmdbId: '456',
@@ -72,7 +78,9 @@ const showtime = { day: 'Monday', time: '19:00' };
 function upcomingMonday(): string {
     const value = new Date();
     value.setUTCDate(value.getUTCDate() + 7);
+
     while (value.getUTCDay() !== 1) value.setUTCDate(value.getUTCDate() + 1);
+
     return value.toISOString().slice(0, 10);
 }
 
@@ -82,26 +90,29 @@ const showtimeId = `559924_${date}_1900`;
 function pastMonday(): string {
     const value = new Date();
     value.setUTCDate(value.getUTCDate() - 7);
+
     while (value.getUTCDay() !== 1) value.setUTCDate(value.getUTCDate() - 1);
+
     return value.toISOString().slice(0, 10);
 }
 
-function createEvent(options: {
-    queryStringParameters?: Record<string, string>;
-    body?: unknown;
-    rawBody?: string;
-} = {}): APIGatewayProxyEventV2 {
+function createEvent(
+    options: {
+        queryStringParameters?: Record<string, string>;
+        body?: unknown;
+        rawBody?: string;
+    } = {},
+): APIGatewayProxyEventV2 {
     return {
         queryStringParameters: options.queryStringParameters,
-        body:
-            options.rawBody ??
-            (options.body === undefined ? undefined : JSON.stringify(options.body)),
+        body: options.rawBody ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
         requestContext: { requestId: 'booking-test-request' },
     } as unknown as APIGatewayProxyEventV2;
 }
 
 function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> {
     if (typeof result === 'string') throw new Error('Expected a structured response.');
+
     return JSON.parse(result.body as string) as Record<string, unknown>;
 }
 
@@ -109,61 +120,22 @@ function mockShowingLookups(): void {
     ddbMock.on(QueryCommand, { TableName: 'test-movies-table' }).resolves({ Items: [movie] });
     ddbMock.on(GetCommand, { TableName: 'test-offers-table' }).resolves({ Item: mondayOffer });
     ddbMock.on(GetCommand, { TableName: 'test-pricing-table' }).resolves({ Item: standardPricing });
-    ddbMock
-        .on(GetCommand, { TableName: 'test-showtime-registry' })
-        .callsFake((input) => {
-            const registryKey = input.Key?.registryKey;
-            if (typeof registryKey !== 'string') return {};
-            const showtimeMatch = /^SHOWTIME#\d{6}_(\d{4}-\d{2}-\d{2})_(\d{4})$/.exec(
-                registryKey
-            );
-            if (showtimeMatch) {
-                const recordDate = showtimeMatch[1];
-                const time = `${showtimeMatch[2].slice(0, 2)}:${showtimeMatch[2].slice(2)}`;
-                return {
-                    Item: {
-                        registryKey,
-                        recordType: 'SHOWTIME',
-                        showtimeId: registryKey.slice('SHOWTIME#'.length),
-                        movieId: '456',
-                        date: recordDate,
-                        day: new Date(`${recordDate}T00:00:00.000Z`).toLocaleDateString('en-US', {
-                            weekday: 'long',
-                            timeZone: 'UTC',
-                        }),
-                        screen: '3',
-                        time,
-                        source: 'GENERATED',
-                        status: 'ACTIVE',
-                        runtime: 110,
-                        GSI1PK: `DATE#${recordDate}`,
-                        GSI1SK: `3#${time}#456#${registryKey.slice('SHOWTIME#'.length)}`,
-                    },
-                };
-            }
-            const match = /^SCHEDULE#456#(\d{4}-\d{2}-\d{2})#3#19:00$/.exec(registryKey);
-            if (!match) return {};
-            const id = `559924_${match[1]}_1900`;
+    ddbMock.on(GetCommand, { TableName: 'test-showtime-registry' }).callsFake((input) => {
+        const registryKey = input.Key?.registryKey;
+
+        if (typeof registryKey !== 'string') return {};
+
+        const showtimeMatch = /^SHOWTIME#\d{6}_(\d{4}-\d{2}-\d{2})_(\d{4})$/.exec(registryKey);
+
+        if (showtimeMatch) {
+            const recordDate = showtimeMatch[1];
+            const time = `${showtimeMatch[2].slice(0, 2)}:${showtimeMatch[2].slice(2)}`;
+
             return {
                 Item: {
                     registryKey,
-                    recordType: 'SCHEDULE',
-                    showtimeId: id,
-                },
-            };
-        });
-    ddbMock
-        .on(QueryCommand, { TableName: 'test-showtime-registry', IndexName: 'ShowtimesByDate' })
-        .callsFake((input) => {
-            const dateKey = input.ExpressionAttributeValues?.[':dateKey'];
-            if (typeof dateKey !== 'string') return { Items: [] };
-            const recordDate = dateKey.slice('DATE#'.length);
-            const recordShowtimeId = `559924_${recordDate}_1900`;
-            return {
-                Items: [{
-                    registryKey: `SHOWTIME#${recordShowtimeId}`,
                     recordType: 'SHOWTIME',
-                    showtimeId: recordShowtimeId,
+                    showtimeId: registryKey.slice('SHOWTIME#'.length),
                     movieId: '456',
                     date: recordDate,
                     day: new Date(`${recordDate}T00:00:00.000Z`).toLocaleDateString('en-US', {
@@ -171,15 +143,65 @@ function mockShowingLookups(): void {
                         timeZone: 'UTC',
                     }),
                     screen: '3',
-                    time: '19:00',
+                    time,
                     source: 'GENERATED',
                     status: 'ACTIVE',
                     runtime: 110,
-                    GSI1PK: dateKey,
-                    GSI1SK: `3#19:00#456#${recordShowtimeId}`,
-                }],
+                    GSI1PK: `DATE#${recordDate}`,
+                    GSI1SK: `3#${time}#456#${registryKey.slice('SHOWTIME#'.length)}`,
+                },
+            };
+        }
+
+        const match = /^SCHEDULE#456#(\d{4}-\d{2}-\d{2})#3#19:00$/.exec(registryKey);
+
+        if (!match) return {};
+
+        const id = `559924_${match[1]}_1900`;
+
+        return {
+            Item: {
+                registryKey,
+                recordType: 'SCHEDULE',
+                showtimeId: id,
+            },
+        };
+    });
+
+    ddbMock
+        .on(QueryCommand, { TableName: 'test-showtime-registry', IndexName: 'ShowtimesByDate' })
+        .callsFake((input) => {
+            const dateKey = input.ExpressionAttributeValues?.[':dateKey'];
+
+            if (typeof dateKey !== 'string') return { Items: [] };
+
+            const recordDate = dateKey.slice('DATE#'.length);
+            const recordShowtimeId = `559924_${recordDate}_1900`;
+
+            return {
+                Items: [
+                    {
+                        registryKey: `SHOWTIME#${recordShowtimeId}`,
+                        recordType: 'SHOWTIME',
+                        showtimeId: recordShowtimeId,
+                        movieId: '456',
+                        date: recordDate,
+                        day: new Date(`${recordDate}T00:00:00.000Z`).toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            timeZone: 'UTC',
+                        }),
+                        screen: '3',
+                        time: '19:00',
+                        source: 'GENERATED',
+                        status: 'ACTIVE',
+                        runtime: 110,
+                        GSI1PK: dateKey,
+                        GSI1SK: `3#19:00#456#${recordShowtimeId}`,
+                    },
+                ],
             };
         });
+
     ddbMock.on(UpdateCommand).resolves({});
 }
 
@@ -205,6 +227,7 @@ describe('booking handlers', () => {
                     LastEvaluatedKey: { showtimeId, seatId: 'C2' },
                 })
                 .resolvesOnce({ Items: [{ seatId: 'A1' }] });
+
             ddbMock.on(QueryCommand, { TableName: 'test-legacy-bookings-table' }).resolves({
                 Items: [],
             });
@@ -218,9 +241,11 @@ describe('booking handlers', () => {
                 showtime: { ...showtime, screen: '3' },
                 bookedSeats: ['A1', 'B4', 'C2'],
             });
-            const calls = ddbMock.commandCalls(QueryCommand).filter(
-                (call) => call.args[0].input.TableName === 'test-bookings-table'
-            );
+
+            const calls = ddbMock
+                .commandCalls(QueryCommand)
+                .filter((call) => call.args[0].input.TableName === 'test-bookings-table');
+
             expect(calls).toHaveLength(2);
             expect(calls[0].args[0].input.ExpressionAttributeValues).toEqual({
                 ':key': showtimeId,
@@ -237,13 +262,14 @@ describe('booking handlers', () => {
             await listBookings(
                 createEvent({
                     queryStringParameters: { ...query, date: nextWeek.toISOString().slice(0, 10) },
-                })
+                }),
             );
 
             expect(
-                ddbMock.commandCalls(QueryCommand).find(
-                    (call) => call.args[0].input.TableName === 'test-bookings-table'
-                )?.args[0].input.ExpressionAttributeValues
+                ddbMock
+                    .commandCalls(QueryCommand)
+                    .find((call) => call.args[0].input.TableName === 'test-bookings-table')?.args[0].input
+                    .ExpressionAttributeValues,
             ).toMatchObject({
                 ':key': `559924_${nextWeek.toISOString().slice(0, 10)}_1900`,
                 ':seat': 'SEAT',
@@ -273,7 +299,7 @@ describe('booking handlers', () => {
             const result = await listBookings(
                 createEvent({
                     queryStringParameters: queryStringParameters as Record<string, string>,
-                })
+                }),
             );
 
             expect(result).toMatchObject({ statusCode: 400 });
@@ -298,7 +324,7 @@ describe('booking handlers', () => {
             const result = await createBooking(
                 createEvent({
                     body: { movieId: '456', date, showtime, seats: ['b4', 'B5'] },
-                })
+                }),
             );
 
             expect(result).toMatchObject({ statusCode: 201 });
@@ -311,11 +337,11 @@ describe('booking handlers', () => {
                 showtimeId,
                 seats: ['B4', 'B5'],
             });
+
             expect(body.bookingId).toEqual(expect.any(String));
             expect(body.userId).toEqual(expect.any(String));
 
-            const items = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input
-                .TransactItems!;
+            const items = ddbMock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems!;
             expect(items).toHaveLength(5);
             expect(items.filter((item) => item.Put).map((item) => item.Put?.Item)).toEqual([
                 expect.objectContaining({
@@ -328,6 +354,7 @@ describe('booking handlers', () => {
                 }),
                 expect.objectContaining({ showtimeId, seatId: 'B5', userId: body.userId }),
             ]);
+
             expect(items[0].Put?.TableName).toBe('test-bookings-table');
             expect(items[0].Put?.ConditionExpression).toBe('attribute_not_exists(seatId)');
             expect(items[4].ConditionCheck?.TableName).toBe('test-showtime-registry');
@@ -346,7 +373,7 @@ describe('booking handlers', () => {
                         showtime,
                         seats: ['A2'],
                     },
-                })
+                }),
             );
 
             expect(result).toMatchObject({ statusCode: 201 });
@@ -364,7 +391,7 @@ describe('booking handlers', () => {
                         showtime,
                         seats: ['A2'],
                     },
-                })
+                }),
             );
 
             expect(result).toMatchObject({ statusCode: 400 });
@@ -375,7 +402,7 @@ describe('booking handlers', () => {
             const result = await createBooking(
                 createEvent({
                     body: { movieId: '456', date, showtime, seats: ['A2'], userId: 'someone-else' },
-                })
+                }),
             );
 
             expect(result).toMatchObject({ statusCode: 400 });
@@ -388,10 +415,11 @@ describe('booking handlers', () => {
                 name: 'TransactionCanceledException',
                 CancellationReasons: [{ Code: 'None' }, { Code: 'ConditionalCheckFailed' }],
             });
+
             ddbMock.on(TransactWriteCommand).rejects(error);
 
             const result = await createBooking(
-                createEvent({ body: { movieId: '456', date, showtime, seats: ['B4', 'B5'] } })
+                createEvent({ body: { movieId: '456', date, showtime, seats: ['B4', 'B5'] } }),
             );
 
             expect(result).toMatchObject({ statusCode: 409 });
@@ -409,13 +437,14 @@ describe('booking handlers', () => {
                         showtime: { day: 'Monday', time: '21:00' },
                         seats: ['B4'],
                     },
-                })
+                }),
             );
 
             expect(result).toMatchObject({ statusCode: 400 });
             expect(responseBody(result)).toEqual({
                 message: 'The selected showtime is not available.',
             });
+
             expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
         });
 
@@ -425,7 +454,7 @@ describe('booking handlers', () => {
             const result = await createBooking(
                 createEvent({
                     body: { movieId: '456', date: pastMonday(), showtime, seats: ['B4'] },
-                })
+                }),
             );
 
             expect(result).toMatchObject({ statusCode: 400 });
@@ -437,7 +466,7 @@ describe('booking handlers', () => {
             ddbMock.on(QueryCommand, { TableName: 'test-movies-table' }).resolves({ Items: [] });
 
             const result = await createBooking(
-                createEvent({ body: { movieId: '999', date, showtime, seats: ['B4'] } })
+                createEvent({ body: { movieId: '999', date, showtime, seats: ['B4'] } }),
             );
 
             expect(result).toMatchObject({ statusCode: 404 });
@@ -457,7 +486,7 @@ describe('booking handlers', () => {
                     date,
                     showtime,
                     seats: ['A', 'B', 'C'].flatMap((row) =>
-                        Array.from({ length: 11 }, (_, index) => `${row}${index + 1}`)
+                        Array.from({ length: 11 }, (_, index) => `${row}${index + 1}`),
                     ),
                 },
             ],
@@ -493,7 +522,7 @@ describe('booking handlers', () => {
             ddbMock.on(TransactWriteCommand).rejects(new Error('boom'));
 
             const result = await createBooking(
-                createEvent({ body: { movieId: '456', date, showtime, seats: ['B4'] } })
+                createEvent({ body: { movieId: '456', date, showtime, seats: ['B4'] } }),
             );
 
             expect(result).toMatchObject({ statusCode: 500 });

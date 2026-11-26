@@ -9,8 +9,10 @@ describe('DynamoDB client local endpoint guard', () => {
     afterEach(() => {
         if (originalLocalApi === undefined) delete process.env.LOCAL_API;
         else process.env.LOCAL_API = originalLocalApi;
+
         if (originalDatabaseMode === undefined) delete process.env.LOCAL_API_DATABASE;
         else process.env.LOCAL_API_DATABASE = originalDatabaseMode;
+
         if (originalEndpoint === undefined) delete process.env.DYNAMODB_ENDPOINT;
         else process.env.DYNAMODB_ENDPOINT = originalEndpoint;
     });
@@ -29,7 +31,7 @@ describe('DynamoDB client local endpoint guard', () => {
         process.env.DYNAMODB_ENDPOINT = 'http://127.0.0.1:8000';
 
         expect(() => createDynamoDBClient()).toThrow(
-            'DYNAMODB_ENDPOINT is only supported for LOCAL_API_DATABASE=local.'
+            'DYNAMODB_ENDPOINT is only supported for LOCAL_API_DATABASE=local.',
         );
     });
 
@@ -39,7 +41,7 @@ describe('DynamoDB client local endpoint guard', () => {
         delete process.env.DYNAMODB_ENDPOINT;
 
         expect(() => createDynamoDBClient()).toThrow(
-            'DYNAMODB_ENDPOINT is required when LOCAL_API_DATABASE=local.'
+            'DYNAMODB_ENDPOINT is required when LOCAL_API_DATABASE=local.',
         );
     });
 
@@ -49,7 +51,7 @@ describe('DynamoDB client local endpoint guard', () => {
         process.env.DYNAMODB_ENDPOINT = 'https://dynamodb.eu-west-2.amazonaws.com';
 
         expect(() => createDynamoDBClient()).toThrow(
-            'Local DynamoDB must use http://localhost:8000 or http://127.0.0.1:8000.'
+            'Local DynamoDB must use http://localhost:8000 or http://127.0.0.1:8000.',
         );
     });
 
@@ -75,7 +77,7 @@ describe('DynamoDB client local endpoint guard', () => {
         process.env.DYNAMODB_ENDPOINT = 'https://dynamodb.eu-west-2.amazonaws.com';
 
         expect(() => createDynamoDBClient()).toThrow(
-            'DYNAMODB_ENDPOINT is only supported for LOCAL_API_DATABASE=local.'
+            'DYNAMODB_ENDPOINT is only supported for LOCAL_API_DATABASE=local.',
         );
     });
 });

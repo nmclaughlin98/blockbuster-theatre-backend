@@ -5,18 +5,8 @@ import {
     UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../../main/lambda/handlers/Shared/dynamodb-client';
-import type {
-    ProcessResult,
-    TmdbMovieResponse,
-} from '../../main/lambda/lib/interfaces';
-import {
-    intEnv,
-    json,
-    log,
-    mapWithConcurrency,
-    normalizeMovieIds,
-    sleep,
-} from '../../main/lambda/handlers/utils/common';
+import type { ProcessResult, TmdbMovieResponse } from '../../main/lambda/lib/interfaces';
+import { intEnv, json, log, mapWithConcurrency, normalizeMovieIds, sleep } from '../../main/lambda/handlers/utils/common';
 import { projectTmdb } from '../../main/lambda/handlers/utils/movie-projection';
 import { isMovieRecord, isTmdbMovieResponse } from '../../main/lambda/handlers/utils/movie-validation';
 
@@ -46,6 +36,7 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
     const params = new URLSearchParams({
         append_to_response: 'credits,videos,release_dates',
     });
+
     const url = `https://api.themoviedb.org/3/movie/${id}?${params}`;
     let lastError: Error | undefined;
 
@@ -76,15 +67,16 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
             if (res.status === 429 || res.status >= 500) {
                 const retryAfterHeader = res.headers.get('retry-after');
                 const retryAfter = Number(retryAfterHeader);
-                const delay = retryAfterHeader && Number.isFinite(retryAfter)
-                    ? retryAfter * 1000
-                    : 200 * 2 ** attempt;
+                const delay =
+                    retryAfterHeader && Number.isFinite(retryAfter) ? retryAfter * 1000 : 200 * 2 ** attempt;
+
                 log('WARN', 'TMDB request failed, retrying', {
                     id,
                     attempt: attempt + 1,
                     status: res.status,
                     delayMs: delay,
                 });
+
                 await sleep(delay);
                 lastError = new Error(`TMDB ${res.status}`);
                 continue;
@@ -96,9 +88,11 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
             }
 
             const body: unknown = await res.json();
+
             if (!isTmdbMovieResponse(body)) {
                 throw new Error('TMDB returned an invalid movie response');
             }
+
             return body;
         } catch (err: unknown) {
             if (err instanceof Error && err.name === 'AbortError') {
@@ -107,9 +101,11 @@ async function fetchTmdbMovie(id: string): Promise<TmdbMovieResponse> {
                     attempt: attempt + 1,
                     timeoutMs: TMDB_TIMEOUT_MS,
                 });
+
                 lastError = new Error('TMDB request timed out');
                 continue;
             }
+
             throw err;
         } finally {
             clearTimeout(timer);
@@ -133,7 +129,7 @@ async function upsertMovie(
         startDate?: string;
         runEndDate?: string;
         preSalesEligible?: boolean;
-    }
+    },
 ) {
     log('INFO', 'Upserting movie into DynamoDB', { id, title: movieData.title });
 
@@ -142,17 +138,18 @@ async function upsertMovie(
             TableName: TABLE_NAME,
             Key: { movieId: id },
             ConsistentRead: true,
-        })
+        }),
     );
     const existingItem = existingResult.Item;
     if (existingItem && !isMovieRecord(existingItem)) {
         throw new Error('DynamoDB returned an invalid movie record.');
     }
+
     const existing = existingItem;
     const startDate = scheduling.startDate ?? existing?.startDate ?? movieData.startDate;
     const runEndDate = scheduling.runEndDate ?? existing?.runEndDate;
-    const preSalesEligible =
-        scheduling.preSalesEligible ?? existing?.preSalesEligible ?? false;
+    const preSalesEligible = scheduling.preSalesEligible ?? existing?.preSalesEligible ?? false;
+
     if (runEndDate !== undefined && runEndDate < startDate) {
         throw new Error('runEndDate must be on or after startDate.');
     }
@@ -160,6 +157,7 @@ async function upsertMovie(
     const comingSoonUpdate = setComingSoon
         ? 'isComingSoon = :isComingSoon,'
         : 'isComingSoon = if_not_exists(isComingSoon, :isComingSoon),';
+
     const updateInput = {
         TableName: TABLE_NAME,
         Key: { movieId: id },
@@ -223,13 +221,59 @@ async function upsertMovie(
             ...(runEndDate !== undefined && { ':runEndDate': runEndDate }),
         },
     };
+
+    if (existing && existing.slug !== movieData.slug) {
+        const { movieId, ...movieAttributes } = movieData;
+        const movedRecord: Record<string, unknown> = {
+            ...existing,
+            ...movieAttributes,
+            startDate,
+            ...(runEndDate !== undefined && { runEndDate }),
+            preSalesEligible,
+            tmdbId: String(movieId),
+            entityType: 'Movie',
+            lastUpdated: new Date().toISOString(),
+            GSI1PK: 'MOVIE',
+            GSI1SK: `${movieData.releaseDate || '0000-00-00'}#${id}`,
+            isComingSoon: setComingSoon
+                ? movieData.isComingSoon
+                : (existing.isComingSoon ?? movieData.isComingSoon),
+            isCarousel: existing.isCarousel ?? false,
+        };
+
+        delete movedRecord.collectionId;
+        delete movedRecord.GSI2PK;
+        delete movedRecord.GSI2SK;
+        delete movedRecord.showtimes;
+        await docClient.send(
+            new TransactWriteCommand({
+                TransactItems: [
+                    {
+                        Delete: {
+                            TableName: TABLE_NAME,
+                            Key: { tmdbId: id, slug: existing.slug },
+                            ConditionExpression: 'attribute_exists(tmdbId)',
+                        },
+                    },
+                    {
+                        Put: {
+                            TableName: TABLE_NAME,
+                            Item: movedRecord,
+                            ConditionExpression: 'attribute_not_exists(tmdbId)',
+                        },
+                    },
+                ],
+            }),
+        );
+
+        return;
+    }
+
     await docClient.send(
         new UpdateCommand({
             ...updateInput,
-            ConditionExpression: existing
-                ? 'attribute_exists(movieId)'
-                : 'attribute_not_exists(movieId)',
-        })
+            ConditionExpression: existing ? 'attribute_exists(movieId)' : 'attribute_not_exists(movieId)',
+        }),
     );
 }
 
@@ -238,9 +282,7 @@ async function upsertMovie(
  * @param event API Gateway request containing movie IDs and an optional coming-soon flag.
  * @returns Batch results or an API error response.
  */
-export const handler = async (
-    event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
 
     try {
@@ -248,24 +290,29 @@ export const handler = async (
 
         if (!TABLE_NAME) {
             log('ERROR', 'TABLE_NAME is not configured', { requestId });
+
             return json(500, { message: 'TABLE_NAME is not configured.' });
         }
 
         if (!TMDB_TOKEN) {
             log('ERROR', 'TMDB_API_KEY is not configured', { requestId });
+
             return json(500, { message: 'TMDB_API_KEY is not configured.' });
         }
 
         if (!event.body) {
             log('WARN', 'Request rejected: missing body', { requestId });
+
             return json(400, { message: 'Missing request body.' });
         }
 
         let parsed: unknown;
+
         try {
             parsed = JSON.parse(event.body);
         } catch {
             log('WARN', 'Request rejected: invalid JSON body', { requestId });
+
             return json(400, { message: 'Request body is not valid JSON.' });
         }
 
@@ -278,33 +325,37 @@ export const handler = async (
 
         if (isComingSoon !== undefined && typeof isComingSoon !== 'boolean') {
             log('WARN', 'Request rejected: isComingSoon must be a boolean', { requestId });
+
             return json(400, { message: 'isComingSoon must be a boolean.' });
         }
+
         const validDate = (value: unknown): value is string => {
             if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
             const parsedDate = new Date(`${value}T00:00:00.000Z`);
-            return !Number.isNaN(parsedDate.getTime())
-                && parsedDate.toISOString().slice(0, 10) === value;
+
+            return !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === value;
         };
+
         if (startDate !== undefined && !validDate(startDate)) {
             return json(400, { message: 'startDate must be a valid YYYY-MM-DD date.' });
         }
+
         if (runEndDate !== undefined && !validDate(runEndDate)) {
             return json(400, { message: 'runEndDate must be a valid YYYY-MM-DD date.' });
         }
+
         if (preSalesEligible !== undefined && typeof preSalesEligible !== 'boolean') {
             return json(400, { message: 'preSalesEligible must be a boolean.' });
         }
-        if (
-            typeof startDate === 'string'
-            && typeof runEndDate === 'string'
-            && runEndDate < startDate
-        ) {
+
+        if (typeof startDate === 'string' && typeof runEndDate === 'string' && runEndDate < startDate) {
             return json(400, { message: 'runEndDate must be on or after startDate.' });
         }
 
         if (!Array.isArray(movieIds) || movieIds.length === 0) {
             log('WARN', 'Request rejected: movieIds must be a non-empty array', { requestId });
+
             return json(400, { message: 'movieIds must be a non-empty array.' });
         }
 
@@ -314,14 +365,17 @@ export const handler = async (
                 requestedCount: movieIds.length,
                 maxBatch: MAX_BATCH,
             });
+
             return json(400, {
                 message: `movieIds cannot exceed ${MAX_BATCH} items per request.`,
             });
         }
 
         const { ids, invalid } = normalizeMovieIds(movieIds);
+
         if (invalid.length) {
             log('WARN', 'Request rejected: non-numeric movie IDs supplied', { requestId, invalid });
+
             return json(400, {
                 message: 'All movieIds must be numeric TMDB IDs.',
                 invalid,
@@ -335,33 +389,31 @@ export const handler = async (
             concurrency: CONCURRENCY,
         });
 
-        const results: ProcessResult[] = await mapWithConcurrency(
-            ids,
-            CONCURRENCY,
-            async (id) => {
-                try {
-                    const raw = await fetchTmdbMovie(id);
-                    const scheduling = {
-                        ...(typeof startDate === 'string' && { startDate }),
-                        ...(typeof runEndDate === 'string' && { runEndDate }),
-                        ...(typeof preSalesEligible === 'boolean' && { preSalesEligible }),
-                    };
-                    const movieData = projectTmdb(raw, isComingSoon, scheduling);
-                    await upsertMovie(id, movieData, isComingSoon !== undefined, scheduling);
-                    log('INFO', 'Movie processed successfully', {
-                        requestId,
-                        id,
-                        title: movieData.title,
-                    });
-                    return { id, status: 'SUCCESS', title: movieData.title };
-                } catch (err: unknown) {
-                    const message =
-                        err instanceof Error ? err.message : 'Failed to process movie ID';
-                    log('ERROR', 'Movie processing failed', { requestId, id, error: message });
-                    return { id, status: 'FAILED', error: message };
-                }
+        const results: ProcessResult[] = await mapWithConcurrency(ids, CONCURRENCY, async (id) => {
+            try {
+                const raw = await fetchTmdbMovie(id);
+                const scheduling = {
+                    ...(typeof startDate === 'string' && { startDate }),
+                    ...(typeof runEndDate === 'string' && { runEndDate }),
+                    ...(typeof preSalesEligible === 'boolean' && { preSalesEligible }),
+                };
+
+                const movieData = projectTmdb(raw, isComingSoon, scheduling);
+                await upsertMovie(id, movieData, isComingSoon !== undefined, scheduling);
+                log('INFO', 'Movie processed successfully', {
+                    requestId,
+                    id,
+                    title: movieData.title,
+                });
+
+                return { id, status: 'SUCCESS', title: movieData.title };
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'Failed to process movie ID';
+                log('ERROR', 'Movie processing failed', { requestId, id, error: message });
+
+                return { id, status: 'FAILED', error: message };
             }
-        );
+        });
 
         const successful = results.filter((result) => result.status === 'SUCCESS');
         const failed = results.filter((result) => result.status === 'FAILED');
@@ -390,6 +442,7 @@ export const handler = async (
             error: error instanceof Error ? error.message : 'Unknown error',
             stack: error instanceof Error ? error.stack : undefined,
         });
+
         return json(500, {
             message: 'Internal server error processing batch import.',
             error: error instanceof Error ? error.message : 'Unknown error',

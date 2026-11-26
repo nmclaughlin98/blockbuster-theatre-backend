@@ -13,9 +13,11 @@ process.env.BOOKINGS_TABLE_NAME = 'current-bookings';
 process.env.LEGACY_BOOKINGS_TABLE_NAME = 'legacy-bookings';
 
 const ddb = mockClient(DynamoDBDocumentClient);
-const { handler } = require('../../../handlers/bookings/list-booking-records') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
+let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+
+beforeAll(async () => {
+    ({ handler } = await import('../../../handlers/bookings/list-booking-records'));
+});
 
 function event(userId?: string): APIGatewayProxyEventV2 {
     return {
@@ -31,6 +33,7 @@ function event(userId?: string): APIGatewayProxyEventV2 {
 
 function body(result: APIGatewayProxyResultV2): Record<string, unknown> {
     if (typeof result === 'string') throw new Error('Expected structured response.');
+
     return JSON.parse(result.body as string) as Record<string, unknown>;
 }
 
@@ -51,6 +54,7 @@ const storedDetails = {
     totalAmount: 15.5,
     currency: 'GBP',
 };
+
 const returnedDetails = {
     guestName: 'Alex Smith',
     ticketCount: 1,
@@ -69,26 +73,43 @@ test('requires a verified account', async () => {
 test('queries the user index through all pages and returns only booking fields', async () => {
     ddb.on(QueryCommand, { TableName: 'current-bookings' })
         .resolvesOnce({
-            Items: [{ ...booking, ...storedDetails, customerEmail: 'private@example.com', conversionTokenHash: 'secret' }],
+            Items: [
+                {
+                    ...booking,
+                    ...storedDetails,
+                    customerEmail: 'private@example.com',
+                    conversionTokenHash: 'secret',
+                },
+            ],
             LastEvaluatedKey: { showtimeId: 'show1', seatId: 'BOOKING#1', userId: 'user-1', bookedAt: 'now' },
         })
         .resolvesOnce({ Items: [{ ...booking, ...storedDetails, bookingId: 'bk_2', totalAmount: 0 }] });
+
+    const { bookingRef: _bookingRef, movieId: _movieId, ...legacyBooking } = booking;
+    ddb.on(QueryCommand, { TableName: 'legacy-bookings' }).resolves({
+        Items: [{ ...legacyBooking, bookingId: 'bk_legacy' }],
+    });
+
     const result = await handler(event('user-1'));
     expect(typeof result === 'string' ? undefined : result.statusCode).toBe(200);
     expect(typeof result === 'string' ? undefined : result.headers?.['Cache-Control']).toBe('no-store');
     expect(body(result)).toEqual({ newlyLinkedBookings: [], bookings: [
         { ...booking, ...returnedDetails },
         { ...booking, ...returnedDetails, bookingId: 'bk_2', totalAmount: 0 },
-    ] });
+    ] ,
+    });
     const calls = ddb.commandCalls(QueryCommand);
     expect(calls).toHaveLength(2);
     for (const call of calls) {
-        expect(call.args[0].input).toEqual(expect.objectContaining({
-            IndexName: 'UserBookings',
-            ExpressionAttributeValues: { ':userId': 'user-1', ':booking': 'BOOKING' },
-            FilterExpression: 'recordType = :booking',
-        }));
+        expect(call.args[0].input).toEqual(
+            expect.objectContaining({
+                IndexName: 'UserBookings',
+                ExpressionAttributeValues: { ':userId': 'user-1', ':booking': 'BOOKING' },
+                FilterExpression: 'recordType = :booking',
+            }),
+        );
     }
+
     expect(calls[1].args[0].input.ExclusiveStartKey).toBeDefined();
 });
 
@@ -119,16 +140,20 @@ test.each([
 
 test('sums ticket quantities across tiers', async () => {
     ddb.on(QueryCommand, { TableName: 'current-bookings' }).resolves({
-        Items: [{
-            ...booking,
-            ...storedDetails,
-            seats: ['A1', 'A2', 'A3'],
-            tickets: [{ quantity: 2 }, { quantity: 1 }],
-        }],
+        Items: [
+            {
+                ...booking,
+                ...storedDetails,
+                seats: ['A1', 'A2', 'A3'],
+                tickets: [{ quantity: 2 }, { quantity: 1 }],
+            },
+        ],
     });
+
     ddb.on(QueryCommand, { TableName: 'legacy-bookings' }).resolves({ Items: [] });
     const result = await handler(event('user-1'));
-    expect(body(result)).toEqual({ newlyLinkedBookings: [], bookings: [
-        { ...booking, ...returnedDetails, seats: ['A1', 'A2', 'A3'], ticketCount: 3 },
-    ] });
+    expect(body(result)).toEqual({
+        newlyLinkedBookings: [],
+        bookings: [{ ...booking, ...returnedDetails, seats: ['A1', 'A2', 'A3'], ticketCount: 3 }],
+    });
 });

@@ -15,9 +15,11 @@ process.env.SHOWTIME_REGISTRY_TABLE_NAME = 'test-showtime-registry';
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const registry = new Map<string, Record<string, unknown>>();
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const { handler } = require('../../../handlers/movies/get-movie-record') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
+let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+
+beforeAll(async () => {
+    ({ handler } = await import('../../../handlers/movies/get-movie-record'));
+});
 
 const movieRecord = {
     tmdbId: '12345',
@@ -42,7 +44,9 @@ const movieRecord = {
 function upcomingDate(day: string): string {
     const value = new Date();
     value.setUTCDate(value.getUTCDate() + 8);
+
     while (DAYS[value.getUTCDay()] !== day) value.setUTCDate(value.getUTCDate() + 1);
+
     return value.toISOString().slice(0, 10);
 }
 
@@ -62,6 +66,7 @@ function seedShowtime(movieId: string, date: string, screen: string, time: strin
         source: 'GENERATED',
         status: 'ACTIVE',
     });
+
     return showtimeId;
 }
 
@@ -77,6 +82,7 @@ function responseBody(result: APIGatewayProxyResultV2): Record<string, unknown> 
     if (typeof result === 'string') {
         throw new Error('Expected a structured API Gateway response.');
     }
+
     return JSON.parse(result.body as string) as Record<string, unknown>;
 }
 
@@ -90,12 +96,14 @@ describe('Get movie Lambda handler', () => {
             if (input.IndexName === 'ShowtimesByDate') {
                 return {
                     Items: [...registry.values()].filter(
-                        (item) => item.GSI1PK === input.ExpressionAttributeValues?.[':dateKey']
+                        (item) => item.GSI1PK === input.ExpressionAttributeValues?.[':dateKey'],
                     ),
                 };
             }
+
             return { Items: [movieRecord] };
         });
+
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -107,8 +115,9 @@ describe('Get movie Lambda handler', () => {
 
     it('returns the detail projection for a movie ID', async () => {
         const [day, daySchedule] = Object.entries(
-            generateShowtimes(movieRecord.tmdbId, movieRecord.releaseDate, movieRecord.score)
+            generateShowtimes(movieRecord.tmdbId, movieRecord.releaseDate, movieRecord.score),
         )[0];
+
         const date = upcomingDate(day);
         const expectedShowtimes = daySchedule.map(({ screen, time }) => ({
             screen,
@@ -116,6 +125,7 @@ describe('Get movie Lambda handler', () => {
             date,
             showtimeId: seedShowtime(movieRecord.tmdbId, date, screen, time),
         }));
+
         const result = await handler(createEvent('12345', date));
 
         expect(result).toMatchObject({ statusCode: 200 });
@@ -139,20 +149,23 @@ describe('Get movie Lambda handler', () => {
             synopsis: 'A short description of the movie.',
             trailer: 'https://www.youtube-nocookie.com/embed/example',
         });
+
         expect(responseBody(result).showtimes).toEqual({ [day]: expectedShowtimes });
         expect(ddbMock.commandCalls(GetCommand)[0].args[0].input).toMatchObject({
             TableName: 'test-movies-table',
             Key: { movieId: '12345' },
             ConsistentRead: true,
         });
+
         expect(ddbMock.commandCalls(ScanCommand)).toHaveLength(0);
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     });
 
     it('returns date-specific stable showtime IDs with assigned screens', async () => {
         const [day, daySchedule] = Object.entries(
-            generateShowtimes(movieRecord.tmdbId, movieRecord.releaseDate, movieRecord.score)
+            generateShowtimes(movieRecord.tmdbId, movieRecord.releaseDate, movieRecord.score),
         )[0];
+
         const date = upcomingDate(day);
         const expectedShowtimes = daySchedule.map(({ screen, time }) => ({
             screen,
@@ -174,6 +187,7 @@ describe('Get movie Lambda handler', () => {
             string,
             Array<Record<string, unknown>>
         >;
+
         expect(secondSchedule[day][0].showtimeId).toBe(id);
     });
 
@@ -183,33 +197,27 @@ describe('Get movie Lambda handler', () => {
             tmdbId: '424694',
             title: 'Bohemian Rhapsody',
         };
+
         const [day, expected] = Object.entries(
-            generateShowtimes(movie.tmdbId, movie.releaseDate, movie.score)
+            generateShowtimes(movie.tmdbId, movie.releaseDate, movie.score),
         )[0];
+
         const date = upcomingDate(day);
-        const showtimeId = seedShowtime(
-            movie.tmdbId,
-            date,
-            expected[0].screen,
-            expected[0].time
-        );
+        const showtimeId = seedShowtime(movie.tmdbId, date, expected[0].screen, expected[0].time);
         ddbMock.on(GetCommand).resolves({ Item: movie });
-        ddbMock.on(QueryCommand).callsFake((input) => (
+        ddbMock.on(QueryCommand).callsFake((input) =>
             input.IndexName === 'ShowtimesByDate'
                 ? {
-                    Items: [...registry.values()].filter(
-                        (item) => item.GSI1PK === input.ExpressionAttributeValues?.[':dateKey']
-                    ),
-                }
-                : { Items: [movie] }
-        ));
+                      Items: [...registry.values()].filter(
+                          (item) => item.GSI1PK === input.ExpressionAttributeValues?.[':dateKey'],
+                      ),
+                  }
+                : { Items: [movie] },
+        );
 
         const result = await handler(createEvent('424694', date));
 
-        const showtimes = responseBody(result).showtimes as Record<
-            string,
-            Array<Record<string, unknown>>
-        >;
+        const showtimes = responseBody(result).showtimes as Record<string, Array<Record<string, unknown>>>;
         expect(showtimes[day][0]).toMatchObject({
             screen: expected[0].screen,
             time: expected[0].time,
@@ -234,6 +242,7 @@ describe('Get movie Lambda handler', () => {
         expect(responseBody(result)).toEqual({
             message: 'A numeric movie ID is required.',
         });
+
         expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
     });
 
@@ -244,6 +253,7 @@ describe('Get movie Lambda handler', () => {
         expect(responseBody(result)).toEqual({
             message: 'A numeric movie ID is required.',
         });
+
         expect(ddbMock.commandCalls(GetCommand)).toHaveLength(0);
     });
 

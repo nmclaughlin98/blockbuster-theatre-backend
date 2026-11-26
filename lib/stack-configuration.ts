@@ -31,31 +31,36 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
         cdk.Tags.of(this).add('Environment', envName);
 
         // 1. Instantiate DynamoDB
-        const database = new DatabaseConstruct(this, 'Database', envName);
+        const database = new DatabaseConstruct(this, 'MoviesDatabase', envName);
         const authentication = new AuthenticationConstruct(this, 'Authentication', {
             envName,
             prodUserPoolId,
             prodUserPoolClientId,
             prodPostmanClientId,
         });
-        const bookingEmailIdentity = ses.EmailIdentity.fromEmailIdentityName(
-            this,
-            'ImportedBookingEmailIdentity',
-            'niallmclaughlin1998@gmail.com'
-        );
+        const bookingEmailIdentity = envName === 'prod'
+            ? new ses.EmailIdentity(this, 'BookingEmailIdentity', {
+                identity: ses.Identity.email('niallmclaughlin1998@gmail.com'),
+            })
+            : ses.EmailIdentity.fromEmailIdentityName(
+                this,
+                'ImportedBookingEmailIdentity',
+                'niallmclaughlin1998@gmail.com'
+            );
 
         // 2. Instantiate Lambda & pass DB table
-        const lambdaServices = new LambdaConstruct(this, 'LambdaServices', {
+        const lambdaServices = new LambdaConstruct(this, 'BlockbusterTheatreMoviesLambda', {
             table: database.movieCatalogueTable,
             pricingTable: database.pricingTable,
             offersTable: database.offersTable,
             collectionsTable: database.collectionsTable,
             bookingsTable: database.bookingsTable,
+            legacyBookingsTable: database.legacyBookingsTable,
             showtimeRegistryTable: database.showtimeRegistryTable,
+            bookingReferencesTable: database.bookingReferencesTable,
             guestConversionTokensTable: database.guestConversionTokensTable,
             userPool: authentication.userPool,
             userPoolClient: authentication.userPoolClient,
-            postmanClientId: authentication.postmanClientId,
             bookingEmailIdentity,
             envName,
         });
@@ -65,7 +70,10 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             addMoviesFunction: lambdaServices.addMoviesFunction,
             updateMoviesFunction: lambdaServices.updateMoviesFunction,
             listMoviesFunction: lambdaServices.listMoviesFunction,
+            listFeaturedMoviesFunction: lambdaServices.listFeaturedMoviesFunction,
             getMovieFunction: lambdaServices.getMovieFunction,
+            exportMoviesFunction: lambdaServices.exportMoviesFunction,
+            listTmdbIdsFunction: lambdaServices.listTmdbIdsFunction,
             listFilmSelectionsFunction: lambdaServices.listFilmSelectionsFunction,
             getTicketPricingFunction: lambdaServices.getTicketPricingFunction,
             validateCheckoutFunction: lambdaServices.validateCheckoutFunction,
@@ -77,11 +85,10 @@ export class BlockbusterTheatreBackendStack extends cdk.Stack {
             refreshMovieCollectionFunction: lambdaServices.refreshMovieCollectionFunction,
             listBookingsFunction: lambdaServices.listBookingsFunction,
             createBookingFunction: lambdaServices.createBookingFunction,
-            getBookingFunction: lambdaServices.getBookingFunction,
             rescheduleBookingFunction: lambdaServices.rescheduleBookingFunction,
-            createShowtimeFunction: lambdaServices.createShowtimeFunction,
-            updateShowtimeFunction: lambdaServices.updateShowtimeFunction,
-            cancelShowtimeFunction: lambdaServices.cancelShowtimeFunction,
+            manageShowtimesFunction: lambdaServices.manageShowtimesFunction,
+            guestBookedSeatsFunction: lambdaServices.guestBookedSeatsFunction,
+            guestBookingFunction: lambdaServices.guestBookingFunction,
             guestConversionFunction: lambdaServices.guestConversionFunction,
             downloadTicketFunction: lambdaServices.downloadTicketFunction,
             jwtAuthorizer: authentication.jwtAuthorizer,

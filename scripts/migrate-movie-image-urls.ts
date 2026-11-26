@@ -16,7 +16,9 @@ interface MigrationReport {
 
 function requiredEnvironmentValue(name: string): string {
     const value = process.env[name]?.trim();
+
     if (!value) throw new Error(`${name} must be set.`);
+
     return value;
 }
 
@@ -24,12 +26,8 @@ export async function migrateMovieImageUrls(
     client: DynamoDBDocumentClient,
     tableName: string,
     apply: boolean,
-    reportChange: (tmdbId: string, fields: ImageField[]) => void = (
-        tmdbId,
-        fields
-    ) => console.log(
-        `${apply ? 'Updating' : 'Would update'} movie ${tmdbId}: ${fields.join(', ')}`
-    )
+    reportChange: (tmdbId: string, fields: ImageField[]) => void = (tmdbId, fields) =>
+        console.log(`${apply ? 'Updating' : 'Would update'} movie ${tmdbId}: ${fields.join(', ')}`),
 ): Promise<MigrationReport> {
     let exclusiveStartKey: Record<string, NativeAttributeValue> | undefined;
     let recordsScanned = 0;
@@ -46,27 +44,32 @@ export async function migrateMovieImageUrls(
                     '#still': 'still',
                 },
                 ExclusiveStartKey: exclusiveStartKey,
-            })
+            }),
         );
 
         for (const item of page.Items ?? []) {
             recordsScanned++;
+
             if (typeof item.movieId !== 'string') {
                 throw new Error('The movie table contains a record without valid key attributes.');
             }
 
             const changes: Partial<Record<ImageField, string>> = {};
             const changedFields: ImageField[] = [];
+
             for (const field of ['poster', 'still'] as const) {
                 const current = item[field];
+
                 if (typeof current !== 'string') continue;
 
                 const updated = originalTmdbImageUrl(current);
+
                 if (updated !== current) {
                     changes[field] = updated;
                     changedFields.push(field);
                 }
             }
+
             if (Object.keys(changes).length === 0) continue;
 
             recordsChanged++;
@@ -82,6 +85,7 @@ export async function migrateMovieImageUrls(
                 const placeholder = `:value${index}`;
                 expressionAttributeNames[name] = field;
                 expressionAttributeValues[placeholder] = value;
+
                 return `${name} = ${placeholder}`;
             });
 
@@ -92,7 +96,7 @@ export async function migrateMovieImageUrls(
                     UpdateExpression: `SET ${assignments.join(', ')}`,
                     ExpressionAttributeNames: expressionAttributeNames,
                     ExpressionAttributeValues: expressionAttributeValues,
-                })
+                }),
             );
         }
 
@@ -104,6 +108,7 @@ export async function migrateMovieImageUrls(
 
 async function main(): Promise<void> {
     const args = process.argv.slice(2);
+
     if (args.some((argument) => argument !== '--apply')) {
         throw new Error('The only supported argument is --apply.');
     }
@@ -113,12 +118,8 @@ async function main(): Promise<void> {
     const client = DynamoDBDocumentClient.from(createDynamoDBClient());
     const report = await migrateMovieImageUrls(client, tableName, apply);
 
-    console.log(
-        `Scanned ${report.recordsScanned} movie records; ${report.recordsChanged} need URL updates.`
-    );
-    console.log(apply
-        ? 'Updates applied.'
-        : 'Dry run only; rerun with --apply to write updates.');
+    console.log(`Scanned ${report.recordsScanned} movie records; ${report.recordsChanged} need URL updates.`);
+    console.log(apply ? 'Updates applied.' : 'Dry run only; rerun with --apply to write updates.');
 }
 
 if (require.main === module) {

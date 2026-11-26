@@ -1,40 +1,44 @@
 name: 2. Deploy Stack 🚀
-run-name: "🚀 Deploy Stack (${{ inputs.target_env != 'auto' && inputs.target_env || inputs.environment || (github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch == 'dev' && 'dev' || github.ref == 'refs/heads/main' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
+
+run-name: "🚀 Deploy ${{ inputs.target_stack || 'backend' }} (${{ inputs.target_env || (github.event_name == 'workflow_run' && 'prod' || 'dev') }}; Build #${{ github.event.workflow_run.run_number || inputs.build_number || 'latest' }})"
 
 on:
-  workflow_run:
-    workflows:
-      - 1. Build and Package 🔨
-    types:
-      - completed
-    branches:
-      - main
-      - dev
-  workflow_dispatch:
-    inputs:
-      target_env:
-        description: 'Environment to deploy (auto selects prod for main, otherwise dev)'
-        required: true
-        type: choice
-        default: auto
-        options:
-          - auto
-          - dev
-          - prod
-      environment:
-        description: 'Legacy environment input (leave empty when using target_env)'
-        required: false
-        type: string
-      build_number:
-        description: 'Build number to deploy (latest uses the selected branch when overriding)'
-        required: false
-        default: 'latest'
-        type: string
-      allow_non_main_prod:
-        description: 'Allow production deployments from non-main branches'
-        required: true
-        default: false
-        type: boolean
+    workflow_run:
+        workflows:
+            - '1. Build and Package 🔨'
+        types:
+            - completed
+        branches:
+            - main
+    workflow_dispatch:
+        inputs:
+            target_stack:
+                description: 'Target stack to deploy'
+                required: true
+                default: 'backend'
+                type: choice
+                options:
+                    - backend
+                    - auth
+                    - both
+            target_env:
+                description: 'Target environment'
+                required: true
+                default: 'dev'
+                type: choice
+                options:
+                    - dev
+                    - prod
+            build_number:
+                description: 'Build run number (or "latest")'
+                required: true
+                default: 'latest'
+                type: string
+
+permissions:
+    id-token: write
+    contents: read
+    actions: write
 
 jobs:
   prepare:
@@ -221,7 +225,7 @@ jobs:
               .filter(([, artifact]) => artifact.type === "aws:cloudformation:stack")
               .map(([name]) => name);
             const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
-              ? "BlockbusterTheatreBackendStack-DEV" : "BlockbusterTheatreBackendStack-PROD";
+              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
             if (stacks.length !== 1 || stacks[0] !== expected) {
               console.error(`Expected only ${expected}; synthesized: ${stacks.join(", ") || "no stacks"}`);
               process.exit(1);
@@ -238,6 +242,7 @@ jobs:
           retention-days: 1
 
   deploy:
+    needs: prepare
     runs-on: ubuntu-latest
     environment:
       name: ${{ needs.prepare.outputs.deploy_environment }}
@@ -252,23 +257,14 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Setup Node.js
-        id: setup_node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
+            - name: Setup Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+                  cache: npm
 
-      - name: Install Dependencies
-        id: install_dependencies
-        run: npm ci --include=dev
-
-      - name: Download Deployment Assembly
-        id: download_assembly
-        uses: actions/download-artifact@v8
-        with:
-          name: deployment-assembly
-          path: cdk-out
+            - name: Install dependencies
+              run: npm ci
 
       - name: Validate Deployment Assembly
         id: validate_assembly
@@ -280,7 +276,7 @@ jobs:
             const path = require("path");
             const root = path.resolve("cdk-out");
             const expected = process.env.DEPLOY_ENVIRONMENT === "dev"
-              ? "BlockbusterTheatreBackendStack-DEV" : "BlockbusterTheatreBackendStack-PROD";
+              ? "BlockbusterTheatreBackendStack-dev" : "BlockbusterTheatreBackendStack";
             const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json")));
             const artifacts = manifest.artifacts;
             const allowed = new Set(["aws:cloudformation:stack", "cdk:asset-manifest", "cdk:tree", "cdk:feature-flag-report"]);
@@ -291,7 +287,7 @@ jobs:
             const template = JSON.parse(fs.readFileSync(path.join(root, `${expected}.template.json`)));
             if (template.Parameters?.TmdbApiKey?.NoEcho !== true) throw new Error("Missing masked TMDB key parameter");
             const suffix = process.env.DEPLOY_ENVIRONMENT === "dev" ? "-DEV" : "-PROD";
-            for (const name of ["blockbuster-theatre-add-movie-to-db", "blockbuster-theatre-refresh-collection-records"]) {
+            for (const name of ["blockbuster-theatre-add-movies-handler", "blockbuster-theatre-refresh-movie-collection-handler"]) {
               const matches = Object.values(template.Resources || {}).filter(r =>
                 r.Type === "AWS::Lambda::Function" && r.Properties?.FunctionName === `${name}${suffix}`);
               if (matches.length !== 1 || matches[0].Properties.Environment?.Variables?.TMDB_API_KEY?.Ref !== "TmdbApiKey") {
@@ -331,8 +327,6 @@ jobs:
           CDK_DEFAULT_REGION: 'eu-west-2'
           DEPLOY_ENVIRONMENT: ${{ needs.prepare.outputs.deploy_environment }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          PROD_USER_POOL_ID: ${{ vars.PROD_USER_POOL_ID }}
-          PROD_USER_POOL_CLIENT_ID: ${{ vars.PROD_USER_POOL_CLIENT_ID }}
           PROD_POSTMAN_CLIENT_ID: ${{ vars.PROD_POSTMAN_CLIENT_ID }}
         run: |
           if [[ ! "$TMDB_API_KEY" =~ [^[:space:]] ]]; then
@@ -340,33 +334,50 @@ jobs:
             exit 1
           fi
           PARAMETERS=(--parameters "TmdbApiKey=${TMDB_API_KEY}")
-          case "$DEPLOY_ENVIRONMENT" in
-            prod) STACK=BlockbusterTheatreBackendStack-PROD ;;
-            dev) STACK=BlockbusterTheatreBackendStack-DEV ;;
-            *) echo "Error: Invalid deployment environment."; exit 1 ;;
-          esac
-          REQUIRED_PARAMETERS=$(node -e '
-            const template = require(`./cdk-out/${process.argv[1]}.template.json`);
-            for (const name of ["ProdUserPoolId", "ProdUserPoolClientId", "ProdPostmanClientId"]) {
-              if (template.Parameters?.[name]) console.log(name);
-            }
-          ' "$STACK")
-          while IFS= read -r PARAMETER; do
-            [ -n "$PARAMETER" ] || continue
-            case "$PARAMETER" in
-              ProdUserPoolId) VARIABLE=PROD_USER_POOL_ID ;;
-              ProdUserPoolClientId) VARIABLE=PROD_USER_POOL_CLIENT_ID ;;
-              ProdPostmanClientId) VARIABLE=PROD_POSTMAN_CLIENT_ID ;;
-              *) echo "Error: Unexpected Cognito parameter."; exit 1 ;;
-            esac
-            VALUE="${!VARIABLE:-}"
-            if [[ ! "$VALUE" =~ [^[:space:]] ]]; then
-              echo "Error: $VARIABLE must be configured as a non-empty GitHub Environment variable."
-              exit 1
+          if [ "$DEPLOY_ENVIRONMENT" = "dev" ]; then
+            POSTMAN_PARAMETER_REQUIRED=$(node -e '
+              const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
+              if (template.Parameters?.ProdPostmanClientId) console.log("true");
+            ')
+            if [ "$POSTMAN_PARAMETER_REQUIRED" = "true" ]; then
+              if [[ ! "$PROD_POSTMAN_CLIENT_ID" =~ [^[:space:]] ]]; then
+                echo "Error: PROD_POSTMAN_CLIENT_ID must be configured as a non-empty dev GitHub Environment variable."
+                exit 1
+              fi
+              PARAMETERS+=(--parameters "ProdPostmanClientId=${PROD_POSTMAN_CLIENT_ID}")
             fi
-            PARAMETERS+=(--parameters "${PARAMETER}=${VALUE}")
-          done <<< "$REQUIRED_PARAMETERS"
-          npx cdk deploy "$STACK" --app cdk-out --require-approval never "${PARAMETERS[@]}"
+            REQUIRED_PARAMETERS=$(node -e '
+              const template = require("./cdk-out/BlockbusterTheatreBackendStack-dev.template.json");
+              for (const name of ["ProdUserPoolId", "ProdUserPoolClientId"]) {
+                if (template.Parameters?.[name]) console.log(name);
+              }
+            ')
+            if [ -n "$REQUIRED_PARAMETERS" ]; then
+              OUTPUTS=$(
+                CREDENTIALS=$(aws sts assume-role \
+                  --role-arn "arn:aws:iam::${CDK_DEFAULT_ACCOUNT}:role/cdk-hnb659fds-deploy-role-${CDK_DEFAULT_ACCOUNT}-${CDK_DEFAULT_REGION}" \
+                  --role-session-name github-actions-cognito-lookup --output json) || exit 1
+                AWS_ACCESS_KEY_ID=$(jq -er '.Credentials.AccessKeyId | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
+                AWS_SECRET_ACCESS_KEY=$(jq -er '.Credentials.SecretAccessKey | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
+                AWS_SESSION_TOKEN=$(jq -er '.Credentials.SessionToken | strings | select(length > 0)' <<< "$CREDENTIALS") || exit 1
+                export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+                aws cloudformation describe-stacks --stack-name BlockbusterTheatreBackendStack --output json
+              )
+              while IFS= read -r PARAMETER; do
+                case "$PARAMETER" in
+                  ProdUserPoolId) OUTPUT_KEY=UserPoolId ;;
+                  ProdUserPoolClientId) OUTPUT_KEY=UserPoolClientId ;;
+                esac
+                VALUE=$(jq -er --arg key "$OUTPUT_KEY" \
+                  '.Stacks[0].Outputs[] | select(.OutputKey == $key) | .OutputValue | strings | select(length > 0)' <<< "$OUTPUTS") || {
+                  echo "Error: Production stack output $OUTPUT_KEY is missing."
+                  exit 1
+                }
+                PARAMETERS+=(--parameters "${PARAMETER}=${VALUE}")
+              done <<< "$REQUIRED_PARAMETERS"
+            fi
+          fi
+          npx cdk deploy --app cdk-out --require-approval never "${PARAMETERS[@]}"
 
       - name: Write Deploy Summary
         if: always()

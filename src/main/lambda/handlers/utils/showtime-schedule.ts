@@ -1,17 +1,6 @@
-import type {
-    MovieShowtimes,
-    ScreenedShowtime,
-} from '../../lib/interfaces';
+import type { MovieShowtimes, ScreenedShowtime } from '../../lib/interfaces';
 
-const DAYS_OF_WEEK = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
-] as const;
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
 const POSSIBLE_TIMES = [
     '11:30',
@@ -33,14 +22,13 @@ export const MAX_SCREENINGS_PER_MOVIE_PER_DAY = 4;
 export const TURNAROUND_BUFFER_MINUTES = 45;
 export const SCHEDULE_EXTENSION_DAYS = 5;
 
-export function randomScreenForShowtime(
-    seed: string
-): ScreenedShowtime['screen'] {
+export function randomScreenForShowtime(seed: string): ScreenedShowtime['screen'] {
     return SCREENS[Math.floor(createRandom(seed)() * SCREENS.length)];
 }
 
 function createRandom(seed: string): () => number {
     let state = 2166136261;
+
     for (const character of seed) {
         state = Math.imul(state ^ character.charCodeAt(0), 16777619);
     }
@@ -50,13 +38,16 @@ function createRandom(seed: string): () => number {
         let value = state;
         value = Math.imul(value ^ (value >>> 15), value | 1);
         value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+
         return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
     };
 }
 
 function isOlderThanOneYear(releaseDate: string, currentDate: Date): boolean {
     if (!releaseDate) return false;
+
     const parsedReleaseDate = new Date(releaseDate);
+
     if (Number.isNaN(parsedReleaseDate.getTime())) {
         throw new Error(`Invalid movie release date: ${releaseDate}`);
     }
@@ -64,11 +55,13 @@ function isOlderThanOneYear(releaseDate: string, currentDate: Date): boolean {
     const releaseDay = Date.UTC(
         parsedReleaseDate.getUTCFullYear(),
         parsedReleaseDate.getUTCMonth(),
-        parsedReleaseDate.getUTCDate()
+        parsedReleaseDate.getUTCDate(),
     );
+
     const oneYearAgo = new Date(currentDate);
     oneYearAgo.setUTCHours(0, 0, 0, 0);
     oneYearAgo.setUTCFullYear(oneYearAgo.getUTCFullYear() - 1);
+
     return releaseDay < oneYearAgo.getTime();
 }
 
@@ -76,14 +69,13 @@ export function generateShowtimes(
     movieId: string,
     releaseDate: string,
     score: number,
-    currentDate: Date = new Date()
+    currentDate: Date = new Date(),
 ): MovieShowtimes {
     if (!Number.isFinite(score)) {
         throw new Error(`Movie ${movieId} has an invalid score.`);
     }
 
-    const lowerPriority =
-        isOlderThanOneYear(releaseDate, currentDate) || score < 5;
+    const lowerPriority = isOlderThanOneYear(releaseDate, currentDate) || score < 5;
     const showDayChance = lowerPriority ? 0.6 : 0.85;
     const schedule: MovieShowtimes = {};
 
@@ -92,6 +84,7 @@ export function generateShowtimes(
 
         const random = createRandom(`${movieId}:times:${day}`);
         const shuffledTimes = [...POSSIBLE_TIMES];
+
         for (let index = shuffledTimes.length - 1; index > 0; index--) {
             const swapIndex = Math.floor(random() * (index + 1));
             [shuffledTimes[index], shuffledTimes[swapIndex]] = [
@@ -103,15 +96,14 @@ export function generateShowtimes(
         const numberOfShowings = lowerPriority
             ? Math.floor(random() * 2) + 1
             : Math.min(MAX_SCREENINGS_PER_MOVIE_PER_DAY, Math.floor(random() * 3) + 2);
+
         schedule[day] = shuffledTimes
             .slice(0, numberOfShowings)
             .sort((first, second) => first.localeCompare(second))
             .map((time, index): ScreenedShowtime => ({
-                    screen: randomScreenForShowtime(
-                        `${movieId}:screens:${day}:${index}`
-                    ),
-                    time,
-                }));
+                screen: randomScreenForShowtime(`${movieId}:screens:${day}:${index}`),
+                time,
+            }));
     }
 
     return schedule;

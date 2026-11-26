@@ -1,5 +1,10 @@
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
-import { DynamoDBDocumentClient, QueryCommand, UpdateCommand, type QueryCommandOutput } from '@aws-sdk/lib-dynamodb';
+import {
+    DynamoDBDocumentClient,
+    QueryCommand,
+    UpdateCommand,
+    type QueryCommandOutput,
+} from '@aws-sdk/lib-dynamodb';
 import { createDynamoDBClient } from '../../main/lambda/handlers/Shared/dynamodb-client';
 import { log } from '../../main/lambda/handlers/utils/common';
 
@@ -23,8 +28,10 @@ export interface GuestLinkResult {
 
 function isLinkedBooking(item: Record<string, unknown>): item is LinkedBooking {
     const date = typeof item.date === 'string' ? new Date(`${item.date}T00:00:00Z`) : new Date(NaN);
-    return typeof item.bookingId === 'string' && item.bookingId.length > 0
-        && item.PK === `BOOKING#${item.bookingId}` && item.SK === 'METADATA'
+    return typeof item[partitionKey] === 'string'
+        && item[partitionKey].length > 0
+        && typeof item.bookingId === 'string' && item.bookingId.length > 0
+        && item.seatId === `BOOKING#${item.bookingId}`
         && typeof item.bookingRef === 'string' && item.bookingRef.length > 0
         && typeof item.movieId === 'string' && item.movieId.length > 0
         && typeof item.movieTitle === 'string' && item.movieTitle.length > 0
@@ -48,17 +55,19 @@ export function getShowtimeCutoff(now: Date): { date: string; time: string } {
         second: '2-digit',
         hourCycle: 'h23',
     }).formatToParts(now);
+
     const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-    const minute = Number(values.minute) + (
-        Number(values.second) > 0 || now.getMilliseconds() > 0 ? 1 : 0
+    const minute = Number(values.minute) + (Number(values.second) > 0 || now.getMilliseconds() > 0 ? 1 : 0);
+    const cutoff = new Date(
+        Date.UTC(
+            Number(values.year),
+            Number(values.month) - 1,
+            Number(values.day),
+            Number(values.hour),
+            minute,
+        ),
     );
-    const cutoff = new Date(Date.UTC(
-        Number(values.year),
-        Number(values.month) - 1,
-        Number(values.day),
-        Number(values.hour),
-        minute
-    ));
+
     return {
         date: cutoff.toISOString().slice(0, 10),
         time: cutoff.toISOString().slice(11, 16),
@@ -75,109 +84,134 @@ function showtimeGroupKey(item: LinkedBooking): string {
 
 export async function linkGuestBookings(userId: string, email: string): Promise<GuestLinkResult> {
     const tableName = process.env.BOOKINGS_TABLE_NAME;
+
     if (!tableName) throw new Error('Booking table is not configured.');
 
     const cutoff = getShowtimeCutoff(new Date());
-    const candidates: LinkedBooking[] = [];
-    for (const today of [false, true]) {
+    const candidates: Array<{ table: typeof tables[number]; item: LinkedBooking }> = [];
+    for (const table of tables) {
+        for (const today of [false, true]) {
             let exclusiveStartKey: Record<string, unknown> | undefined;
             do {
-                const page: QueryCommandOutput = await docClient.send(new QueryCommand({
-                    TableName: tableName,
-                    IndexName: 'CustomerEmailBookings',
-                    KeyConditionExpression: `customerEmail = :email AND screeningKey ${today ? 'BETWEEN :start AND :end' : '> :end'}`,
-                    FilterExpression: `recordType = :booking AND (attribute_not_exists(userId) OR userId = :null)${today ? ' AND #time >= :cutoffTime' : ''}`,
-                    ...(today && { ExpressionAttributeNames: { '#time': 'time' } }),
-                    ExpressionAttributeValues: {
+                const page: QueryCommandOutput = await docClient.send(
+                    new QueryCommand({
+                        TableName: tableName,
+                        IndexName: 'CustomerEmailBookings',
+                        KeyConditionExpression: `customerEmail = :email AND screeningKey ${today ? 'BETWEEN :start AND :end' : '> :end'}`,
+                        FilterExpression: `recordType = :booking AND (attribute_not_exists(userId) OR userId = :null)${today ? ' AND #time >= :cutoffTime' : ''}`,
+                        ...(today && { ExpressionAttributeNames: { '#time': 'time' } }),
+                        ExpressionAttributeValues: {
                         ':email': email,
                         ':booking': 'BOOKING',
                         ':null': null,
                         ':end': `${cutoff.date}T99`,
                         ...(today && { ':start': `${cutoff.date}T00` }),
-                        ...(today && { ':cutoffTime': cutoff.time }),
-                    },
-                    ExclusiveStartKey: exclusiveStartKey,
-                }));
+                            ...(today && { ':cutoffTime': cutoff.time }),
+                        },
+                        ExclusiveStartKey: exclusiveStartKey,
+                    }),
+                );
                 for (const item of page.Items ?? []) {
                     if (!isLinkedBooking(item)) {
                         throw new Error('Guest booking contains invalid linking details.');
                     }
+
                     if (!isUpcomingBooking(item, cutoff)) continue;
+
                     candidates.push(item);
                 }
+
                 exclusiveStartKey = page.LastEvaluatedKey;
             } while (exclusiveStartKey);
     }
 
     const linked: LinkedBooking[] = [];
     let notificationSent = true;
+
     try {
         for (const item of candidates) {
             try {
-                const result = await docClient.send(new UpdateCommand({
-                    TableName: tableName,
-                    Key: { PK: item.PK, SK: item.SK },
-                    UpdateExpression: 'SET userId = :userId, claimedAt = :claimedAt, claimMethod = :method REMOVE conversionTokenHash, guestAccessToken',
-                    ConditionExpression: 'recordType = :booking AND bookingId = :bookingId AND customerEmail = :email AND movieId = :movieId AND #date = :date AND #time = :time AND screen = :screen AND (attribute_not_exists(userId) OR userId = :null)',
-                    ExpressionAttributeNames: { '#date': 'date', '#time': 'time' },
-                    ExpressionAttributeValues: {
-                        ':userId': userId,
-                        ':claimedAt': new Date().toISOString(),
-                        ':method': 'AUTO_EMAIL_MATCH',
-                        ':booking': 'BOOKING',
-                        ':bookingId': item.bookingId,
-                        ':email': email,
-                        ':movieId': item.movieId,
-                        ':date': item.date,
-                        ':time': item.time,
-                        ':screen': item.screen,
-                        ':null': null,
-                    },
-                    ReturnValues: 'ALL_NEW',
-                }));
+                const result = await docClient.send(
+                    new UpdateCommand({
+                        TableName: tableName,
+                        Key: { PK: item.PK, SK: item.SK },
+                        UpdateExpression:
+                            'SET userId = :userId, claimedAt = :claimedAt, claimMethod = :method REMOVE conversionTokenHash, guestAccessToken',
+                        ConditionExpression:
+                            'recordType = :booking AND bookingId = :bookingId AND customerEmail = :email AND movieId = :movieId AND #date = :date AND #time = :time AND screen = :screen AND (attribute_not_exists(userId) OR userId = :null)',
+                        ExpressionAttributeNames: { '#date': 'date', '#time': 'time' },
+                        ExpressionAttributeValues: {
+                            ':userId': userId,
+                            ':claimedAt': new Date().toISOString(),
+                            ':method': 'AUTO_EMAIL_MATCH',
+                            ':booking': 'BOOKING',
+                            ':bookingId': item.bookingId,
+                            ':email': email,
+                            ':movieId': item.movieId,
+                            ':date': item.date,
+                            ':time': item.time,
+                            ':screen': item.screen,
+                            ':null': null,
+                        },
+                        ReturnValues: 'ALL_NEW',
+                    }),
+                );
                 if (
-                    !result.Attributes
-                    || !isLinkedBooking(result.Attributes)
-                    || !isUpcomingBooking(result.Attributes, cutoff)
-                    || showtimeGroupKey(result.Attributes) !== showtimeGroupKey(item)
+                    !result.Attributes ||
+                    !isLinkedBooking(result.Attributes) ||
+                    !isUpcomingBooking(result.Attributes, cutoff) ||
+                    showtimeGroupKey(result.Attributes) !== showtimeGroupKey(item)
                 ) {
                     throw new Error('Updated guest booking contains invalid linking details.');
                 }
+
                 linked.push(result.Attributes);
             } catch (error: unknown) {
-                if (!(error instanceof Error) || error.name !== 'ConditionalCheckFailedException') throw error;
+                if (!(error instanceof Error) || error.name !== 'ConditionalCheckFailedException')
+                    throw error;
             }
         }
     } finally {
         if (linked.length) {
             try {
                 const source = process.env.BOOKING_EMAIL_FROM;
+
                 if (!source) throw new Error('BOOKING_EMAIL_FROM is not configured.');
+
                 const groupedBookings = new Map<string, LinkedBooking[]>();
+
                 for (const booking of linked) {
                     const groupKey = showtimeGroupKey(booking);
-                    groupedBookings.set(groupKey, [
-                        ...(groupedBookings.get(groupKey) ?? []),
-                        booking,
-                    ]);
+                    groupedBookings.set(groupKey, [...(groupedBookings.get(groupKey) ?? []), booking]);
                 }
-                await sesClient.send(new SendEmailCommand({
-                    FromEmailAddress: source,
-                    Destination: { ToAddresses: [email] },
-                    Content: { Simple: {
-                        Subject: { Data: "We've linked your guest booking(s) to your Blockbuster Theatre account" },
-                        Body: { Text: { Data: [
-                            'Because you checked out using your account email address, these bookings have been automatically added to your account:',
-                            '',
-                            ...[...groupedBookings.values()].flatMap((bookings) => [
-                                `${bookings[0].movieTitle} - ${bookings[0].date} ${bookings[0].time}`,
-                                ...bookings.map((booking) => booking.bookingRef),
-                                '',
-                            ]),
-                            'Your previous guest conversion link has been disabled for security.',
-                        ].join('\n') } },
-                    } },
-                }));
+
+                await sesClient.send(
+                    new SendEmailCommand({
+                        FromEmailAddress: source,
+                        Destination: { ToAddresses: [email] },
+                        Content: {
+                            Simple: {
+                                Subject: {
+                                    Data: "We've linked your guest booking(s) to your Blockbuster Theatre account",
+                                },
+                                Body: {
+                                    Text: {
+                                        Data: [
+                                            'Because you checked out using your account email address, these bookings have been automatically added to your account:',
+                                            '',
+                                            ...[...groupedBookings.values()].flatMap((bookings) => [
+                                                `${bookings[0].movieTitle} - ${bookings[0].date} ${bookings[0].time}`,
+                                                ...bookings.map((booking) => booking.bookingRef),
+                                                '',
+                                            ]),
+                                            'Your previous guest conversion link has been disabled for security.',
+                                        ].join('\n'),
+                                    },
+                                },
+                            },
+                        },
+                    }),
+                );
             } catch (error: unknown) {
                 notificationSent = false;
                 log('ERROR', 'Guest bookings linked but notification email failed', {
@@ -187,5 +221,6 @@ export async function linkGuestBookings(userId: string, email: string): Promise<
             }
         }
     }
+
     return { bookings: linked, notificationSent };
 }

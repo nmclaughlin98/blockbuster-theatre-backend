@@ -1,10 +1,7 @@
 import type { MovieShowtimes } from './showtime';
 
 export type MovieLifecycleStatus =
-    | 'Now Showing'
-    | 'Coming Soon (Pre-Sales Open)'
-    | 'Coming Soon (No Showtimes Yet)'
-    | 'Ended';
+    'Now Showing' | 'Coming Soon (Pre-Sales Open)' | 'Coming Soon (No Showtimes Yet)' | 'Ended';
 
 export interface MovieSummary {
     slug: string;

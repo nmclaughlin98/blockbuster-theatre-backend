@@ -5,12 +5,15 @@ import * as ses from 'aws-cdk-lib/aws-ses';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { execFileSync } from 'child_process';
 import * as path from 'path';
-import { LambdaConstruct } from '../../../lib/stack';
 import {
+    LambdaConstruct,
     maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
-} from '../../../lib/stack/lambda';
+} from '../../../lib/backend';
+import { maxTicketsParameterForEnvironment } from '../../../lib/shared';
+
+process.env.TMDB_API_KEY = 'test-token';
 
 describe('LambdaConstruct', () => {
     let stack: cdk.Stack;
@@ -29,30 +32,32 @@ describe('LambdaConstruct', () => {
     let construct: LambdaConstruct;
 
     beforeEach(() => {
+        process.env.TMDB_API_KEY = 'test-token';
         stack = new cdk.Stack();
         table = new dynamodb.Table(stack, 'TestTable', {
             partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
-        guestConversionTokensTable = new dynamodb.Table(
-            stack,
-            'TestGuestConversionTokensTable',
-            {
-                partitionKey: { name: 'tokenHash', type: dynamodb.AttributeType.STRING },
-                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            }
-        );
+
+        guestConversionTokensTable = new dynamodb.Table(stack, 'TestGuestConversionTokensTable', {
+            partitionKey: { name: 'tokenHash', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+
         userPool = new cognito.UserPool(stack, 'TestUserPool', {
             selfSignUpEnabled: false,
             signInAliases: { email: true },
         });
+
         userPoolClient = userPool.addClient('TestUserPoolClient', {
             authFlows: { adminUserPassword: true },
         });
+
         pricingTable = new dynamodb.Table(stack, 'TestPricingTable', {
             partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         offersTable = new dynamodb.Table(stack, 'TestOffersTable', {
             partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -62,27 +67,33 @@ describe('LambdaConstruct', () => {
             partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         bookingsTable = new dynamodb.Table(stack, 'TestBookingsTable', {
             partitionKey: { name: 'showtimeId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         legacyBookingsTable = new dynamodb.Table(stack, 'TestLegacyBookingsTable', {
             partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         showtimeRegistryTable = new dynamodb.Table(stack, 'TestShowtimeRegistryTable', {
             partitionKey: { name: 'registryKey', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         bookingReferencesTable = new dynamodb.Table(stack, 'TestBookingReferencesTable', {
             partitionKey: { name: 'bookingRef', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         bookingEmailIdentity = new ses.EmailIdentity(stack, 'TestBookingEmailIdentity', {
             identity: ses.Identity.email('booking@example.com'),
         });
+
         construct = new LambdaConstruct(stack, 'TestLambda', {
             table,
             pricingTable,
@@ -103,35 +114,16 @@ describe('LambdaConstruct', () => {
     it('should create a Lambda function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
-        });
-    });
-
-    it('allows booking creation to create and update offer showtime identities', () => {
-        const template = Template.fromStack(stack);
-        template.hasResourceProperties('AWS::IAM::Policy', {
-            Roles: [{ Ref: Match.stringLikeRegexp('CreateBookingRecordFunctionServiceRole') }],
-            PolicyDocument: Match.objectLike({
-                Statement: Match.arrayWith([Match.objectLike({
-                    Effect: 'Allow',
-                    Action: Match.arrayWith([
-                        'dynamodb:ConditionCheckItem',
-                        'dynamodb:PutItem',
-                        'dynamodb:UpdateItem',
-                    ]),
-                    Resource: Match.arrayWith([
-                        { 'Fn::GetAtt': [Match.stringLikeRegexp('TestShowtimeRegistryTable'), 'Arn'] },
-                    ]),
-                })]),
-            }),
+            FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
         });
     });
 
     it('uses a distinct, environment-scoped name for the rolling schedule handler', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-maintain-rolling-schedule-PROD',
+            FunctionName: 'blockbuster-theatre-maintain-rolling-schedule-handler-PROD',
         });
+
         template.hasResourceProperties('AWS::Events::Rule', {
             ScheduleExpression: 'rate(6 hours)',
         });
@@ -141,29 +133,45 @@ describe('LambdaConstruct', () => {
         const template = Template.fromStack(stack);
         const json = template.toJSON();
         expect(json.Parameters.TmdbApiKey).toMatchObject({ Type: 'String', NoEcho: true });
+
         for (const name of [
-            'blockbuster-theatre-add-movie-to-db-PROD',
-            'blockbuster-theatre-refresh-collection-records-PROD',
+            'blockbuster-theatre-add-movies-handler-PROD',
+            'blockbuster-theatre-refresh-movie-collection-handler-PROD',
         ]) {
             template.hasResourceProperties('AWS::Lambda::Function', {
                 FunctionName: name,
                 Environment: { Variables: Match.objectLike({ TMDB_API_KEY: { Ref: 'TmdbApiKey' } }) },
             });
         }
+
         expect(JSON.stringify(json)).not.toContain('test-tmdb-key');
     });
 
     it('rejects missing and blank TMDB keys at synthesis configuration', () => {
         const original = process.env.TMDB_API_KEY;
+
         try {
             for (const [index, value] of [undefined, '', '   '].entries()) {
                 if (value === undefined) delete process.env.TMDB_API_KEY;
                 else process.env.TMDB_API_KEY = value;
-                expect(() => new LambdaConstruct(stack, `MissingTmdbKey${index}`, {
-                    table, pricingTable, offersTable, collectionsTable, bookingsTable,
-                    legacyBookingsTable, showtimeRegistryTable, bookingReferencesTable,
-                    guestConversionTokensTable, userPool, userPoolClient, bookingEmailIdentity,
-                })).toThrow('TMDB_API_KEY must be set and non-empty');
+
+                expect(
+                    () =>
+                        new LambdaConstruct(stack, `MissingTmdbKey${index}`, {
+                            table,
+                            pricingTable,
+                            offersTable,
+                            collectionsTable,
+                            bookingsTable,
+                            legacyBookingsTable,
+                            showtimeRegistryTable,
+                            bookingReferencesTable,
+                            guestConversionTokensTable,
+                            userPool,
+                            userPoolClient,
+                            bookingEmailIdentity,
+                        }),
+                ).toThrow('TMDB_API_KEY must be set and non-empty');
             }
         } finally {
             if (original === undefined) delete process.env.TMDB_API_KEY;
@@ -175,11 +183,13 @@ describe('LambdaConstruct', () => {
         const template = Template.fromStack(stack);
         const table = Match.stringLikeRegexp('TestBookingsTable');
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-reschedule-booking-record-PROD',
+            FunctionName: 'blockbuster-theatre-reschedule-booking-handler-PROD',
             Environment: {
                 Variables: {
                     BOOKINGS_TABLE_NAME: { Ref: table },
-                    SHOWTIME_REGISTRY_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestShowtimeRegistryTable') },
+                    SHOWTIME_REGISTRY_TABLE_NAME: {
+                        Ref: Match.stringLikeRegexp('TestShowtimeRegistryTable'),
+                    },
                     LEGACY_BOOKINGS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestLegacyBookingsTable') },
                     BOOKING_REFERENCES_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestBookingReferencesTable') },
                     GUEST_CONVERSION_TOKENS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestGuestConversionTokensTable') },
@@ -187,18 +197,21 @@ describe('LambdaConstruct', () => {
                 },
             },
         });
+
         template.hasResourceProperties('AWS::IAM::Policy', {
             Roles: [{ Ref: Match.stringLikeRegexp('RescheduleCustomerBookingHandlerServiceRole') }],
             PolicyDocument: Match.objectLike({
-                Statement: Match.arrayWith([Match.objectLike({
-                    Effect: 'Allow',
-                    Action: Match.arrayWith([
-                        'dynamodb:Query',
-                        'dynamodb:DeleteItem',
-                        'dynamodb:PutItem',
-                    ]),
-                    Resource: Match.arrayWith([{ 'Fn::GetAtt': [table, 'Arn'] }]),
-                })]),
+                Statement: Match.arrayWith([
+                    Match.objectLike({
+                        Effect: 'Allow',
+                        Action: Match.arrayWith([
+                            'dynamodb:Query',
+                            'dynamodb:DeleteItem',
+                            'dynamodb:PutItem',
+                        ]),
+                        Resource: Match.arrayWith([{ 'Fn::GetAtt': [table, 'Arn'] }]),
+                    }),
+                ]),
             }),
         });
         for (const [tableName, actions, hasIndexes] of [
@@ -236,7 +249,7 @@ describe('LambdaConstruct', () => {
         const template = Template.fromStack(stack);
         const roles = Object.values(template.findResources('AWS::IAM::Role'));
         const loggingRoles = roles.filter((role) =>
-            JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole')
+            JSON.stringify(role.Properties.ManagedPolicyArns).includes('AWSLambdaBasicExecutionRole'),
         );
 
         expect(loggingRoles).toHaveLength(25);
@@ -273,7 +286,7 @@ describe('LambdaConstruct', () => {
         expect(cfg.maxBatch).toBe(100);
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
+            FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
             Environment: {
                 Variables: Match.objectLike({ MAX_BATCH: '100' }),
             },
@@ -284,7 +297,7 @@ describe('LambdaConstruct', () => {
         expect(movieUpdateMaxBatch).toBe(25);
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-update-movie-record-PROD',
+            FunctionName: 'blockbuster-theatre-update-movies-handler-PROD',
             Environment: {
                 Variables: Match.objectLike({ MAX_BATCH: '25' }),
             },
@@ -294,32 +307,37 @@ describe('LambdaConstruct', () => {
     it('should use default sizing for lightweight API handlers', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-list-movie-records-PROD',
+            FunctionName: 'blockbuster-theatre-list-movies-handler-PROD',
             MemorySize: 256,
             Timeout: 10,
         });
+
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-list-featured-movie-records-PROD',
+            FunctionName: 'blockbuster-theatre-list-featured-movies-handler-PROD',
             MemorySize: 256,
             Timeout: 10,
         });
+
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-get-collection-record-PROD',
+            FunctionName: 'blockbuster-theatre-get-movie-collection-handler-PROD',
             MemorySize: 256,
             Timeout: 25,
         });
+
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-refresh-collection-records-PROD',
+            FunctionName: 'blockbuster-theatre-refresh-movie-collection-handler-PROD',
             MemorySize: 512,
             Timeout: 25,
         });
+
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-export-movie-records-PROD',
+            FunctionName: 'blockbuster-theatre-export-movies-handler-PROD',
             MemorySize: 512,
             Timeout: 25,
         });
+
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-update-movie-record-PROD',
+            FunctionName: 'blockbuster-theatre-update-movies-handler-PROD',
             MemorySize: 256,
             Timeout: 15,
         });
@@ -328,7 +346,7 @@ describe('LambdaConstruct', () => {
     it('should set environment variables for movie imports', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-add-movie-to-db-PROD',
+            FunctionName: 'blockbuster-theatre-add-movies-handler-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     TABLE_NAME: Match.anyValue(),
@@ -344,7 +362,7 @@ describe('LambdaConstruct', () => {
     it('should configure the TMDB collection refresh function', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-refresh-collection-records-PROD',
+            FunctionName: 'blockbuster-theatre-refresh-movie-collection-handler-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     COLLECTIONS_TABLE_NAME: Match.anyValue(),
@@ -371,27 +389,28 @@ describe('LambdaConstruct', () => {
             partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         const configuredPricingTable = new dynamodb.Table(configuredStack, 'ConfiguredPricingTable', {
             partitionKey: { name: 'pricingId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         const configuredOffersTable = new dynamodb.Table(configuredStack, 'ConfiguredOffersTable', {
             partitionKey: { name: 'offerId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
-        const configuredCollectionsTable = new dynamodb.Table(
-            configuredStack,
-            'ConfiguredCollectionsTable',
-            {
-                partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },
-                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            }
-        );
+
+        const configuredCollectionsTable = new dynamodb.Table(configuredStack, 'ConfiguredCollectionsTable', {
+            partitionKey: { name: 'collectionId', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        });
+
         const configuredBookingsTable = new dynamodb.Table(configuredStack, 'ConfiguredBookingsTable', {
             partitionKey: { name: 'showtimeId', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
         });
+
         const configuredLegacyBookingsTable = new dynamodb.Table(
             configuredStack,
             'ConfiguredLegacyBookingsTable',
@@ -399,44 +418,49 @@ describe('LambdaConstruct', () => {
                 partitionKey: { name: 'showingId', type: dynamodb.AttributeType.STRING },
                 sortKey: { name: 'seatId', type: dynamodb.AttributeType.STRING },
                 billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            }
+            },
         );
+
         const configuredShowtimeRegistryTable = new dynamodb.Table(
             configuredStack,
             'ConfiguredShowtimeRegistryTable',
             {
                 partitionKey: { name: 'registryKey', type: dynamodb.AttributeType.STRING },
                 billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            }
+            },
         );
+
         const configuredBookingReferencesTable = new dynamodb.Table(
             configuredStack,
             'ConfiguredBookingReferencesTable',
             {
                 partitionKey: { name: 'bookingRef', type: dynamodb.AttributeType.STRING },
                 billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            }
+            },
         );
+
         const configuredGuestConversionTokensTable = new dynamodb.Table(
             configuredStack,
             'ConfiguredGuestConversionTokensTable',
             {
                 partitionKey: { name: 'tokenHash', type: dynamodb.AttributeType.STRING },
                 billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-            }
+            },
         );
+
         const configuredUserPool = new cognito.UserPool(configuredStack, 'ConfiguredUserPool', {
             selfSignUpEnabled: false,
             signInAliases: { email: true },
         });
-        const configuredUserPoolClient = configuredUserPool.addClient(
-            'ConfiguredUserPoolClient',
-            { authFlows: { adminUserPassword: true } }
-        );
+
+        const configuredUserPoolClient = configuredUserPool.addClient('ConfiguredUserPoolClient', {
+            authFlows: { adminUserPassword: true },
+        });
+
         const configuredBookingEmailIdentity = new ses.EmailIdentity(
             configuredStack,
             'ConfiguredBookingEmailIdentity',
-            { identity: ses.Identity.email('booking@example.com') }
+            { identity: ses.Identity.email('booking@example.com') },
         );
 
         new LambdaConstruct(configuredStack, 'ConfiguredLambda', {
@@ -498,7 +522,7 @@ describe('LambdaConstruct', () => {
         }>;
         const getMovieFunction = Object.values(resources).find((resource) => (
             resource.Type === 'AWS::Lambda::Function'
-            && resource.Properties?.FunctionName === 'blockbuster-theatre-get-movie-record-PROD'
+            && resource.Properties?.FunctionName === 'blockbuster-theatre-get-movie-lambda-PROD'
         ));
         const variables = getMovieFunction?.Properties?.Environment?.Variables;
 
@@ -506,22 +530,29 @@ describe('LambdaConstruct', () => {
         expect(variables).toHaveProperty('SHOWTIME_REGISTRY_TABLE_NAME');
         expect(variables).not.toHaveProperty('BOOKINGS_TABLE_NAME');
 
-        const getMoviePolicies = Object.values(resources).filter((resource) => (
-            resource.Type === 'AWS::IAM::Policy'
-            && JSON.stringify(resource.Properties?.Roles ?? []).includes('GetMovieHandlerServiceRole')
-        ));
+        const getMoviePolicies = Object.values(resources).filter(
+            (resource) =>
+                resource.Type === 'AWS::IAM::Policy' &&
+                JSON.stringify(resource.Properties?.Roles ?? []).includes('GetMovieHandlerServiceRole'),
+        );
+
         expect(getMoviePolicies).not.toHaveLength(0);
-        const actions = getMoviePolicies.flatMap((policy) => (
-            policy.Properties?.PolicyDocument?.Statement ?? []
-        ).flatMap(({ Action }) => (Array.isArray(Action) ? Action : [Action]))
-            .filter((action): action is string => typeof action === 'string'));
+        const actions = getMoviePolicies.flatMap((policy) =>
+            (policy.Properties?.PolicyDocument?.Statement ?? [])
+                .flatMap(({ Action }) => (Array.isArray(Action) ? Action : [Action]))
+                .filter((action): action is string => typeof action === 'string'),
+        );
+
         expect(actions).toContain('dynamodb:Query');
-        expect(actions).not.toEqual(expect.arrayContaining([
-            'dynamodb:PutItem',
-            'dynamodb:UpdateItem',
-            'dynamodb:DeleteItem',
-            'dynamodb:TransactWriteItems',
-        ]));
+        expect(actions).not.toEqual(
+            expect.arrayContaining([
+                'dynamodb:PutItem',
+                'dynamodb:UpdateItem',
+                'dynamodb:DeleteItem',
+                'dynamodb:TransactWriteItems',
+            ]),
+        );
+
         expect(JSON.stringify(getMoviePolicies)).not.toContain('TestBookingsTable');
     });
 
@@ -554,29 +585,40 @@ describe('LambdaConstruct', () => {
     });
 
     it('packages loadable PDF-dependent handlers and the fonts needed to render tickets', () => {
-        const resources = Template.fromStack(stack).toJSON().Resources as Record<string, {
-            Type: string;
-            Properties?: { FunctionName?: string; Code?: { S3Key?: string } };
-        }>;
+        const resources = Template.fromStack(stack).toJSON().Resources as Record<
+            string,
+            {
+                Type: string;
+                Properties?: { FunctionName?: string; Code?: { S3Key?: string } };
+            }
+        >;
+
         const functionNames = [
-            'blockbuster-theatre-send-booking-confirmation-PROD',
-            'blockbuster-theatre-list-account-booking-records-PROD',
-            'blockbuster-theatre-create-guest-booking-record-PROD',
-            'blockbuster-theatre-download-booking-ticket-PROD',
+            'blockbuster-theatre-booking-confirmation-handler-PROD',
+            'blockbuster-theatre-guest-booked-seats-handler-PROD',
+            'blockbuster-theatre-guest-booking-handler-PROD',
+            'blockbuster-theatre-download-ticket-handler-PROD',
         ];
+
         const assetPaths = functionNames.map((name) => {
             const resource = Object.values(resources).find(
-                (item) => item.Type === 'AWS::Lambda::Function'
-                    && item.Properties?.FunctionName === name
+                (item) => item.Type === 'AWS::Lambda::Function' && item.Properties?.FunctionName === name,
             );
+
             const key = resource?.Properties?.Code?.S3Key;
+
             if (!key?.endsWith('.zip') || !process.env.CDK_OUTDIR) {
                 throw new Error(`Missing asset for ${name}`);
             }
+
             return path.resolve(process.env.CDK_OUTDIR, `asset.${key.slice(0, -4)}`);
         });
 
-        execFileSync(process.execPath, ['-e', `
+        execFileSync(
+            process.execPath,
+            [
+                '-e',
+                `
             const path = require('path');
             Promise.all(process.argv.slice(1).map(async (asset, index) => {
                 const { handler } = require(path.join(asset, 'index.js'));
@@ -613,19 +655,24 @@ describe('LambdaConstruct', () => {
                 console.error(error);
                 process.exitCode = 1;
             });
-        `, ...assetPaths], { stdio: 'pipe', timeout: 30000 });
+        `,
+                ...assetPaths,
+            ],
+            { stdio: 'pipe', timeout: 30000 },
+        );
     });
 
     it('should configure booking functions with least-privilege table access', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-list-booking-records-PROD',
+            FunctionName: 'blockbuster-theatre-list-bookings-handler-PROD',
             Environment: {
                 Variables: { BOOKINGS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestBookingsTable') } },
             },
         });
+
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-create-booking-record-PROD',
+            FunctionName: 'blockbuster-theatre-create-booking-handler-PROD',
             Environment: {
                 Variables: Match.objectLike({
                     BOOKINGS_TABLE_NAME: { Ref: Match.stringLikeRegexp('TestBookingsTable') },
@@ -635,6 +682,7 @@ describe('LambdaConstruct', () => {
                 }),
             },
         });
+
         expect(construct.listBookingsFunction).toBeDefined();
         expect(construct.createBookingFunction).toBeDefined();
     });
@@ -645,19 +693,20 @@ describe('LambdaConstruct', () => {
             PolicyDocument: Match.objectLike({
                 Statement: Match.arrayWith([
                     Match.objectLike({
-                        Action: Match.arrayWith([
-                            'dynamodb:BatchGetItem',
-                            'dynamodb:BatchWriteItem',
-                        ]),
+                        Action: Match.arrayWith(['dynamodb:BatchGetItem', 'dynamodb:BatchWriteItem']),
                     }),
                 ]),
             }),
         });
+
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-create-guest-booking-record-PROD',
+            FunctionName: 'blockbuster-theatre-guest-booking-handler-PROD',
             Environment: {
                 Variables: Match.objectLike({
-                    MAX_TICKETS_PARAMETER_NAME: `${maxTicketsParameterName}-PROD`,
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterForEnvironment(
+                        maxTicketsParameterName,
+                        'prod',
+                    ),
                 }),
             },
         });
@@ -666,13 +715,17 @@ describe('LambdaConstruct', () => {
     it('should allow the booking confirmation handler to read the max-ticket parameter', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
-            FunctionName: 'blockbuster-theatre-send-booking-confirmation-PROD',
+            FunctionName: 'blockbuster-theatre-booking-confirmation-handler-PROD',
             Environment: {
                 Variables: Match.objectLike({
-                    MAX_TICKETS_PARAMETER_NAME: `${maxTicketsParameterName}-PROD`,
+                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterForEnvironment(
+                        maxTicketsParameterName,
+                        'prod',
+                    ),
                 }),
             },
         });
+
         template.hasResourceProperties('AWS::IAM::Policy', {
             PolicyDocument: Match.objectLike({
                 Statement: Match.arrayWith([

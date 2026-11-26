@@ -6,9 +6,12 @@ import { mockClient } from 'aws-sdk-client-mock';
 const sesMock = mockClient(SESv2Client);
 const ddbMock = mockClient(DynamoDBDocumentClient);
 process.env.BOOKINGS_TABLE_NAME = 'test-bookings';
-const { handler } = require('../../../handlers/bookings/send-booking-confirmation') as {
-    handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
-};
+let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
+
+beforeAll(async () => {
+    ({ handler } =
+        await import('../../../handlers/bookings/send-booking-confirmation'));
+});
 
 const booking = {
     PK: 'BOOKING#bk_1',
@@ -77,13 +80,15 @@ describe('booking confirmation email handler', () => {
             message: 'Booking reservation confirmation email sent.',
             bookingRef: booking.bookingRef,
         });
+
         const sent = sesMock.calls()[0].args[0].input;
         expect(sent.FromEmailAddress).toBe('niallmclaughlin1998@gmail.com');
         expect(sent.Destination?.ToAddresses).toEqual([booking.customerEmail]);
         expect(sent.Content?.Simple?.Subject?.Data).toContain(booking.bookingRef);
         expect(sent.Content?.Simple?.Body?.Text?.Data).toContain(
-            'Your seat reservation has been recorded, but payment has not been processed.'
+            'Your seat reservation has been recorded, but payment has not been processed.',
         );
+
         const html = sent.Content?.Simple?.Body?.Html?.Data ?? '';
         expect(html).toContain('<meta name="color-scheme" content="dark">');
         expect(html).toContain('<meta name="supported-color-schemes" content="dark">');
@@ -98,7 +103,10 @@ describe('booking confirmation email handler', () => {
         expect(html).toContain('GUEST NAME');
         expect(html).toContain('TICKET BREAKDOWN');
         expect(html).toContain('src="cid:booking-reference-qr"');
-        expect(html).toContain('Your seat reservation has been recorded, but payment has not been processed.');
+        expect(html).toContain('REFERENCE ONLY - NOT VALID FOR ENTRY');
+        expect(html.indexOf('src="cid:booking-reference-qr"')).toBeGreaterThan(
+            html.indexOf(`REF: ${booking.bookingRef}`)
+        );
         const qrCode = sent.Content?.Simple?.Attachments?.[0];
         expect(qrCode).toMatchObject({
             ContentType: 'image/png',
@@ -106,8 +114,9 @@ describe('booking confirmation email handler', () => {
             ContentId: 'booking-reference-qr',
             FileName: 'booking-reference.png',
         });
+
         expect(Buffer.from(qrCode?.RawContent ?? []).subarray(0, 8)).toEqual(
-            Buffer.from('89504e470d0a1a0a', 'hex')
+            Buffer.from('89504e470d0a1a0a', 'hex'),
         );
     });
 
@@ -139,6 +148,26 @@ describe('booking confirmation email handler', () => {
         expect(JSON.parse(String(result.body))).toEqual({
             message: 'Unable to send booking confirmation email.',
         });
+    });
+
+    it('accepts a base64 request with one ticket and an optional phone number', async () => {
+        sesMock.on(SendEmailCommand).resolves({});
+        const singleTicket = {
+            ...booking,
+            customer: { ...booking.customer, phone: '+441234567890' },
+            tickets: 1,
+            seats: ['A1'],
+        };
+
+        const result = await handler(createEvent(
+            Buffer.from(JSON.stringify(singleTicket)).toString('base64'),
+            true
+        ));
+
+        expect(result.statusCode).toBe(200);
+        const sent = sesMock.calls()[0].args[0].input;
+        expect(sent.Content?.Simple?.Body?.Text?.Data).toContain('Phone: +441234567890');
+        expect(sent.Content?.Simple?.Body?.Html?.Data).toContain('1 Ticket');
     });
 
     it.each([

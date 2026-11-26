@@ -37,10 +37,7 @@ function checkIsComingSoon(releaseDateString: string): boolean {
 }
 
 export function originalTmdbImageUrl(url: string): string {
-    return url.replace(
-        /^(https:\/\/image\.tmdb\.org\/t\/p\/)[^/]+(?=\/)/,
-        '$1original'
-    );
+    return url.replace(/^(https:\/\/image\.tmdb\.org\/t\/p\/)[^/]+(?=\/)/, '$1original');
 }
 
 /**
@@ -50,10 +47,8 @@ export function originalTmdbImageUrl(url: string): string {
  */
 export function projectMovieSummary(movie: MovieRecord): MovieSummary {
     const showtimes = generateShowtimes(movie.tmdbId, movie.releaseDate, movie.score);
-    const lifecycleStatus = movieLifecycleStatus(
-        movie,
-        hasUpcomingTemplateScreenings(movie, showtimes)
-    );
+    const lifecycleStatus = movieLifecycleStatus(movie, hasUpcomingTemplateScreenings(movie, showtimes));
+
     return {
         slug: movie.slug,
         sortTitle: movie.sortTitle ?? movie.title,
@@ -86,12 +81,10 @@ export function projectMovieSummary(movie: MovieRecord): MovieSummary {
  * @param movie Stored movie record.
  * @returns Full movie detail, including the primary genre.
  */
-export async function projectMovieDetail(
-    movie: MovieRecord,
-    date?: string
-): Promise<MovieDetail> {
+export async function projectMovieDetail(movie: MovieRecord, date?: string): Promise<MovieDetail> {
     const showtimes = await getMovieShowtimes(movie, date);
     const lifecycleStatus = movieLifecycleStatus(movie, Object.keys(showtimes).length > 0);
+
     return {
         slug: movie.slug,
         sortTitle: movie.sortTitle ?? movie.title,
@@ -133,7 +126,7 @@ export function projectTmdb(
         startDate?: string;
         runEndDate?: string;
         preSalesEligible?: boolean;
-    } = {}
+    } = {},
 ): MovieData {
     const metadataOverride = TMDB_MOVIE_METADATA_OVERRIDES[raw.id];
     const title = metadataOverride?.title || raw.title || 'Untitled';
@@ -146,26 +139,28 @@ export function projectTmdb(
         .slice(0, 10)
         .map((member) => member.name)
         .filter((name): name is string => typeof name === 'string');
-    const director = crew
-        .filter(
-            (member): member is TmdbCrewMember & { name: string } =>
-                member.job === 'Director' &&
-                typeof member.name === 'string' &&
-                Boolean(member.name.trim())
-        )
-        .slice(0, 3)
-        .map((member) => member.name.trim())
-        .join(', ') || 'Unknown';
+
+    const director =
+        crew
+            .filter(
+                (member): member is TmdbCrewMember & { name: string } =>
+                    member.job === 'Director' &&
+                    typeof member.name === 'string' &&
+                    Boolean(member.name.trim()),
+            )
+            .slice(0, 3)
+            .map((member) => member.name.trim())
+            .join(', ') || 'Unknown';
+
     const score = raw.vote_average ? Number(raw.vote_average.toFixed(1)) : 0;
     const releaseDate = raw.release_date ? `${raw.release_date}T00:00:00.000Z` : '';
     const today = todayInTheatre();
     const releaseDateOnly = releaseDate.slice(0, 10);
     const trailerKey = raw.videos?.results?.find(
-        (video) => video.site === 'YouTube' && video.type === 'Trailer' && video.key
+        (video) => video.site === 'YouTube' && video.type === 'Trailer' && video.key,
     )?.key;
-    const ukRelease = raw.release_dates?.results?.find(
-        (release) => release.iso_3166_1 === 'GB'
-    );
+
+    const ukRelease = raw.release_dates?.results?.find((release) => release.iso_3166_1 === 'GB');
     const rating = ukRelease?.release_dates?.[0]?.certification || 'PG';
 
     return {
@@ -179,8 +174,7 @@ export function projectTmdb(
         score,
         runtime: raw.runtime || 0,
         releaseDate,
-        startDate: scheduling.startDate
-            ?? (releaseDateOnly > today ? releaseDateOnly : today),
+        startDate: scheduling.startDate ?? (releaseDateOnly > today ? releaseDateOnly : today),
         ...(scheduling.runEndDate && { runEndDate: scheduling.runEndDate }),
         preSalesEligible: scheduling.preSalesEligible ?? false,
         visible: true,
@@ -190,14 +184,8 @@ export function projectTmdb(
         director,
         synopsis: raw.overview || '',
         tagline: raw.tagline || '',
-        still: raw.backdrop_path
-            ? `https://image.tmdb.org/t/p/original${raw.backdrop_path}`
-            : '',
-        trailer: trailerKey
-            ? `https://www.youtube-nocookie.com/embed/${trailerKey}?rel=0`
-            : '',
-        poster: raw.poster_path
-            ? `https://image.tmdb.org/t/p/original${raw.poster_path}`
-            : '',
+        still: raw.backdrop_path ? `https://image.tmdb.org/t/p/original${raw.backdrop_path}` : '',
+        trailer: trailerKey ? `https://www.youtube-nocookie.com/embed/${trailerKey}?rel=0` : '',
+        poster: raw.poster_path ? `https://image.tmdb.org/t/p/original${raw.poster_path}` : '',
     };
 }

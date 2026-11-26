@@ -36,15 +36,15 @@ type DdbKey = Record<string, NativeAttributeValue>;
 export class PricingServiceError extends Error {
     constructor(
         public readonly statusCode: number,
-        message: string
+        message: string,
     ) {
         super(message);
         this.name = 'PricingServiceError';
     }
-    }
+}
 
-    function isScreen(value: unknown): value is ScreenedShowtime['screen'] {
-        return value === '1' || value === '2' || value === '3' || value === '4' || value === '5';
+function isScreen(value: unknown): value is ScreenedShowtime['screen'] {
+    return value === '1' || value === '2' || value === '3' || value === '4' || value === '5';
 }
 
 export interface ShowtimeSelection {
@@ -72,10 +72,7 @@ function isRecord(value: unknown): value is UnknownRecord {
 }
 
 function isShowtimes(value: unknown): value is MovieShowtimes {
-    return (
-        isMovieShowtimes(value) &&
-        Object.keys(value).every((day) => DAYS.includes(day))
-    );
+    return isMovieShowtimes(value) && Object.keys(value).every((day) => DAYS.includes(day));
 }
 
 export function isOfferRecord(value: unknown): value is OfferRecord {
@@ -129,9 +126,11 @@ export function isPricingRecord(value: unknown): value is PricingRecord {
 
 function requiredTableName(name: string): string {
     const tableName = process.env[name];
+
     if (!tableName) {
         throw new PricingServiceError(500, `${name} is not configured.`);
     }
+
     return tableName;
 }
 
@@ -144,25 +143,26 @@ function parseSelection(value: unknown): {
     if (!isRecord(value)) {
         throw new PricingServiceError(400, 'A JSON request object is required.');
     }
+
     if (
-        Object.keys(value).some(
-            (key) => !['movieId', 'offerId', 'showtime', 'tickets', 'date'].includes(key)
-        )
+        Object.keys(value).some((key) => !['movieId', 'offerId', 'showtime', 'tickets', 'date'].includes(key))
     ) {
         throw new PricingServiceError(
             400,
-            'Only movieId or offerId, showtime, optional date, and tickets are accepted.'
+            'Only movieId or offerId, showtime, optional date, and tickets are accepted.',
         );
     }
 
     const hasMovieId = value.movieId !== undefined;
     const hasOfferId = value.offerId !== undefined;
+
     if (hasMovieId === hasOfferId) {
         throw new PricingServiceError(400, 'Provide exactly one of movieId or offerId.');
     }
 
     let movieId: string | undefined;
     let offerId: string | undefined;
+
     if (hasMovieId) {
         const rawMovieId = value.movieId;
         movieId =
@@ -171,6 +171,7 @@ function parseSelection(value: unknown): {
                 : typeof rawMovieId === 'string'
                   ? rawMovieId
                   : undefined;
+
         if (!movieId || !/^\d+$/.test(movieId)) {
             throw new PricingServiceError(400, 'movieId must be a numeric movie ID.');
         }
@@ -185,9 +186,11 @@ function parseSelection(value: unknown): {
     }
 
     const { day, time, screen } = value.showtime;
+
     if (Object.keys(value.showtime).some((key) => !['day', 'time', 'screen'].includes(key))) {
         throw new PricingServiceError(400, 'showtime only accepts day, time, and optional screen.');
     }
+
     if (
         typeof day !== 'string' ||
         !DAYS.includes(day) ||
@@ -197,11 +200,12 @@ function parseSelection(value: unknown): {
     ) {
         throw new PricingServiceError(
             400,
-            'showtime.day must be a weekday name, showtime.time must use HH:mm, and showtime.screen must be 1-5 when supplied.'
+            'showtime.day must be a weekday name, showtime.time must use HH:mm, and showtime.screen must be 1-5 when supplied.',
         );
     }
 
     let date: string | undefined;
+
     if (value.date !== undefined) {
         if (
             typeof value.date !== 'string' ||
@@ -211,6 +215,7 @@ function parseSelection(value: unknown): {
         ) {
             throw new PricingServiceError(400, 'date must be a valid YYYY-MM-DD date.');
         }
+
         date = value.date;
     }
 
@@ -228,16 +233,20 @@ async function getMovie(movieId: string, requireVisible = true): Promise<MovieRe
             TableName: requiredTableName('TABLE_NAME'),
             Key: { movieId },
             ConsistentRead: true,
-        })
+        }),
     );
+
     const movie = result.Item;
     if (!movie) {
         throw new PricingServiceError(404, 'Active movie not found.');
     }
+
     if (!isMovieRecord(movie)) throw new Error('DynamoDB returned an invalid movie record.');
+
     if (requireVisible && !movie.visible) {
         throw new PricingServiceError(404, 'Active movie not found.');
     }
+
     return movie;
 }
 
@@ -247,13 +256,17 @@ async function getOffer(offerId: string): Promise<OfferRecord> {
             TableName: requiredTableName('OFFERS_TABLE_NAME'),
             Key: { offerId },
             ConsistentRead: true,
-        })
+        }),
     );
+
     if (!result.Item) {
         throw new PricingServiceError(404, 'Active offer not found.');
     }
+
     if (!isOfferRecord(result.Item)) throw new Error('DynamoDB returned an invalid offer record.');
+
     if (!result.Item.isActive) throw new PricingServiceError(404, 'Active offer not found.');
+
     return result.Item;
 }
 
@@ -263,11 +276,13 @@ async function getPricing(pricingId: string): Promise<PricingRecord> {
             TableName: requiredTableName('PRICING_TABLE_NAME'),
             Key: { pricingId },
             ConsistentRead: true,
-        })
+        }),
     );
+
     if (!isPricingRecord(result.Item)) {
         throw new Error(`Pricing record ${pricingId} is missing or invalid.`);
     }
+
     return result.Item;
 }
 
@@ -275,42 +290,28 @@ async function validateScheduledTime(
     movie: MovieRecord,
     offer: OfferRecord | undefined,
     showtime: ShowtimeSelection,
-    date?: string,
-    resolvedShowtime?: ShowtimeIdentity
+    date?: string
 ): Promise<ShowtimeSelection> {
-    const schedule = offer?.overrideShowtimes ?? generateShowtimes(
-        movie.tmdbId,
-        movie.releaseDate,
-        movie.score
-    );
+    const schedule =
+        offer?.overrideShowtimes ?? generateShowtimes(movie.tmdbId, movie.releaseDate, movie.score);
+
     const matches = schedule?.[showtime.day]?.filter(
         (entry) =>
             entry.time === showtime.time &&
-            (showtime.screen === undefined || entry.screen === showtime.screen)
+            (showtime.screen === undefined || entry.screen === showtime.screen),
     );
+
     if (offer?.overrideShowtimes !== undefined && !matches?.length) {
         throw new PricingServiceError(400, 'The selected showtime is not available.');
     }
+
     if (date) {
         if (!isMovieScheduleDateAllowed(movie, date)) {
             throw new PricingServiceError(400, 'The selected showtime is not available.');
         }
+
         if (offer?.overrideShowtimes !== undefined) {
             await addShowtimeIds(movie.tmdbId, offer.overrideShowtimes, date, 'OFFER');
-        }
-        if (resolvedShowtime) {
-            if (
-                resolvedShowtime.movieId !== movie.tmdbId
-                || resolvedShowtime.date !== date
-                || resolvedShowtime.day !== showtime.day
-                || resolvedShowtime.time !== showtime.time
-                || (showtime.screen !== undefined && resolvedShowtime.screen !== showtime.screen)
-                || resolvedShowtime.status === 'CANCELLED'
-                || resolvedShowtime.status === 'CLOSING'
-            ) {
-                throw new PricingServiceError(400, 'The selected showtime is not available.');
-            }
-            return { ...showtime, screen: resolvedShowtime.screen };
         }
         const showtimes = await listShowtimesForDate(date);
         const matchingRecord = showtimes.find(
@@ -321,19 +322,23 @@ async function validateScheduledTime(
                 isScreen(record.screen) &&
                 (showtime.screen === undefined || record.screen === showtime.screen) &&
                 record.status !== 'CANCELLED' &&
-                record.status !== 'CLOSING'
+                record.status !== 'CLOSING',
         );
+
         if (!matchingRecord) {
             throw new PricingServiceError(400, 'The selected showtime is not available.');
         }
+
         return {
             ...showtime,
             screen: showtime.screen ?? matchingRecord.screen,
         };
     }
+
     if (!matches?.length) {
         throw new PricingServiceError(400, 'The selected showtime is not available.');
     }
+
     return { ...showtime, screen: showtime.screen ?? matches[0].screen };
 }
 
@@ -341,6 +346,7 @@ function standardPricingId(showtime: ShowtimeSelection): string {
     if (showtime.day === 'Tuesday') return 'CRAZY_TUESDAY_RATES';
 
     const isWeekday = DAYS.slice(0, 5).includes(showtime.day);
+
     return isWeekday && showtime.time < '17:00' ? 'OFF_PEAK_RATES' : 'STANDARD_RATES';
 }
 
@@ -351,15 +357,14 @@ export async function resolvePricing(
     const request = parseSelection(value);
     const offer = request.offerId ? await getOffer(request.offerId) : undefined;
     const movieId = offer?.featuredMovieId ?? request.movieId!;
-    const movie = offer
-        ? await getMovie(movieId, false)
-        : await getMovie(movieId);
+    const movie = offer ? await getMovie(movieId, false) : await getMovie(movieId);
     const showtime = await validateScheduledTime(
         movie, offer, request.showtime, request.date, resolvedShowtime
     );
 
     const pricingId = offer?.pricingId ?? standardPricingId(request.showtime);
     const pricing = await getPricing(pricingId);
+
     return {
         movieId,
         movieTitle: movie.title,
@@ -375,16 +380,19 @@ function parseTicketRequest(value: unknown): TicketRequest[] {
     }
 
     const seen = new Set<string>();
+
     return value.map((ticket) => {
         if (!isRecord(ticket)) {
             throw new PricingServiceError(
                 400,
-                'Each ticket must include a tierId and a positive integer quantity.'
+                'Each ticket must include a tierId and a positive integer quantity.',
             );
         }
+
         if (Object.keys(ticket).some((key) => !['tierId', 'quantity'].includes(key))) {
             throw new PricingServiceError(400, 'Ticket items only accept tierId and quantity.');
         }
+
         if (
             typeof ticket.tierId !== 'string' ||
             !ticket.tierId.trim() ||
@@ -393,14 +401,18 @@ function parseTicketRequest(value: unknown): TicketRequest[] {
         ) {
             throw new PricingServiceError(
                 400,
-                'Each ticket must include a tierId and a positive integer quantity.'
+                'Each ticket must include a tierId and a positive integer quantity.',
             );
         }
+
         const tierId = ticket.tierId.trim();
+
         if (seen.has(tierId)) {
             throw new PricingServiceError(400, `Ticket tier ${tierId} was provided more than once.`);
         }
+
         seen.add(tierId);
+
         return { tierId, quantity: ticket.quantity as number };
     });
 }
@@ -422,30 +434,34 @@ export async function validateCheckout(value: unknown, resolvedShowtime?: Showti
     }
 
     if (
-        Object.keys(value).some(
-            (key) => !['movieId', 'offerId', 'showtime', 'tickets', 'date'].includes(key)
-        )
+        Object.keys(value).some((key) => !['movieId', 'offerId', 'showtime', 'tickets', 'date'].includes(key))
     ) {
         throw new PricingServiceError(
             400,
-            'Only movieId or offerId, showtime, optional date, and tickets are accepted.'
+            'Only movieId or offerId, showtime, optional date, and tickets are accepted.',
         );
     }
+
     const tickets = parseTicketRequest(value.tickets);
     const selected = await resolvePricing(value, resolvedShowtime);
     const tiers = new Map(selected.pricing.ticketTiers.map((tier) => [tier.id, tier]));
     let totalPence = 0;
     const pricedTickets = tickets.map((ticket) => {
         const tier = tiers.get(ticket.tierId);
+
         if (!tier) {
             throw new PricingServiceError(400, `Unknown ticket tier: ${ticket.tierId}.`);
         }
+
         const unitPricePence = Math.round(tier.price * 100);
         const subtotalPence = unitPricePence * ticket.quantity;
+
         if (!Number.isSafeInteger(subtotalPence) || !Number.isSafeInteger(totalPence + subtotalPence)) {
             throw new PricingServiceError(400, 'The requested checkout total is too large.');
         }
+
         totalPence += subtotalPence;
+
         return {
             ...ticket,
             label: tier.label,
@@ -504,27 +520,29 @@ export async function listFilmSelections(date?: string): Promise<FilmSelection[]
                 KeyConditionExpression: 'GSI1PK = :movie',
                 ExpressionAttributeValues: { ':movie': 'MOVIE' },
                 ExclusiveStartKey: movieStartKey,
-            })
+            }),
         );
+
         for (const item of result.Items ?? []) {
             if (!isMovieRecord(item)) {
                 throw new Error('DynamoDB returned an invalid movie record.');
             }
+
             if (!item.visible) continue;
+
             const lifecycleStatus = movieLifecycleStatus(
                 item,
                 hasUpcomingTemplateScreenings(
                     item,
-                    generateShowtimes(item.tmdbId, item.releaseDate, item.score)
-                )
+                    generateShowtimes(item.tmdbId, item.releaseDate, item.score),
+                ),
             );
-            if (
-                lifecycleStatus === 'Now Showing' ||
-                lifecycleStatus === 'Coming Soon (Pre-Sales Open)'
-            ) {
+
+            if (lifecycleStatus === 'Now Showing' || lifecycleStatus === 'Coming Soon (Pre-Sales Open)') {
                 movies.push(item);
             }
         }
+
         movieStartKey = result.LastEvaluatedKey;
     } while (movieStartKey);
 
@@ -535,14 +553,17 @@ export async function listFilmSelections(date?: string): Promise<FilmSelection[]
             new ScanCommand({
                 TableName: offersTableName,
                 ExclusiveStartKey: offerStartKey,
-            })
+            }),
         );
+
         for (const item of result.Items ?? []) {
             if (!isOfferRecord(item)) {
                 throw new Error('DynamoDB returned an invalid offer record.');
             }
+
             if (item.isActive) offers.push(item);
         }
+
         offerStartKey = result.LastEvaluatedKey;
     } while (offerStartKey);
 
@@ -553,6 +574,7 @@ export async function listFilmSelections(date?: string): Promise<FilmSelection[]
         title: movie.title,
         label: movie.title,
     }));
+
     for (const offer of offers) {
         selections.push({
             type: 'offer',
@@ -570,7 +592,7 @@ export async function listFilmSelections(date?: string): Promise<FilmSelection[]
                 offer.featuredMovieId,
                 offer.overrideShowtimes ?? {},
                 date,
-                'OFFER'
+                'OFFER',
             ),
         });
     }

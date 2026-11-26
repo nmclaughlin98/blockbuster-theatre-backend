@@ -9,6 +9,7 @@ export const handler = async (): Promise<void> => {
         log('ERROR', 'Failed to maintain rolling screening schedule', {
             error: error instanceof Error ? error.message : 'Unknown error',
         });
+
         throw error;
     }
 };

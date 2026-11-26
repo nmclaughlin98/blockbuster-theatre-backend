@@ -1,0 +1,40 @@
+{
+    "offers": [
+        {
+            "offerId": "birthday-party-pack",
+            "ctaLabel": "Claim Offer",
+            "displayLabel": "Birthday Party Pack - Inside Out",
+            "featuredMovieId": "150540",
+            "isActive": true,
+            "priceDescription": "Includes Film, Popcorn & Soft Drink • £6.00 per child package",
+            "pricingId": "BIRTHDAY_PARTY_RATES",
+            "tagline": "Advance Booking Required • All Weekends",
+            "title": "Birthday Party Pack",
+            "overrideShowtimes": {
+                "Tuesday": ["11:00"]
+            }
+        },
+        {
+            "offerId": "kids-club",
+            "ctaLabel": "Claim Offer",
+            "displayLabel": "Kids Club - Minions & Monsters",
+            "featuredMovieId": "1315772",
+            "isActive": true,
+            "priceDescription": "£2.50 per child — Adults go free!",
+            "pricingId": "KIDS_CLUB_RATES",
+            "tagline": "Every Tuesday • Morning & Matinee",
+            "title": "Kids Club"
+        },
+        {
+            "offerId": "student-night",
+            "ctaLabel": "Claim Offer",
+            "displayLabel": "Student Night - Spider-Man: Brand New Day",
+            "featuredMovieId": "969681",
+            "isActive": true,
+            "priceDescription": "£2.50 with valid Student ID",
+            "pricingId": "STUDENT_NIGHT_RATES",
+            "tagline": "Every Wednesday • Evening Screenings",
+            "title": "Student Night"
+        }
+    ]
+}

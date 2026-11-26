@@ -1,4 +1,8 @@
 import type { APIGatewayProxyResultV2 } from 'aws-lambda';
+import {
+    AdminGetUserCommand,
+    CognitoIdentityProviderClient,
+} from '@aws-sdk/client-cognito-identity-provider';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { GuestBookingError, listGuestBookedSeats } from '../../services/bookings/guest-booking-service';
 import { authenticateOptional, InvalidAuthorizationError, json, log, type OptionalJwtEvent } from '../../main/lambda/handlers/utils/common';
@@ -8,28 +12,59 @@ import { getShowtimeCutoff, linkGuestBookings } from '../../services/bookings/li
 import { canAccessBooking, getBookingByReference } from './get-booking-record';
 
 const ssmClient = new SSMClient({ region: process.env.AWS_REGION ?? 'eu-west-2' });
+const cognitoClient = new CognitoIdentityProviderClient({});
+
+async function getVerifiedEmail(userId: string): Promise<string | undefined> {
+    const userPoolId = process.env.USER_POOL_ID;
+
+    if (!userPoolId) throw new Error('USER_POOL_ID is not configured.');
+
+    const user = await cognitoClient.send(
+        new AdminGetUserCommand({
+            UserPoolId: userPoolId,
+            Username: userId,
+        }),
+    );
+
+    const email = user.UserAttributes?.find((attribute) => attribute.Name === 'email')?.Value;
+    const verified = user.UserAttributes?.find((attribute) => attribute.Name === 'email_verified')?.Value;
+
+    if (!email?.trim()) {
+        log('WARN', 'Cognito user has no email; guest booking linking is skipped.');
+
+        return undefined;
+    }
+
+    return verified === 'true' ? email.trim().toLowerCase() : undefined;
+}
 
 async function isGuestLinkingAllowed(): Promise<boolean> {
     const parameterName = process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
+
     if (!parameterName) {
         log('WARN', 'Guest booking linking parameter is not configured; linking is disabled.');
+
         return false;
     }
 
     try {
         const result = await ssmClient.send(new GetParameterCommand({ Name: parameterName }));
         const value = result.Parameter?.Value?.trim().toLowerCase();
+
         if (value !== 'true' && value !== 'false') {
             throw new Error('Guest booking linking parameter must be true or false.');
         }
+
         return value === 'true';
     } catch (error: unknown) {
         if (error instanceof Error && error.name === 'ParameterNotFound') {
             log('WARN', 'Guest booking linking parameter was not found; linking is disabled.', {
                 parameterName,
             });
+
             return false;
         }
+
         throw error;
     }
 }
@@ -40,24 +75,25 @@ export interface AccountBookingHistoryResponse {
     linkNotificationSent?: false;
 }
 
-export const handler = async (
-    event: OptionalJwtEvent
-): Promise<APIGatewayProxyResultV2> => {
+export const handler = async (event: OptionalJwtEvent): Promise<APIGatewayProxyResultV2> => {
     const requestId = event.requestContext?.requestId;
+    const isAccountRequest = event.routeKey === ACCOUNT_BOOKED_SEATS_ROUTE_KEY
+        || event.routeKey === ACCOUNT_HISTORY_ROUTE_KEY;
+    const userId = event.requestContext.authorizer?.jwt?.claims?.sub;
+    if (isAccountRequest && (typeof userId !== 'string' || !userId.trim())) {
+        return json(401, { message: 'A valid Cognito user is required.' });
+    }
     try {
-        const identity = await authenticateOptional(event.headers ?? {});
-        const { showtimeId, date, status, bookingRef, email } = event.queryStringParameters ?? {};
-        const modes = Number(Boolean(showtimeId)) + Number(Boolean(status)) + Number(Boolean(bookingRef || email));
-        if (modes !== 1) return json(400, { message: 'Provide showtimeId, status, or bookingRef and email.' });
-        if (status) {
-            if (status !== 'upcoming' && status !== 'past') return json(400, { message: 'status must be upcoming or past.' });
-            if (!identity) return json(401, { message: 'A valid Cognito user is required.' });
-            const linked = identity.verifiedEmail
+        if (event.routeKey === ACCOUNT_HISTORY_ROUTE_KEY && typeof userId === 'string') {
+            const claims = event.requestContext.authorizer?.jwt?.claims;
+            const email = claims?.email;
+            const verified = claims?.email_verified;
+            const linked = claims?.token_use === 'id'
+                && typeof email === 'string' && email.trim()
+                && (verified === true || verified === 'true')
                 && await isGuestLinkingAllowed()
-                ? await linkGuestBookings(identity.userId, identity.verifiedEmail)
+                ? await linkGuestBookings(userId, email.trim().toLowerCase())
                 : { bookings: [], notificationSent: true };
-            const cutoff = getShowtimeCutoff(new Date());
-            const bookings = await listAccountBookings(identity.userId, linked.bookings);
             const body: AccountBookingHistoryResponse = {
                 bookings: bookings.filter((booking) => {
                     const upcoming = booking.date > cutoff.date
@@ -67,30 +103,26 @@ export const handler = async (
                 newlyLinkedBookings: linked.bookings.map((booking) => booking.bookingRef),
                 ...(linked.notificationSent ? {} : { linkNotificationSent: false }),
             };
+
             return {
                 statusCode: 200,
                 headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
                 body: JSON.stringify(body),
             };
         }
-        if (bookingRef || email) {
-            if (!bookingRef?.trim() || !email?.trim()) return json(400, { message: 'bookingRef and email are required.' });
-            const booking = await getBookingByReference(bookingRef.trim());
-            if (!booking || !canAccessBooking(booking, identity, bookingRef.trim(), email)) {
-                return json(404, { message: 'Booking not found.' });
-            }
-            const { PK, SK, conversionTokenHash, ...publicBooking } = booking;
-            return json(200, { booking: publicBooking });
-        }
         const result = await listGuestBookedSeats(
-            showtimeId, date, identity?.userId
+            event.queryStringParameters?.showtimeId,
+            event.queryStringParameters?.date,
+            isAccountRequest && typeof userId === 'string' ? userId : undefined
         );
+
         return json(200, result);
     } catch (error: unknown) {
         if (error instanceof InvalidAuthorizationError) return json(401, { message: error.message });
         if (error instanceof ShowtimeIdError) {
             return json(error.statusCode, { message: error.message });
         }
+
         if (error instanceof GuestBookingError) {
             if (error.statusCode >= 500) {
                 log('ERROR', 'Failed to list booked seats', {
@@ -98,16 +130,20 @@ export const handler = async (
                     statusCode: error.statusCode,
                 });
             }
+
             return json(error.statusCode, { message: error.message });
         }
+
         log('ERROR', 'Failed to list booked seats', {
             requestId,
             errorName: error instanceof Error ? error.name : 'UnknownError',
         });
+
         return json(500, {
-            message: event.queryStringParameters?.status
-                ? 'Unable to list account bookings.'
-                : 'Unable to list booked seats.',
+            message:
+                event.queryStringParameters?.status
+                    ? 'Unable to list account bookings.'
+                    : 'Unable to list booked seats.',
         });
     }
 };
