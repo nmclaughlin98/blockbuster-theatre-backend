@@ -26,7 +26,8 @@ if (mode === 'build') {
         ['Setup Node.js', process.env.SETUP_NODE_OUTCOME],
         ['Install Dependencies', process.env.INSTALL_DEPENDENCIES_OUTCOME],
         ['Check TypeScript Compilation', process.env.COMPILE_OUTCOME],
-        ['Synthesize CDK App', process.env.SYNTHESIZE_OUTCOME],
+        ['Synthesize CDK App (dev)', process.env.SYNTHESIZE_DEV_OUTCOME],
+        ['Synthesize CDK App (prod)', process.env.SYNTHESIZE_PROD_OUTCOME],
         ['Upload Build Artifact', process.env.UPLOAD_ARTIFACT_OUTCOME],
     ];
 

@@ -5,7 +5,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { lambdaSettings } from '../backend/lambdas-construct';
+import { getProfileProps, lambdaSettings } from '../shared/lambda-config';
 
 export function createCognitoResources(
     scope: Construct,
@@ -30,14 +30,13 @@ export function createCognitoResources(
 
     const preTokenFunction = new lambdaNodejs.NodejsFunction(scope, 'PreTokenGenerationHandler', {
         functionName: 'blockbuster-theatre-pre-token-generation-handler',
-        runtime: lambdaSettings.runtime,
+        ...lambdaSettings.base,
+        ...getProfileProps({ ...lambdaSettings.standard, timeoutSeconds: 5 }),
         entry: path.join(
             __dirname,
             '../../src/main/lambda/handlers/PreTokenGeneration/pre-token-generation-handler.ts',
         ),
         handler: 'handler',
-        memorySize: lambdaSettings.default.memorySize,
-        timeout: cdk.Duration.seconds(5),
         logRetention: logs.RetentionDays.ONE_WEEK,
     });
 

@@ -27,5 +27,5 @@
         "noEmit": false
     },
     "include": ["bin/**/*.ts", "lib/**/*.ts", "scripts/**/*.ts"],
-    "exclude": ["node_modules", "app", "cdk-out", "dist"]
+    "exclude": ["node_modules", "app", "cdk.out", "dist"]
 }

@@ -33,18 +33,21 @@ jobs:
               id: compile
               run: npm run build
 
-            - name: Synthesize CDK App
-              id: synthesize
+            - name: Synthesize CDK App (dev)
+              id: synthesize_dev
               env:
                   CDK_DEFAULT_ACCOUNT: '334624057595'
                   CDK_DEFAULT_REGION: 'eu-west-2'
                   TMDB_API_KEY: 'ci-synth-placeholder'
-              run: |
-                  echo "Synthesizing AuthStack and BackendStack (dev)..."
-                  npx cdk synth -c env=dev --output cdk-out/dev
+              run: npx cdk synth -c env=dev --output cdk-out/dev
 
-                  echo "Synthesizing AuthStack and BackendStack (prod)..."
-                  npx cdk synth -c env=prod --output cdk-out/prod
+            - name: Synthesize CDK App (prod)
+              id: synthesize_prod
+              env:
+                  CDK_DEFAULT_ACCOUNT: '334624057595'
+                  CDK_DEFAULT_REGION: 'eu-west-2'
+                  TMDB_API_KEY: 'ci-synth-placeholder'
+              run: npx cdk synth -c env=prod --output cdk-out/prod
 
             - name: Upload Build Artifact
               id: upload_artifact
@@ -66,6 +69,7 @@ jobs:
                   SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
                   INSTALL_DEPENDENCIES_OUTCOME: ${{ steps.install_dependencies.outcome }}
                   COMPILE_OUTCOME: ${{ steps.compile.outcome }}
-                  SYNTHESIZE_OUTCOME: ${{ steps.synthesize.outcome }}
+                  SYNTHESIZE_DEV_OUTCOME: ${{ steps.synthesize_dev.outcome }}
+                  SYNTHESIZE_PROD_OUTCOME: ${{ steps.synthesize_prod.outcome }}
                   UPLOAD_ARTIFACT_OUTCOME: ${{ steps.upload_artifact.outcome }}
               run: node .github/scripts/write-summary.js build

@@ -1,9 +1,5 @@
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as ses from 'aws-cdk-lib/aws-ses';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cdk from 'aws-cdk-lib';
@@ -11,58 +7,19 @@ import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import { maxTicketsParameterForEnvironment, resourceName, type EnvironmentName } from '../shared';
-
-export const lambdaSettings = {
-    architecture: lambda.Architecture.ARM_64,
-    runtime: lambda.Runtime.NODEJS_24_X,
-    default: { memorySize: 256, timeoutSeconds: 10 },
-    batchProcessing: { memorySize: 256, timeoutSeconds: 15 },
-    collectionTreeRead: { memorySize: 256, timeoutSeconds: 25 },
-    collectionRefresh: { memorySize: 512, timeoutSeconds: 25 },
-    fullTableExport: { memorySize: 512, timeoutSeconds: 25 },
-    fullTableRead: { memorySize: 256, timeoutSeconds: 25 },
-    paginatedSelectionRead: { memorySize: 256, timeoutSeconds: 15 },
-} as const;
-
-export interface MovieImportLambdaConfig {
-    memorySize: number;
-    timeoutSeconds: number;
-    reservedConcurrentExecutions?: number;
-    maxBatch: number;
-    tmdbConcurrency: number;
-    tmdbTimeoutMs: number;
-    tmdbRetries: number;
-}
-
-export const movieImportLambdaConfig: MovieImportLambdaConfig = {
-    memorySize: 512,
-    timeoutSeconds: 25,
-    maxBatch: 100,
-    tmdbConcurrency: 5,
-    tmdbTimeoutMs: 4000,
-    tmdbRetries: 3,
-};
-
-export const movieUpdateMaxBatch = 25;
-export const maxTicketsParameterName = '/blockbuster-theatre/booking-configuration/max-tickets-value';
-
-interface LambdaConstructProps {
-    table: dynamodb.Table;
-    pricingTable: dynamodb.Table;
-    offersTable: dynamodb.Table;
-    collectionsTable: dynamodb.Table;
-    bookingsTable: dynamodb.Table;
-    legacyBookingsTable: dynamodb.Table;
-    showtimeRegistryTable: dynamodb.Table;
-    bookingReferencesTable: dynamodb.Table;
-    guestConversionTokensTable: dynamodb.Table;
-    userPool: cognito.IUserPool;
-    userPoolClient: cognito.IUserPoolClient;
-    bookingEmailIdentity: ses.IEmailIdentity;
-    lambdaConfig?: MovieImportLambdaConfig;
-    envName?: EnvironmentName;
-}
+import {
+    getProfileProps,
+    lambdaSettings,
+    maxTicketsParameterName,
+    movieImportLambdaConfig,
+    movieUpdateMaxBatch,
+} from '../shared/lambda-config';
+import {
+    maxTicketsParameterForEnvironment,
+    resourceName,
+    type EnvironmentName,
+    type LambdaConstructProps,
+} from '../shared';
 
 function createNodejsFunction(
     scope: Construct,
@@ -74,8 +31,11 @@ function createNodejsFunction(
     }
 
     return new lambdaNodejs.NodejsFunction(scope, id, {
-        ...props,
+        ...lambdaSettings.base,
+        handler: 'handler',
+        ...getProfileProps(lambdaSettings.standard),
         logRetention: logs.RetentionDays.ONE_WEEK,
+        ...props,
     });
 }
 
@@ -155,11 +115,8 @@ export class LambdaConstruct extends Construct {
 
         this.addMoviesFunction = createNodejsFunction(this, 'AddMoviesHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-add-movies-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, '../../src/main/lambda/handlers/AddMovies/add-movies-handler.ts'),
-            handler: 'handler',
-            memorySize: lambdaConfig.memorySize,
-            timeout: cdk.Duration.seconds(lambdaConfig.timeoutSeconds),
+            ...getProfileProps(lambdaConfig),
             ...(lambdaConfig.reservedConcurrentExecutions !== undefined && {
                 reservedConcurrentExecutions: lambdaConfig.reservedConcurrentExecutions,
             }),
@@ -177,14 +134,10 @@ export class LambdaConstruct extends Construct {
 
         this.updateMoviesFunction = createNodejsFunction(this, 'UpdateMoviesHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-update-movies-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/UpdateMovies/update-movies-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.batchProcessing.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.batchProcessing.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 MAX_BATCH: String(movieUpdateMaxBatch),
@@ -196,11 +149,7 @@ export class LambdaConstruct extends Construct {
 
         this.listMoviesFunction = createNodejsFunction(this, 'ListMoviesHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-list-movies-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, '../../src/main/lambda/handlers/ListMovies/list-movies-handler.ts'),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
@@ -212,14 +161,10 @@ export class LambdaConstruct extends Construct {
 
         this.listFeaturedMoviesFunction = createNodejsFunction(this, 'ListFeaturedMoviesHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-list-featured-movies-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/ListFeaturedMovies/list-featured-movies-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
@@ -231,11 +176,7 @@ export class LambdaConstruct extends Construct {
 
         this.getMovieFunction = createNodejsFunction(this, 'GetMovieHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-get-movie-lambda'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(__dirname, '../../src/main/lambda/handlers/GetMovie/get-movie-handler.ts'),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
@@ -247,14 +188,10 @@ export class LambdaConstruct extends Construct {
 
         this.listMovieCollectionsFunction = createNodejsFunction(this, 'ListMovieCollectionsHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-list-movie-collections-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/ListMovieCollections/list-movie-collections-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
             },
@@ -264,14 +201,14 @@ export class LambdaConstruct extends Construct {
 
         this.getMovieCollectionFunction = createNodejsFunction(this, 'GetMovieCollectionHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-get-movie-collection-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/GetMovieCollection/get-movie-collection-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.collectionTreeRead.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.collectionTreeRead.timeoutSeconds),
+            ...getProfileProps({
+                ...lambdaSettings.standard,
+                timeoutSeconds: lambdaSettings.heavy.timeoutSeconds,
+            }),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
@@ -285,14 +222,11 @@ export class LambdaConstruct extends Construct {
 
         this.exportMoviesFunction = createNodejsFunction(this, 'ExportMoviesHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-export-movies-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/ExportMovies/export-movies-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.fullTableExport.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.fullTableExport.timeoutSeconds),
+            ...getProfileProps(lambdaSettings.heavy),
             environment: {
                 TABLE_NAME: props.table.tableName,
             },
@@ -302,14 +236,14 @@ export class LambdaConstruct extends Construct {
 
         this.listTmdbIdsFunction = createNodejsFunction(this, 'ListTmdbIdsHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-list-tmdb-ids-lambda'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/ListTmdbIds/list-tmdb-ids-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.fullTableRead.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.fullTableRead.timeoutSeconds),
+            ...getProfileProps({
+                ...lambdaSettings.standard,
+                timeoutSeconds: lambdaSettings.heavy.timeoutSeconds,
+            }),
             environment: {
                 TABLE_NAME: props.table.tableName,
             },
@@ -319,14 +253,10 @@ export class LambdaConstruct extends Construct {
 
         this.listFilmSelectionsFunction = createNodejsFunction(this, 'ListFilmSelectionsHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-film-selections-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/ListFilmSelections/list-film-selections-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.paginatedSelectionRead.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.paginatedSelectionRead.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 OFFERS_TABLE_NAME: props.offersTable.tableName,
@@ -340,14 +270,10 @@ export class LambdaConstruct extends Construct {
 
         this.getTicketPricingFunction = createNodejsFunction(this, 'GetTicketPricingHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-ticket-pricing-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/GetTicketPricing/get-ticket-pricing-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 PRICING_TABLE_NAME: props.pricingTable.tableName,
@@ -363,14 +289,10 @@ export class LambdaConstruct extends Construct {
 
         this.validateCheckoutFunction = createNodejsFunction(this, 'ValidateCheckoutHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-checkout-validation-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/ValidateCheckout/validate-checkout-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 PRICING_TABLE_NAME: props.pricingTable.tableName,
@@ -386,15 +308,11 @@ export class LambdaConstruct extends Construct {
 
         this.sendBookingConfirmationFunction = createNodejsFunction(this, 'SendBookingConfirmationHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-booking-confirmation-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/SendBookingConfirmation/send-booking-confirmation-handler.ts',
             ),
-            handler: 'handler',
             bundling: pdfKitBundling,
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
                 MAX_TICKETS_PARAMETER_NAME: scopedMaxTicketsParameterName,
@@ -406,14 +324,10 @@ export class LambdaConstruct extends Construct {
 
         this.upsertBookingOffersFunction = createNodejsFunction(this, 'UpsertBookingOffersHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-booking-offers-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/UpsertBookingOffers/upsert-booking-offers-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 OFFERS_TABLE_NAME: props.offersTable.tableName,
             },
@@ -423,14 +337,10 @@ export class LambdaConstruct extends Construct {
 
         this.upsertTicketPricingFunction = createNodejsFunction(this, 'UpsertTicketPricingHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-ticket-pricing-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/UpsertTicketPricing/upsert-ticket-pricing-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 PRICING_TABLE_NAME: props.pricingTable.tableName,
             },
@@ -440,14 +350,11 @@ export class LambdaConstruct extends Construct {
 
         this.refreshMovieCollectionFunction = createNodejsFunction(this, 'RefreshMovieCollectionHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-refresh-movie-collection-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/RefreshMovieCollection/refresh-movie-collection-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.collectionRefresh.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.collectionRefresh.timeoutSeconds),
+            ...getProfileProps(lambdaSettings.heavy),
             environment: {
                 COLLECTIONS_TABLE_NAME: props.collectionsTable.tableName,
                 TMDB_API_KEY: tmdbApiKey,
@@ -460,14 +367,10 @@ export class LambdaConstruct extends Construct {
 
         this.listBookingsFunction = createNodejsFunction(this, 'ListBookingsHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-list-bookings-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/ListBookings/list-bookings-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
                 LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
@@ -488,14 +391,10 @@ export class LambdaConstruct extends Construct {
         // Booking creation validates the movie and showtime, which needs the pricing lookups.
         this.createBookingFunction = createNodejsFunction(this, 'CreateBookingHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-create-booking-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/CreateBooking/create-booking-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 PRICING_TABLE_NAME: props.pricingTable.tableName,
@@ -515,14 +414,10 @@ export class LambdaConstruct extends Construct {
 
         this.rescheduleBookingFunction = createNodejsFunction(this, 'RescheduleCustomerBookingHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-reschedule-customer-booking-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/RescheduleCustomerBooking/reschedule-customer-booking-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
@@ -541,14 +436,10 @@ export class LambdaConstruct extends Construct {
 
         this.manageShowtimesFunction = createNodejsFunction(this, 'ManageShowtimesHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-manage-showtimes-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/ManageShowtimes/manage-showtimes-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
@@ -564,14 +455,11 @@ export class LambdaConstruct extends Construct {
 
         this.maintainScheduleFunction = createNodejsFunction(this, 'MaintainScheduleHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-maintain-rolling-schedule-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/MaintainSchedule/maintain-schedule-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: 512,
-            timeout: cdk.Duration.minutes(15),
+            ...getProfileProps(lambdaSettings.scheduled),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
@@ -592,15 +480,15 @@ export class LambdaConstruct extends Construct {
 
         this.guestBookedSeatsFunction = createNodejsFunction(this, 'GuestBookedSeatsHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-guest-booked-seats-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler.ts',
             ),
-            handler: 'handler',
             bundling: pdfKitBundling,
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(25),
+            ...getProfileProps({
+                ...lambdaSettings.standard,
+                timeoutSeconds: lambdaSettings.heavy.timeoutSeconds,
+            }),
             environment: {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
                 LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
@@ -631,15 +519,11 @@ export class LambdaConstruct extends Construct {
 
         this.guestBookingFunction = createNodejsFunction(this, 'GuestBookingHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-guest-booking-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/GuestBooking/guest-booking-handler.ts',
             ),
-            handler: 'handler',
             bundling: pdfKitBundling,
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 TABLE_NAME: props.table.tableName,
                 PRICING_TABLE_NAME: props.pricingTable.tableName,
@@ -667,14 +551,10 @@ export class LambdaConstruct extends Construct {
 
         this.guestConversionFunction = createNodejsFunction(this, 'GuestConversionHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-guest-conversion-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/GuestConversion/guest-conversion-handler.ts',
             ),
-            handler: 'handler',
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
                 LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
@@ -703,15 +583,11 @@ export class LambdaConstruct extends Construct {
 
         this.downloadTicketFunction = createNodejsFunction(this, 'DownloadTicketHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-download-ticket-handler'),
-            runtime: lambdaSettings.runtime,
             entry: path.join(
                 __dirname,
                 '../../src/main/lambda/handlers/DownloadTicket/download-ticket-handler.ts',
             ),
-            handler: 'handler',
             bundling: pdfKitBundling,
-            memorySize: lambdaSettings.default.memorySize,
-            timeout: cdk.Duration.seconds(lambdaSettings.default.timeoutSeconds),
             environment: {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
                 LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
