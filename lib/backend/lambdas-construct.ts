@@ -1,6 +1,6 @@
 import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cdk from 'aws-cdk-lib';
 import * as events from 'aws-cdk-lib/aws-events';
@@ -10,14 +10,11 @@ import * as path from 'path';
 import {
     getProfileProps,
     lambdaSettings,
-    maxTicketsParameterName,
     movieImportLambdaConfig,
     movieUpdateMaxBatch,
 } from '../shared/lambda-config';
 import {
-    maxTicketsParameterForEnvironment,
     resourceName,
-    type EnvironmentName,
     type LambdaConstructProps,
 } from '../shared';
 
@@ -89,29 +86,20 @@ export class LambdaConstruct extends Construct {
         }).valueAsString;
 
         const formatLambdaFunctionName = (name: string): string => resourceName(name, envName);
-        const scopedMaxTicketsParameterName = maxTicketsParameterForEnvironment(
-            maxTicketsParameterName,
-            envName,
-        );
+        const configBucketName = process.env.CONFIG_BUCKET_NAME?.trim();
+
+        if (!configBucketName) {
+            throw new Error('CONFIG_BUCKET_NAME must be set before synthesizing the backend stack.');
+        }
+
+        const configBucket = s3.Bucket.fromBucketName(this, 'RuntimeConfigBucket', configBucketName);
+        const runtimeConfigEnvironment = {
+            CONFIG_BUCKET_NAME: configBucketName,
+            CONFIG_KEY: process.env.CONFIG_KEY?.trim() || 'config.json',
+        };
 
         // PDFKit resolves its fonts and other assets relative to its installed package.
         const pdfKitBundling = { nodeModules: ['pdfkit'] };
-        const maxTicketsParameter = ssm.StringParameter.fromStringParameterName(
-            this,
-            'MaxTicketsParameter',
-            scopedMaxTicketsParameterName,
-        );
-
-        const allowLinkBookingsParameterName = resourceName(
-            '/blockbuster-theatre/parameter-configurations/ALLOW_LINK_BOOKINGS',
-            envName,
-        );
-
-        const allowLinkBookingsParameter = ssm.StringParameter.fromStringParameterName(
-            this,
-            'AllowLinkBookingsParameter',
-            allowLinkBookingsParameterName,
-        );
 
         this.addMoviesFunction = createNodejsFunction(this, 'AddMoviesHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-add-movies-handler'),
@@ -298,6 +286,7 @@ export class LambdaConstruct extends Construct {
                 PRICING_TABLE_NAME: props.pricingTable.tableName,
                 OFFERS_TABLE_NAME: props.offersTable.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
+                ...runtimeConfigEnvironment,
             },
         });
 
@@ -305,6 +294,7 @@ export class LambdaConstruct extends Construct {
         props.pricingTable.grantReadData(this.validateCheckoutFunction);
         props.offersTable.grantReadData(this.validateCheckoutFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.validateCheckoutFunction);
+        configBucket.grantRead(this.validateCheckoutFunction, runtimeConfigEnvironment.CONFIG_KEY);
 
         this.sendBookingConfirmationFunction = createNodejsFunction(this, 'SendBookingConfirmationHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-booking-confirmation-handler'),
@@ -315,12 +305,15 @@ export class LambdaConstruct extends Construct {
             bundling: pdfKitBundling,
             environment: {
                 BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
-                MAX_TICKETS_PARAMETER_NAME: scopedMaxTicketsParameterName,
+                ...runtimeConfigEnvironment,
             },
         });
 
         props.bookingEmailIdentity.grantSendEmail(this.sendBookingConfirmationFunction);
-        maxTicketsParameter.grantRead(this.sendBookingConfirmationFunction);
+        configBucket.grantRead(
+            this.sendBookingConfirmationFunction,
+            runtimeConfigEnvironment.CONFIG_KEY,
+        );
 
         this.upsertBookingOffersFunction = createNodejsFunction(this, 'UpsertBookingOffersHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-upsert-booking-offers-handler'),
@@ -402,6 +395,7 @@ export class LambdaConstruct extends Construct {
                 BOOKINGS_TABLE_NAME: props.bookingsTable.tableName,
                 LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
+                ...runtimeConfigEnvironment,
             },
         });
 
@@ -411,6 +405,7 @@ export class LambdaConstruct extends Construct {
         props.bookingsTable.grantWriteData(this.createBookingFunction);
         props.legacyBookingsTable.grantReadData(this.createBookingFunction);
         props.showtimeRegistryTable.grantReadWriteData(this.createBookingFunction);
+        configBucket.grantRead(this.createBookingFunction, runtimeConfigEnvironment.CONFIG_KEY);
 
         this.rescheduleBookingFunction = createNodejsFunction(this, 'RescheduleCustomerBookingHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-reschedule-customer-booking-handler'),
@@ -494,8 +489,8 @@ export class LambdaConstruct extends Construct {
                 LEGACY_BOOKINGS_TABLE_NAME: props.legacyBookingsTable.tableName,
                 SHOWTIME_REGISTRY_TABLE_NAME: props.showtimeRegistryTable.tableName,
                 BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
-                ALLOW_LINK_BOOKINGS_PARAMETER_NAME: allowLinkBookingsParameterName,
                 USER_POOL_ID: props.userPool.userPoolId,
+                ...runtimeConfigEnvironment,
             },
         });
 
@@ -503,12 +498,7 @@ export class LambdaConstruct extends Construct {
         props.legacyBookingsTable.grantReadWriteData(this.guestBookedSeatsFunction);
         props.showtimeRegistryTable.grantReadData(this.guestBookedSeatsFunction);
         props.bookingEmailIdentity.grantSendEmail(this.guestBookedSeatsFunction);
-        this.guestBookedSeatsFunction.addToRolePolicy(
-            new iam.PolicyStatement({
-                actions: ['ssm:GetParameter'],
-                resources: [allowLinkBookingsParameter.parameterArn],
-            }),
-        );
+        configBucket.grantRead(this.guestBookedSeatsFunction, runtimeConfigEnvironment.CONFIG_KEY);
 
         this.guestBookedSeatsFunction.addToRolePolicy(
             new iam.PolicyStatement({
@@ -534,7 +524,7 @@ export class LambdaConstruct extends Construct {
                 BOOKING_REFERENCES_TABLE_NAME: props.bookingReferencesTable.tableName,
                 GUEST_CONVERSION_TOKENS_TABLE_NAME: props.guestConversionTokensTable.tableName,
                 BOOKING_EMAIL_FROM: props.bookingEmailIdentity.emailIdentityName,
-                MAX_TICKETS_PARAMETER_NAME: scopedMaxTicketsParameterName,
+                ...runtimeConfigEnvironment,
             },
         });
 
@@ -547,7 +537,7 @@ export class LambdaConstruct extends Construct {
         props.bookingReferencesTable.grantWriteData(this.guestBookingFunction);
         props.guestConversionTokensTable.grantWriteData(this.guestBookingFunction);
         props.bookingEmailIdentity.grantSendEmail(this.guestBookingFunction);
-        maxTicketsParameter.grantRead(this.guestBookingFunction);
+        configBucket.grantRead(this.guestBookingFunction, runtimeConfigEnvironment.CONFIG_KEY);
 
         this.guestConversionFunction = createNodejsFunction(this, 'GuestConversionHandler', {
             functionName: formatLambdaFunctionName('blockbuster-theatre-guest-conversion-handler'),

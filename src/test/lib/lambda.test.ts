@@ -7,13 +7,13 @@ import { execFileSync } from 'child_process';
 import * as path from 'path';
 import { LambdaConstruct } from '../../../lib/backend';
 import {
-    maxTicketsParameterName,
     movieImportLambdaConfig as cfg,
     movieUpdateMaxBatch,
 } from '../../../lib/shared/lambda-config';
-import { maxTicketsParameterForEnvironment } from '../../../lib/shared';
 
 process.env.TMDB_API_KEY = 'test-token';
+process.env.CONFIG_BUCKET_NAME = 'runtime-config-test';
+process.env.CONFIG_KEY = 'config.json';
 
 describe('LambdaConstruct', () => {
     let stack: cdk.Stack;
@@ -678,39 +678,31 @@ describe('LambdaConstruct', () => {
             FunctionName: 'blockbuster-theatre-prod-guest-booking-handler',
             Environment: {
                 Variables: Match.objectLike({
-                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterForEnvironment(
-                        maxTicketsParameterName,
-                        'prod',
-                    ),
+                    CONFIG_BUCKET_NAME: 'runtime-config-test',
+                    CONFIG_KEY: 'config.json',
                 }),
             },
         });
     });
 
-    it('should allow the booking confirmation handler to read the max-ticket parameter', () => {
+    it('grants booking configuration readers access to the configured S3 object', () => {
         const template = Template.fromStack(stack);
         template.hasResourceProperties('AWS::Lambda::Function', {
             FunctionName: 'blockbuster-theatre-prod-booking-confirmation-handler',
             Environment: {
                 Variables: Match.objectLike({
-                    MAX_TICKETS_PARAMETER_NAME: maxTicketsParameterForEnvironment(
-                        maxTicketsParameterName,
-                        'prod',
-                    ),
+                    CONFIG_BUCKET_NAME: 'runtime-config-test',
+                    CONFIG_KEY: 'config.json',
                 }),
             },
         });
 
-        template.hasResourceProperties('AWS::IAM::Policy', {
-            PolicyDocument: Match.objectLike({
-                Statement: Match.arrayWith([
-                    Match.objectLike({
-                        Action: Match.arrayWith(['ssm:GetParameter']),
-                        Resource: Match.anyValue(),
-                    }),
-                ]),
-            }),
-        });
+        const policies = template.findResources('AWS::IAM::Policy');
+        expect(JSON.stringify(policies)).toContain('s3:GetObject');
+        expect(JSON.stringify(policies)).not.toContain('ssm:GetParameter');
+        expect(JSON.stringify(template.findResources('AWS::Lambda::Function'))).not.toContain(
+            'MAX_TICKETS_PARAMETER_NAME',
+        );
     });
 
     it('should have handler set to "handler"', () => {

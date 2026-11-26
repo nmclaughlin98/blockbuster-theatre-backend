@@ -3,19 +3,21 @@ import {
     AdminGetUserCommand,
     CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider';
-import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
+import { getRuntimeConfig } from '../../../main/lambda/handlers/Shared/runtime-config';
 import type { OptionalJwtEvent } from '../../../main/lambda/handlers/utils/common';
 import { handler } from '../../../main/lambda/handlers/GuestBookedSeats/guest-booked-seats-handler';
 import { linkGuestBookings } from '../../../main/lambda/handlers/GuestBookedSeats/link-guest-bookings';
 
+jest.mock('../../../main/lambda/handlers/Shared/runtime-config', () => ({
+    getRuntimeConfig: jest.fn(),
+}));
+
 const ddb = mockClient(DynamoDBDocumentClient);
 const ses = mockClient(SESv2Client);
-const ssm = mockClient(SSMClient);
 const cognito = mockClient(CognitoIdentityProviderClient);
-const parameterName = '/test/ALLOW_LINK_BOOKINGS';
-const originalParameterName = process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
+const runtimeConfigMock = jest.mocked(getRuntimeConfig);
 const originalUserPoolId = process.env.USER_POOL_ID;
 const futureKey = 'customerEmail = :email AND #date > :cutoffDate';
 const todayKey = 'customerEmail = :email AND #date = :cutoffDate';
@@ -35,25 +37,27 @@ const guest = {
     bookedAt: '2029-01-01T00:00:00Z',
 };
 
+function runtimeConfig(allowLinkBookings: boolean) {
+    return {
+        features: { allowLinkBookings },
+        limits: { maxTickets: 10 },
+    };
+}
+
 beforeEach(() => {
     process.env.BOOKINGS_TABLE_NAME = 'current';
     process.env.LEGACY_BOOKINGS_TABLE_NAME = 'legacy';
     process.env.BOOKING_EMAIL_FROM = 'tickets@example.com';
-    process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME = parameterName;
     process.env.USER_POOL_ID = 'test-pool';
     ddb.reset();
     ses.reset();
-    ssm.reset();
     cognito.reset();
-    ssm.on(GetParameterCommand, { Name: parameterName }).resolves({ Parameter: { Value: 'false' } });
+    runtimeConfigMock.mockReset().mockResolvedValue(runtimeConfig(false));
     ddb.on(QueryCommand, { KeyConditionExpression: todayKey }).resolves({ Items: [] });
     ses.on(SendEmailCommand).resolves({});
 });
 
 afterAll(() => {
-    if (originalParameterName === undefined) delete process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
-    else process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME = originalParameterName;
-
     if (originalUserPoolId === undefined) delete process.env.USER_POOL_ID;
     else process.env.USER_POOL_ID = originalUserPoolId;
 });
@@ -367,13 +371,13 @@ test.each([
         ddb.commandCalls(QueryCommand).every((call) => call.args[0].input.IndexName === 'UserBookings'),
     ).toBe(true);
 
-    expect(ssm.calls()).toHaveLength(0);
+    expect(runtimeConfigMock).not.toHaveBeenCalled();
 });
 
 test.each([{ token_use: 'access', username: 'login-name' }, { token_use: 'id' }])(
     'uses a verified Cognito email when token claims lack one: %p',
     async (claims) => {
-        ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
+        runtimeConfigMock.mockResolvedValue(runtimeConfig(true));
         cognito.on(AdminGetUserCommand).resolves({
             UserAttributes: [
                 { Name: 'email', Value: ' Customer@Example.com ' },
@@ -420,7 +424,7 @@ test.each([{ token_use: 'access', username: 'login-name' }, { token_use: 'id' }]
 );
 
 test.each(['false', undefined])('does not link a Cognito email with verification %p', async (verified) => {
-    ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
+    runtimeConfigMock.mockResolvedValue(runtimeConfig(true));
     cognito.on(AdminGetUserCommand).resolves({
         UserAttributes: [
             { Name: 'email', Value: 'customer@example.com' },
@@ -460,7 +464,7 @@ test('does not call Cognito when linking is disabled, and reports lookup errors 
 
     expect(disabled.statusCode).toBe(200);
     expect(cognito.calls()).toHaveLength(0);
-    ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'true' } });
+    runtimeConfigMock.mockResolvedValue(runtimeConfig(true));
     cognito.on(AdminGetUserCommand).rejects(new Error('Cognito unavailable'));
     const failed = await handler(event);
 
@@ -471,7 +475,7 @@ test('does not call Cognito when linking is disabled, and reports lookup errors 
 });
 
 test('history returns newly claimed records immediately even before the user index catches up', async () => {
-    ssm.on(GetParameterCommand, { Name: parameterName }).resolves({ Parameter: { Value: 'true' } });
+    runtimeConfigMock.mockResolvedValue(runtimeConfig(true));
     ddb.on(QueryCommand, {
         IndexName: 'CustomerEmailUpcomingBookings',
         TableName: 'current',
@@ -515,7 +519,7 @@ test('history returns newly claimed records immediately even before the user ind
 });
 
 test('history reports an SES failure without losing the claimed booking', async () => {
-    ssm.on(GetParameterCommand, { Name: parameterName }).resolves({ Parameter: { Value: 'true' } });
+    runtimeConfigMock.mockResolvedValue(runtimeConfig(true));
     ddb.on(QueryCommand, {
         IndexName: 'CustomerEmailUpcomingBookings',
         TableName: 'current',
@@ -556,62 +560,48 @@ test('history reports an SES failure without losing the claimed booking', async 
     });
 });
 
-test.each(['false', 'missing', 'unconfigured'])(
-    'returns existing history without linking when the flag is %s',
-    async (setting) => {
-        if (setting === 'missing') {
-            ssm.on(GetParameterCommand).rejects(
-                Object.assign(new Error('missing'), { name: 'ParameterNotFound' }),
-            );
-        } else if (setting === 'unconfigured') {
-            delete process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
-        }
+test('returns existing history without linking when the flag is disabled', async () => {
+    ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
+    ddb.on(QueryCommand, {
+        TableName: 'current',
+        FilterExpression: 'recordType = :booking',
+    }).resolves({ Items: [guest] });
 
-        ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
-        ddb.on(QueryCommand, {
-            TableName: 'current',
-            FilterExpression: 'recordType = :booking',
-        }).resolves({ Items: [guest] });
-
-        const result = await handler({
-            routeKey: 'GET /api/v1/bookings/account/history',
-            requestContext: {
-                requestId: 'test',
-                authorizer: {
-                    jwt: {
-                        claims: {
-                            sub: 'user-1',
-                            token_use: 'id',
-                            email: 'customer@example.com',
-                            email_verified: true,
-                        },
+    const result = await handler({
+        routeKey: 'GET /api/v1/bookings/account/history',
+        requestContext: {
+            requestId: 'test',
+            authorizer: {
+                jwt: {
+                    claims: {
+                        sub: 'user-1',
+                        token_use: 'id',
+                        email: 'customer@example.com',
+                        email_verified: true,
                     },
                 },
             },
-        } as OptionalJwtEvent);
+        },
+    } as OptionalJwtEvent);
 
-        if (typeof result === 'string') throw new Error('Expected structured result.');
+    if (typeof result === 'string') throw new Error('Expected structured result.');
 
-        expect(result.statusCode).toBe(200);
-        expect(JSON.parse(result.body ?? '{}')).toMatchObject({
-            newlyLinkedBookings: [],
-            bookings: [expect.objectContaining({ bookingId: 'bk_1' })],
-        });
+    expect(result.statusCode).toBe(200);
+    expect(JSON.parse(result.body ?? '{}')).toMatchObject({
+        newlyLinkedBookings: [],
+        bookings: [expect.objectContaining({ bookingId: 'bk_1' })],
+    });
 
-        expect(ddb.commandCalls(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings' })).toHaveLength(
-            0,
-        );
-
-        expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
-        expect(ses.commandCalls(SendEmailCommand)).toHaveLength(0);
-        expect(ssm.calls()).toHaveLength(setting === 'unconfigured' ? 0 : 1);
-    },
-);
+    expect(ddb.commandCalls(QueryCommand, { IndexName: 'CustomerEmailUpcomingBookings' })).toHaveLength(0);
+    expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
+    expect(ses.commandCalls(SendEmailCommand)).toHaveLength(0);
+    expect(runtimeConfigMock).toHaveBeenCalledTimes(1);
+});
 
 test('reads the flag again on the next eligible history request', async () => {
-    ssm.on(GetParameterCommand)
-        .resolvesOnce({ Parameter: { Value: 'false' } })
-        .resolvesOnce({ Parameter: { Value: 'true' } });
+    runtimeConfigMock
+        .mockResolvedValueOnce(runtimeConfig(false))
+        .mockResolvedValueOnce(runtimeConfig(true));
 
     ddb.on(QueryCommand, { IndexName: 'UserBookings' }).resolves({ Items: [] });
     ddb.on(QueryCommand, { TableName: 'current', KeyConditionExpression: futureKey }).resolves({
@@ -645,39 +635,6 @@ test('reads the flag again on the next eligible history request', async () => {
 
     expect(JSON.parse(disabled.body ?? '{}').newlyLinkedBookings).toEqual([]);
     expect(JSON.parse(enabled.body ?? '{}').newlyLinkedBookings).toEqual(['BBT-123456']);
-    expect(ssm.calls()).toHaveLength(2);
+    expect(runtimeConfigMock).toHaveBeenCalledTimes(2);
     expect(ddb.commandCalls(UpdateCommand)).toHaveLength(1);
 });
-
-test.each(['invalid', 'unavailable'])(
-    'reports %s parameter failures rather than silently disabling linking',
-    async (failure) => {
-        if (failure === 'invalid') {
-            ssm.on(GetParameterCommand).resolves({ Parameter: { Value: 'yes' } });
-        } else {
-            ssm.on(GetParameterCommand).rejects(new Error('SSM unavailable'));
-        }
-
-        const result = await handler({
-            routeKey: 'GET /api/v1/bookings/account/history',
-            requestContext: {
-                requestId: 'test',
-                authorizer: {
-                    jwt: {
-                        claims: {
-                            sub: 'user-1',
-                            token_use: 'id',
-                            email: 'customer@example.com',
-                            email_verified: true,
-                        },
-                    },
-                },
-            },
-        } as OptionalJwtEvent);
-
-        if (typeof result === 'string') throw new Error('Expected structured result.');
-
-        expect(result.statusCode).toBe(500);
-        expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
-    },
-);

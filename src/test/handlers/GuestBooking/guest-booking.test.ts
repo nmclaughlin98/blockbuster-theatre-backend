@@ -28,7 +28,6 @@ process.env.USER_POOL_ID = 'test-pool';
 process.env.USER_POOL_CLIENT_ID = 'test-client';
 process.env.BOOKING_EMAIL_FROM = 'bookings@example.com';
 
-const originalMaxTicketsParameterName = process.env.MAX_TICKETS_PARAMETER_NAME;
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const cognitoMock = mockClient(CognitoIdentityProviderClient);
 const sesMock = mockClient(SESv2Client);
@@ -208,7 +207,6 @@ describe('unpaid guest bookings', () => {
         ddbMock.reset();
         cognitoMock.reset();
         sesMock.reset();
-        delete process.env.MAX_TICKETS_PARAMETER_NAME;
         mockShowtimeResolution();
         sesMock.on(SendEmailCommand).resolves({});
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -216,12 +214,6 @@ describe('unpaid guest bookings', () => {
 
     afterEach(() => {
         jest.restoreAllMocks();
-
-        if (originalMaxTicketsParameterName === undefined) {
-            delete process.env.MAX_TICKETS_PARAMETER_NAME;
-        } else {
-            process.env.MAX_TICKETS_PARAMETER_NAME = originalMaxTicketsParameterName;
-        }
     });
 
     it('creates one unpaid booking with a ticket breakdown and a calculated total', async () => {
@@ -257,11 +249,6 @@ describe('unpaid guest bookings', () => {
                 expect.objectContaining({
                     message: 'Guest booking request received.',
                     requestId: 'guest-booking-test',
-                }),
-                expect.objectContaining({
-                    message: 'Maximum ticket limit resolved.',
-                    maxTickets: 10,
-                    source: 'default',
                 }),
                 expect.objectContaining({
                     message: 'Guest booking created.',
@@ -312,8 +299,7 @@ describe('unpaid guest bookings', () => {
         expect(cognitoMock.calls()).toHaveLength(0);
     });
 
-    it('rejects bookings above the configured fallback ticket limit', async () => {
-        const info = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    it('rejects bookings above the fallback ticket limit', async () => {
         const payload = validGuestPayload();
         payload.seats = Array.from({ length: 11 }, (_, index) => `A${index + 1}`);
         payload.tickets = [{ tierId: 'adult', quantity: 11 }];
@@ -323,9 +309,6 @@ describe('unpaid guest bookings', () => {
         expect(result).toMatchObject({ statusCode: 400 });
         expect(responseBody(result).message).toBe('A maximum of 10 tickets can be booked at once.');
         expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
-        expect(info.mock.calls.map(([entry]) => String(entry)).join('\n')).toContain(
-            '"maxTickets":10,"source":"default"',
-        );
     });
 
     it('enforces the ticket limit for authenticated account bookings', async () => {

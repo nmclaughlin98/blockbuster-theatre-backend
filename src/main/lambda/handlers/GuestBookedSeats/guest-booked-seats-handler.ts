@@ -3,8 +3,8 @@ import {
     AdminGetUserCommand,
     CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider';
-import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { GuestBookingError, listGuestBookedSeats } from '../GuestBooking/guest-booking-service';
+import { getRuntimeConfig } from '../Shared/runtime-config';
 import { json, log, type OptionalJwtEvent } from '../utils/common';
 import { ShowtimeIdError } from '../utils/showtime-ids';
 import { listAccountBookings } from './list-account-bookings';
@@ -12,7 +12,6 @@ import { linkGuestBookings } from './link-guest-bookings';
 
 const ACCOUNT_BOOKED_SEATS_ROUTE_KEY = 'GET /api/v1/bookings/account';
 const ACCOUNT_HISTORY_ROUTE_KEY = 'GET /api/v1/bookings/account/history';
-const ssmClient = new SSMClient({ region: process.env.AWS_REGION ?? 'eu-west-2' });
 const cognitoClient = new CognitoIdentityProviderClient({});
 
 async function getVerifiedEmail(userId: string): Promise<string | undefined> {
@@ -40,34 +39,7 @@ async function getVerifiedEmail(userId: string): Promise<string | undefined> {
 }
 
 async function isGuestLinkingAllowed(): Promise<boolean> {
-    const parameterName = process.env.ALLOW_LINK_BOOKINGS_PARAMETER_NAME;
-
-    if (!parameterName) {
-        log('WARN', 'Guest booking linking parameter is not configured; linking is disabled.');
-
-        return false;
-    }
-
-    try {
-        const result = await ssmClient.send(new GetParameterCommand({ Name: parameterName }));
-        const value = result.Parameter?.Value?.trim().toLowerCase();
-
-        if (value !== 'true' && value !== 'false') {
-            throw new Error('Guest booking linking parameter must be true or false.');
-        }
-
-        return value === 'true';
-    } catch (error: unknown) {
-        if (error instanceof Error && error.name === 'ParameterNotFound') {
-            log('WARN', 'Guest booking linking parameter was not found; linking is disabled.', {
-                parameterName,
-            });
-
-            return false;
-        }
-
-        throw error;
-    }
+    return (await getRuntimeConfig()).features.allowLinkBookings;
 }
 
 export interface AccountBookingHistoryResponse {

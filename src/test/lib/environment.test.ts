@@ -18,8 +18,8 @@ describe('CDK environment helpers', () => {
             'blockbuster-theatre-dev-api-gateway',
         );
 
-        expect(resourceName('/blockbuster-theatre/booking-configuration/max-tickets-value', 'dev')).toBe(
-            '/blockbuster-theatre-dev/booking-configuration/max-tickets-value',
+        expect(resourceName('blockbuster-theatre-guest-booking-handler', 'dev')).toBe(
+            'blockbuster-theatre-dev-guest-booking-handler',
         );
 
         expect(() => parseEnvironmentName('staging')).toThrow(

@@ -1,10 +1,14 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
-import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
+import { sdkStreamMixin } from '@smithy/util-stream';
 import { mockClient } from 'aws-sdk-client-mock';
+import { Readable } from 'node:stream';
 
 const sesMock = mockClient(SESv2Client);
-const ssmMock = mockClient(SSMClient);
+const s3Mock = mockClient(S3Client);
+const originalBucketName = process.env.CONFIG_BUCKET_NAME;
+const originalConfigKey = process.env.CONFIG_KEY;
 let handler: (event: APIGatewayProxyEventV2) => Promise<APIGatewayProxyResultV2>;
 
 beforeAll(async () => {
@@ -62,9 +66,18 @@ function createEvent(body: string, isBase64Encoded = false): APIGatewayProxyEven
 describe('booking confirmation email handler', () => {
     beforeEach(() => {
         sesMock.reset();
-        ssmMock.reset();
-        delete process.env.MAX_TICKETS_PARAMETER_NAME;
+        s3Mock.reset();
+        delete process.env.CONFIG_BUCKET_NAME;
+        delete process.env.CONFIG_KEY;
         process.env.BOOKING_EMAIL_FROM = 'niallmclaughlin1998@gmail.com';
+    });
+
+    afterAll(() => {
+        if (originalBucketName === undefined) delete process.env.CONFIG_BUCKET_NAME;
+        else process.env.CONFIG_BUCKET_NAME = originalBucketName;
+
+        if (originalConfigKey === undefined) delete process.env.CONFIG_KEY;
+        else process.env.CONFIG_KEY = originalConfigKey;
     });
 
     it('sends an unpaid reservation confirmation and QR reference through SES', async () => {
@@ -143,15 +156,15 @@ describe('booking confirmation email handler', () => {
         const result = await handler(createEvent(JSON.stringify(overLimitBooking)));
 
         expect(result.statusCode).toBe(400);
-        expect(ssmMock.calls()).toHaveLength(0);
+        expect(s3Mock.calls()).toHaveLength(0);
         expect(sesMock.calls()).toHaveLength(0);
     });
 
-    it('uses the maximum ticket count configured in Parameter Store', async () => {
-        const parameterName = '/blockbuster-theatre/booking-configuration/max-tickets-value';
-        process.env.MAX_TICKETS_PARAMETER_NAME = parameterName;
-        ssmMock.on(GetParameterCommand, { Name: parameterName }).resolves({
-            Parameter: { Value: '11' },
+    it('uses the maximum ticket count configured in the S3 runtime config', async () => {
+        process.env.CONFIG_BUCKET_NAME = 'runtime-config-test';
+        process.env.CONFIG_KEY = 'booking-config.json';
+        s3Mock.on(GetObjectCommand).resolves({
+            Body: sdkStreamMixin(Readable.from([JSON.stringify({ limits: { maxTickets: 11 } })])),
         });
 
         sesMock.on(SendEmailCommand).resolves({});
@@ -164,7 +177,7 @@ describe('booking confirmation email handler', () => {
         const result = await handler(createEvent(JSON.stringify(elevenTickets)));
 
         expect(result.statusCode).toBe(200);
-        expect(ssmMock.calls()).toHaveLength(1);
+        expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(1);
         expect(sesMock.calls()).toHaveLength(1);
     });
 
