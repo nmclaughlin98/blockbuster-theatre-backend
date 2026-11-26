@@ -1,11 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { BackendStack as BlockbusterTheatreBackendStack-prod } from '../../../lib/backend';
+import { BackendStack } from '../../../lib/backend';
 import { PROD_TO_DEV_TABLES } from '../../../scripts/sync-prod-to-dev';
 import { maxTicketsParameterForEnvironment } from '../../../lib/shared';
 
 describe('BackendStack', () => {
-    let stack: BlockbusterTheatreBackendStack-prod;
+    let stack: BackendStack;
 
     function expectLinkingParameter(template: Template, functionName: string, parameterName: string): void {
         const functions = template.findResources('AWS::Lambda::Function', {
@@ -40,7 +40,7 @@ describe('BackendStack', () => {
 
     beforeEach(() => {
         const app = new cdk.App();
-        stack = new BlockbusterTheatreBackendStack(app, 'TestBackendStack', {
+        stack = new BackendStack(app, 'TestBackendStack', {
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedbackendclientid',
             prodPostmanClientId: 'postmanclientid',
@@ -100,7 +100,7 @@ describe('BackendStack', () => {
         ],
     ] as const)('configures guest booking linking for %s', (envName, functionName, parameterName) => {
         const app = new cdk.App();
-        const configuredStack = new BlockbusterTheatreBackendStack(app, 'FlagStack', {
+        const configuredStack = new BackendStack(app, 'FlagStack', {
             envName,
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedclientid',
@@ -114,7 +114,7 @@ describe('BackendStack', () => {
 
     it('synthesizes an isolated dev stack without creating prod Cognito or SES resources', () => {
         const app = new cdk.App();
-        const devStack = new BlockbusterTheatreBackendStack(app, 'BlockbusterTheatreBackendStack-dev', {
+        const devStack = new BackendStack(app, 'BlockbusterTheatreBackendStack-dev', {
             envName: 'dev',
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedclientid',
@@ -196,7 +196,7 @@ describe('BackendStack', () => {
 
     it('resolves Cognito audience from SSM parameters when not explicitly configured', () => {
         const app = new cdk.App();
-        const stackWithSsm = new BlockbusterTheatreBackendStack(app, 'SsmBackendStack', {
+        const stackWithSsm = new BackendStack(app, 'SsmBackendStack', {
             envName: 'dev',
             env: { account: '334624057595', region: 'eu-west-2' },
         });
@@ -227,7 +227,7 @@ describe('BackendStack', () => {
 
     it.each(['prod', 'dev'] as const)('tags managed resources for %s', (envName) => {
         const app = new cdk.App();
-        const taggedStack = new BlockbusterTheatreBackendStack(app, 'TaggedStack', {
+        const taggedStack = new BackendStack(app, 'TaggedStack', {
             envName,
             prodUserPoolId: 'eu-west-2_sharedpool',
             prodUserPoolClientId: 'sharedclientid',
@@ -413,7 +413,13 @@ describe('BackendStack', () => {
 
     it('should create API Gateway routes without authorizationScopes', () => {
         const template = Template.fromStack(stack);
-        template.resourceCountIs('AWS::ApiGatewayV2::Route', 30);
+        template.resourceCountIs('AWS::ApiGatewayV2::Route', 32);
+        for (const path of ['/api-docs', '/api-docs/openapi.json']) {
+            template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+                RouteKey: `GET ${path}`,
+                AuthorizationType: 'NONE',
+            });
+        }
         template.hasResourceProperties('AWS::ApiGatewayV2::Route', {
             RouteKey: 'GET /bookings',
         });

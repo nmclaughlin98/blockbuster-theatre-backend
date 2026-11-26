@@ -33,13 +33,18 @@ jobs:
               id: compile
               run: npm run build
 
+            - name: Build API documentation
+              run: npm run docs:build
+
             - name: Synthesize CDK App (dev)
               id: synthesize_dev
               env:
                   CDK_DEFAULT_ACCOUNT: '334624057595'
                   CDK_DEFAULT_REGION: 'eu-west-2'
                   TMDB_API_KEY: 'ci-synth-placeholder'
-              run: npx cdk synth -c env=dev --output cdk-out/dev
+              run: |
+                  npx cdk synth -c env=dev --output cdk-out/dev
+                  DOCS_ENV=dev npm run docs:check -- cdk-out/dev/BlockbusterTheatreBackendStack-dev.template.json
 
             - name: Synthesize CDK App (prod)
               id: synthesize_prod
@@ -47,7 +52,9 @@ jobs:
                   CDK_DEFAULT_ACCOUNT: '334624057595'
                   CDK_DEFAULT_REGION: 'eu-west-2'
                   TMDB_API_KEY: 'ci-synth-placeholder'
-              run: npx cdk synth -c env=prod --output cdk-out/prod
+              run: |
+                  npx cdk synth -c env=prod --output cdk-out/prod
+                  DOCS_ENV=prod npm run docs:check -- cdk-out/prod/BlockbusterTheatreBackendStack-prod.template.json
 
             - name: Upload Build Artifact
               id: upload_artifact

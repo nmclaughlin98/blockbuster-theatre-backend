@@ -3,6 +3,7 @@ import type * as lambda from 'aws-cdk-lib/aws-lambda';
 import type { EnvironmentName } from '../environment';
 
 export interface ApiGatewayConstructProps {
+    apiDocsFunction: lambda.IFunction;
     addMoviesFunction: lambda.IFunction;
     updateMoviesFunction: lambda.IFunction;
     listMoviesFunction: lambda.IFunction;

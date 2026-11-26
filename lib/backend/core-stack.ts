@@ -1,8 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
 import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ses from 'aws-cdk-lib/aws-ses';
 import { Construct } from 'constructs';
+import * as path from 'path';
 import { DatabaseConstruct } from './database-construct';
 import { ApiGatewayConstruct } from './api-gateway-construct';
 import { LambdaConstruct } from './lambdas-construct';
@@ -11,6 +14,8 @@ import {
     type AuthParameters,
     type BackendStackProps,
     type EnvironmentName,
+    getProfileProps,
+    lambdaSettings,
     resourceName,
 } from '../shared';
 
@@ -105,8 +110,18 @@ export class BackendStack extends cdk.Stack {
             envName,
         });
 
+        const apiDocsFunction = new lambda.Function(this, 'ApiDocsHandler', {
+            ...lambdaSettings.base,
+            ...getProfileProps(lambdaSettings.standard),
+            functionName: resourceName('blockbuster-theatre-api-docs-handler', envName),
+            handler: 'index.handler',
+            code: lambda.Code.fromAsset(path.join(__dirname, '../../build/api-docs', envName)),
+            logRetention: logs.RetentionDays.ONE_WEEK,
+        });
+
         // 6. API Gateway HTTP API
         this.apiGateway = new ApiGatewayConstruct(this, 'ApiGateway', {
+            apiDocsFunction,
             addMoviesFunction: this.lambdaServices.addMoviesFunction,
             updateMoviesFunction: this.lambdaServices.updateMoviesFunction,
             listMoviesFunction: this.lambdaServices.listMoviesFunction,
@@ -139,6 +154,11 @@ export class BackendStack extends cdk.Stack {
         new cdk.CfnOutput(this, 'ApiEndpoint', {
             value: this.apiGateway.httpApi.url!,
             description: 'Base HTTP endpoint for WinForms, WinUI 3, SwiftUI, and Web SPA',
+        });
+
+        new cdk.CfnOutput(this, 'ApiDocumentationUrl', {
+            value: `https://api${envName === 'dev' ? '-dev' : ''}.blockbuster-theatre.nml-applications.com/api-docs`,
+            description: 'API reference and downloadable OpenAPI specification',
         });
 
         new cdk.CfnOutput(this, 'UserPoolId', {

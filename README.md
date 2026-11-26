@@ -48,6 +48,17 @@ The API supports:
 
 See [API_GUIDE.md](./API_GUIDE.md) for booking data examples and local API instructions.
 
+## API reference
+
+The deployed reference is available at `https://api.blockbuster-theatre.nml-applications.com/api-docs`
+(dev: `https://api-dev.blockbuster-theatre.nml-applications.com/api-docs`). The page also links to a
+downloadable OpenAPI document at `/api-docs/openapi.json`.
+
+The contract is maintained in `scripts/api-spec.cjs`; update it when API routes, authorization,
+requests, or responses change. CI validates documented routes and authorization against the
+synthesized API Gateway template. Generate the Redoc reference before running `npx cdk synth` or
+`npx cdk deploy` directly. `npm run synth`, `npm run deploy`, and `npm test` generate it automatically.
+
 ## Local API testing
 
 The local API adapter invokes the Lambda handlers without deploying them. It offers two database modes:

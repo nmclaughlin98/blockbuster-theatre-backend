@@ -212,6 +212,19 @@ export class ApiGatewayConstruct extends Construct {
             props.downloadTicketFunction,
         );
 
+        const apiDocsIntegration = new integrations.HttpLambdaIntegration(
+            'ApiDocsIntegration',
+            props.apiDocsFunction,
+        );
+
+        for (const path of ['/api-docs', '/api-docs/openapi.json']) {
+            this.httpApi.addRoutes({
+                path,
+                methods: [apigw2.HttpMethod.GET],
+                integration: apiDocsIntegration,
+            });
+        }
+
         this.httpApi.addRoutes({
             path: '/film-selections',
             methods: [apigw2.HttpMethod.GET],
