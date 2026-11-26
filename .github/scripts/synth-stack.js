@@ -5,7 +5,7 @@ const deployStack = process.env.DEPLOY_STACK;
 const deployEnv = process.env.DEPLOY_ENVIRONMENT;
 
 const backendStack =
-    deployEnv === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
+    deployEnv === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack-prod';
 
 let expectedStacks;
 let cdkArgs;

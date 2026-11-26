@@ -129,7 +129,7 @@ describe('deploy Cognito parameters', () => {
 
         expect(result.status).toBe(0);
         expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
-            'describe-stacks --stack-name BlockbusterTheatreBackendStack',
+            'describe-stacks --stack-name BlockbusterTheatreBackendStack-prod',
         );
 
         expect(readFileSync(join(directory, 'calls'), 'utf8')).toContain(
@@ -480,8 +480,8 @@ describe('deploy build selection', () => {
         };
 
         expect(runSynth('dev', 'BlockbusterTheatreBackendStack-dev').status).toBe(0);
-        expect(runSynth('prod', 'BlockbusterTheatreBackendStack').status).toBe(0);
-        expect(runSynth('dev', 'BlockbusterTheatreBackendStack').status).toBe(1);
+        expect(runSynth('prod', 'BlockbusterTheatreBackendStack-prod').status).toBe(0);
+        expect(runSynth('dev', 'BlockbusterTheatreBackendStack-prod').status).toBe(1);
     });
 
     it.each(['dev', 'prod'])(
@@ -498,7 +498,7 @@ describe('deploy build selection', () => {
             const stack =
                 environment === 'dev'
                     ? 'BlockbusterTheatreBackendStack-dev'
-                    : 'BlockbusterTheatreBackendStack';
+                    : 'BlockbusterTheatreBackendStack-prod';
 
             const prefix = `blockbuster-theatre-${environment}-`;
             const otherPrefix = `blockbuster-theatre-${environment === 'dev' ? 'prod' : 'dev'}-`;

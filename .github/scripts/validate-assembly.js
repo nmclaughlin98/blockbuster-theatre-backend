@@ -8,8 +8,8 @@ const deployEnv = process.env.DEPLOY_ENVIRONMENT;
 const expected = isAuth
     ? 'BlockbusterTheatreAuthStack'
     : deployEnv === 'dev'
-      ? 'BlockbusterTheatreBackendStack-dev'
-      : 'BlockbusterTheatreBackendStack';
+        ? 'BlockbusterTheatreBackendStack-dev'
+        : 'BlockbusterTheatreBackendStack-prod';
 
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const artifacts = manifest.artifacts;

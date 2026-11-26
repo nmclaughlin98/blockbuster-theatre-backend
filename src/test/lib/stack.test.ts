@@ -1,11 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { BackendStack as BlockbusterTheatreBackendStack } from '../../../lib/backend';
+import { BackendStack as BlockbusterTheatreBackendStack-prod } from '../../../lib/backend';
 import { PROD_TO_DEV_TABLES } from '../../../scripts/sync-prod-to-dev';
 import { maxTicketsParameterForEnvironment } from '../../../lib/shared';
 
 describe('BackendStack', () => {
-    let stack: BlockbusterTheatreBackendStack;
+    let stack: BlockbusterTheatreBackendStack-prod;
 
     function expectLinkingParameter(template: Template, functionName: string, parameterName: string): void {
         const functions = template.findResources('AWS::Lambda::Function', {

@@ -20,7 +20,7 @@ function deployBackend() {
     }
 
     const targetStack =
-        deployEnv === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack';
+        deployEnv === 'dev' ? 'BlockbusterTheatreBackendStack-dev' : 'BlockbusterTheatreBackendStack-prod';
     console.log(`Deploying Backend Stack: ${targetStack}`);
 
     execFileSync(
