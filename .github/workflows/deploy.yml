@@ -135,7 +135,7 @@ jobs:
                   if [ "$TARGET_STACK" = "both" ] || [ "$TARGET_STACK" = "all" ]; then
                     npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" --all --context env="$TARGET_ENV" --require-approval never "${PARAMETERS[@]}"
                   elif [ "$TARGET_STACK" = "auth" ]; then
-                    npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreAuthStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never
+                    npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreAuthStack" --context env="$TARGET_ENV" --require-approval never
                   else
                     npx aws-cdk deploy --app "cdk-out/${TARGET_ENV}" "BlockbusterTheatreBackendStack-${TARGET_ENV}" --context env="$TARGET_ENV" --require-approval never "${PARAMETERS[@]}"
                   fi
