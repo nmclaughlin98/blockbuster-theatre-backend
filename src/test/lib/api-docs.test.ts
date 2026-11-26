@@ -12,6 +12,8 @@ describe('API reference', () => {
         expect(html.statusCode).toBe(200);
         expect(html.headers['content-type']).toContain('text/html');
         expect(html.body).toContain('Blockbuster Theatre API');
+        expect(html.body).not.toMatch(/<script\b[^>]*\bsrc\s*=/i);
+        expect(html.body).not.toMatch(/<link\b[^>]*\brel=["']modulepreload["']/i);
         expect(Buffer.byteLength(JSON.stringify(html))).toBeLessThan(5_500_000);
 
         const download = await handler({ rawPath: '/api-docs/openapi.json' });

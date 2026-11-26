@@ -19,18 +19,11 @@ for (const environment of ['prod', 'dev']) {
         'build-docs', join(output, 'openapi.json'),
         '--output', join(output, 'index.html'),
         '--title', 'Blockbuster Theatre API',
-        '--disableGoogleFont',
+        '--inlineBundle',
     ], { stdio: 'inherit' });
 
     // Lambda's synchronous response limit applies to the JSON proxy envelope, not just the HTML.
-    const htmlPath = join(output, 'index.html');
-    let html = readFileSync(htmlPath, 'utf8');
-    const scriptTag = /<script src="https:\/\/cdn\.redocly\.com\/redoc\/v[^"]+\/bundles\/redoc\.standalone\.js"><\/script>/;
-    if (!scriptTag.test(html)) throw new Error('Redocly did not emit the expected script tag.');
-    const redoc = readFileSync(require.resolve('redoc/bundles/redoc.standalone.js'), 'utf8')
-        .replace(/<\/script/gi, '<\\/script');
-    html = html.replace(scriptTag, () => `<script>${redoc}</script>`);
-    writeFileSync(htmlPath, html);
+    const html = readFileSync(join(output, 'index.html'), 'utf8');
     const proxyBytes = Buffer.byteLength(JSON.stringify({ statusCode: 200, headers: {}, body: html }));
     if (proxyBytes > 5_500_000) throw new Error(`API reference response is too large: ${proxyBytes} bytes.`);
 }
